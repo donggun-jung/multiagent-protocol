@@ -1,0 +1,4 @@
+github_login: example-org-owner
+allowlisted_actors:
+  - example-org-owner
+display_name: Example Org Owner

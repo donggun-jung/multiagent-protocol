@@ -1,0 +1,5 @@
+enabled: []
+disabled: []
+severity_overrides:
+  # Team policy: WIP markers must block, not warn.
+  no_wip_markers: P0

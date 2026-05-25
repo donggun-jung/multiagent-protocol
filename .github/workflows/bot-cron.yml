@@ -1,0 +1,51 @@
+name: bot-cron
+
+# Runs the bot every 5 minutes. Operators select the runner via
+# config/env.yml `runner_tier`; this workflow uses GitHub Actions Free
+# (ubuntu-latest) by default. For self-hosted, replace the runs-on
+# selector with `[self-hosted, multiagent-protocol]`.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+# Only one tick at a time, even if a previous tick over-runs.
+concurrency:
+  group: bot-cron
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Run one tick
+        env:
+          MERGE_GATE_APP_ID: ${{ secrets.MERGE_GATE_APP_ID }}
+          MERGE_GATE_PRIVATE_KEY: ${{ secrets.MERGE_GATE_PRIVATE_KEY }}
+        run: |
+          python -m multiagent_protocol tick
+      - name: Upload tick artifact (audit + metrics)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tick-${{ github.run_id }}
+          path: |
+            bot-state/
+            *.log
+          if-no-files-found: ignore
+          retention-days: 90

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://multiagent-protocol.github.io/schemas/agent_registry.schema.json",
+  "title": "agent_registry.yml",
+  "description": "Lists the AI agents (tools, models, machines) the L4 identity gate will accept in commit trailers. Adding a new agent vendor is a one-line addition here. See docs/concepts/four-quadrants.md § 'L4 burn-in'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tools"],
+  "properties": {
+    "tools": {
+      "type": "array",
+      "description": "Permitted values for the Agent-Tool trailer. Vendor-neutral; add 'manual' for human-authored commits and 'github-actions' for CI-authored commits.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,49}$"
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "examples": [["claude-code", "codex", "cursor", "gemini-cli", "aider", "manual", "github-actions"]]
+    },
+    "models": {
+      "type": "object",
+      "description": "Map from Agent-Tool value to list of accepted Agent-Model values. Use ['*'] to accept any model for a tool.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1, "maxLength": 100},
+        "uniqueItems": true,
+        "minItems": 1
+      }
+    },
+    "machines": {
+      "type": "array",
+      "description": "Free-form list of recognized Agent-Machine values. Machines NOT in this list still pass the trailer check (they go into L4 burn-in instead of hard-blocking).",
+      "items": {"type": "string", "minLength": 1, "maxLength": 100},
+      "uniqueItems": true,
+      "default": []
+    }
+  }
+}

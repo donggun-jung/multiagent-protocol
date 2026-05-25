@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://multiagent-protocol.github.io/schemas/skills.schema.json",
+  "title": "skills.yml",
+  "description": "Toggle individual skills (built-in or user-added) and override their severity.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "type": "array",
+      "description": "Skills explicitly enabled. If empty, all auto-discovered skills run. Listing a skill here makes the loader log a warning if the file is missing.",
+      "items": {"type": "string", "minLength": 1, "maxLength": 100},
+      "uniqueItems": true,
+      "default": []
+    },
+    "disabled": {
+      "type": "array",
+      "description": "Skill names to skip even if loaded. Cannot disable a built-in L1 validator (C1-C5); use severity_overrides instead.",
+      "items": {"type": "string", "minLength": 1, "maxLength": 100},
+      "uniqueItems": true,
+      "default": []
+    },
+    "severity_overrides": {
+      "type": "object",
+      "description": "Per-skill severity override. Keys are skill names, values are 'P0'/'P1'/'P2'/'P3'.",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["P0", "P1", "P2", "P3"]
+      },
+      "default": {}
+    }
+  }
+}

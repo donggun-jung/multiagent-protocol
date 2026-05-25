@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://multiagent-protocol.github.io/schemas/projects.schema.json",
+  "title": "projects.yml",
+  "description": "The set of repos this installation supervises. The governance_repo is the canonical doctrine + Decision Inbox host. Supervised repos are the ones whose PRs the bot gates.",
+  "type": "object",
+  "required": ["governance_repo"],
+  "additionalProperties": false,
+  "properties": {
+    "governance_repo": {
+      "type": "string",
+      "description": "Owner/name of the governance repository. Holds canonical doctrine + receives Decision Inbox issues.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$",
+      "examples": ["your-org/multiagent-protocol"]
+    },
+    "supervised_repos": {
+      "type": "array",
+      "description": "Owner/name of each repository whose PRs the bot gates (L1-L4). The governance_repo itself MAY be listed here if you want its PRs gated too.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "bot_repo": {
+      "type": "string",
+      "description": "Owner/name of the bot's own repository, if separate from governance_repo. The classifier votes Quadrant D on PRs to this repo. If absent, defaults to governance_repo.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+    }
+  }
+}

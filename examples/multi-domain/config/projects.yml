@@ -1,0 +1,8 @@
+governance_repo: example-org/governance
+supervised_repos:
+  - example-org/finance-app
+  - example-org/marketing-site
+  - example-org/data-pipeline
+  - example-org/mobile-app
+  - example-org/internal-tools
+bot_repo: example-org/merge-gate-bot

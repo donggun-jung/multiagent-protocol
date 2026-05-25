@@ -1,0 +1,29 @@
+# Stricter than solo-developer: specific model identifiers, no wildcards.
+# This catches the case where a new model is silently introduced without
+# operator review.
+
+tools:
+  - claude-code
+  - codex
+  - cursor
+  - manual
+  - github-actions
+
+models:
+  claude-code:
+    - claude-opus-4.7
+    - claude-sonnet-4.7
+  codex:
+    - gpt-5
+    - gpt-5.5
+  cursor:
+    - claude-opus-4.7
+    - gpt-5
+  manual: ["n/a"]
+  github-actions: ["n/a"]
+
+machines:
+  - laptop-1
+  - laptop-2
+  - desktop
+  - vps-runner

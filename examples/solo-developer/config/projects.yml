@@ -1,0 +1,13 @@
+# Repos this installation supervises.
+
+# Holds canonical doctrine + Decision Inbox issues. Usually your fork of
+# multiagent-protocol.
+governance_repo: your-github-login/multiagent-protocol
+
+# Repos whose PRs the bot gates with L1-L4. Add as many as you like.
+supervised_repos:
+  - your-github-login/some-repo
+
+# If your bot lives in a separate repo, set this. Otherwise the governance
+# repo is treated as the bot repo.
+# bot_repo: your-github-login/multiagent-protocol

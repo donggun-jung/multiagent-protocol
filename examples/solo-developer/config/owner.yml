@@ -1,0 +1,9 @@
+# Owner identity. Replace placeholder values.
+github_login: your-github-login
+
+# Defaults to [github_login]; uncomment to delegate approval rights.
+# allowlisted_actors:
+#   - your-github-login
+#   - your-trusted-reviewer
+
+display_name: Your Name

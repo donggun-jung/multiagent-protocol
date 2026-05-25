@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://multiagent-protocol.github.io/schemas/owner.schema.json",
+  "title": "owner.yml",
+  "description": "Owner identity configuration for a multiagent-protocol installation. The owner is the human (or trusted accounts) authorized to approve Quadrant D PRs and push break-glass commits.",
+  "type": "object",
+  "required": ["github_login"],
+  "additionalProperties": false,
+  "properties": {
+    "github_login": {
+      "type": "string",
+      "description": "Primary GitHub login of the owner. This is the default allowlisted actor.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+      "examples": ["your-github-login"]
+    },
+    "allowlisted_actors": {
+      "type": "array",
+      "description": "GitHub logins whose reactions/comments count as owner approval on Decision Inbox issues and whose direct pushes are valid for break-glass commits. Defaults to [github_login].",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Optional human-readable name used in diagnostic comments. NOT used for authentication.",
+      "maxLength": 100
+    }
+  }
+}

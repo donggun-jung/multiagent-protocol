@@ -1,0 +1,26 @@
+# Permitted values for Agent-* commit trailers. The L4 identity gate
+# verifies every commit's trailers against this registry.
+
+tools:
+  - claude-code      # Anthropic Claude Code CLI
+  - codex            # OpenAI Codex
+  - cursor           # Cursor editor agent
+  - gemini-cli       # Google Gemini CLI
+  - aider            # Aider terminal agent
+  - manual           # human-authored commit
+  - github-actions   # CI-authored commit (cascade, revert, etc.)
+
+models:
+  # ['*'] means "any model identifier is accepted for this tool".
+  claude-code: ["*"]
+  codex: ["*"]
+  cursor: ["*"]
+  gemini-cli: ["*"]
+  aider: ["*"]
+  manual: ["n/a"]
+  github-actions: ["n/a"]
+
+# Recognized machine handles. Machines NOT listed still pass the gate, but
+# go into L4 burn-in (advisory for 60 days, then promoted to hard-block
+# unless the machine has produced a Quadrant D rejection during burn-in).
+machines: []

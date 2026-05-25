@@ -1,0 +1,6 @@
+governance_repo: example-org/multiagent-protocol
+supervised_repos:
+  - example-org/frontend
+  - example-org/backend
+  - example-org/shared-libs
+bot_repo: example-org/multiagent-protocol

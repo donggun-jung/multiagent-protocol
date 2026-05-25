@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://multiagent-protocol.github.io/schemas/mirror_paths.json",
+  "title": "mirror_paths.json (canonical-paths registry)",
+  "description": "Schema for the file at <governance>/schemas/mirror_paths.json that lists files which must be byte-identical across supervised repos. See docs/concepts/mirror-cascade.md.",
+  "type": "object",
+  "required": ["canonical_paths"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "canonical_paths": {
+      "type": "array",
+      "description": "Paths (relative to repo root) that must match byte-for-byte between the governance repo and every supervised repo, unless excepted.",
+      "items": {"type": "string", "minLength": 1, "maxLength": 500},
+      "uniqueItems": true
+    },
+    "exceptions": {
+      "type": "object",
+      "description": "Per-adopter exceptions. Keys are adopter repo names (without owner prefix); values are canonical paths that adopter may diverge on.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string"},
+        "uniqueItems": true
+      },
+      "default": {}
+    }
+  }
+}

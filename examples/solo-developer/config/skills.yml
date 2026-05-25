@@ -1,0 +1,11 @@
+# Default-on for solo developer. All built-in skills + the hallucination guard.
+
+enabled: []  # empty = auto-discover all installed skills
+
+disabled: []  # disable individual skills here. Example:
+              # disabled:
+              #   - hook_hallucination_guard
+
+severity_overrides: {}  # tune severity per skill. Example:
+                         # severity_overrides:
+                         #   no_wip_markers: P0

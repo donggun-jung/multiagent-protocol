@@ -1,0 +1,5 @@
+github_login: team-lead
+allowlisted_actors:
+  - team-lead
+  - senior-reviewer
+display_name: Team Lead
