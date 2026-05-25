@@ -102,6 +102,12 @@ def scan_repo(
 def _to_commit_context(raw: dict) -> CommitContext:
     msg = raw["commit"]["message"]
     subject, _, body = msg.partition("\n")
+    # GitHub returns the commit author/committer time under
+    # commit.committer.date (ISO-8601 UTC). The committer date is the
+    # one we want for break-glass deadline checks — author date can be
+    # rewritten by `git commit --amend --date=...` whereas committer
+    # date reflects when the push actually landed.
+    committed_at = ((raw.get("commit") or {}).get("committer") or {}).get("date")
     return CommitContext(
         sha=raw["sha"],
         subject=subject,
@@ -110,4 +116,5 @@ def _to_commit_context(raw: dict) -> CommitContext:
         committer_login=(raw.get("committer") or {}).get("login"),
         parents=tuple(p["sha"] for p in raw.get("parents", [])),
         trailers=parse_trailers(msg),
+        committed_at=committed_at,
     )

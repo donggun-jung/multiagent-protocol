@@ -8,7 +8,7 @@ This document specifies the canonical-paths registry, the cascade workflow, and 
 
 ## The governance repo
 
-You designate one repository as **governance** in `config.governance.repository`. By convention this is the same repo that holds `docs/concepts/`, `docs/decisions/`, and the bot source if the bot lives in the protocol repo (versus a separate bot repo).
+You designate one repository as **governance** in `config/projects.yml` `governance_repo`. By convention this is the same repo that holds `docs/concepts/`, `docs/decisions/`, and the bot source if the bot lives in the protocol repo (versus a separate bot repo).
 
 The governance repo is the single source of truth for canonical files. Adopter repos mirror the canonical paths.
 
@@ -75,7 +75,7 @@ gh workflow run cascade.yml \
 The workflow:
 
 1. Checks out the governance repo.
-2. For each adopter listed in `config.projects.supervised`:
+2. For each adopter listed in `config/projects.yml` `supervised_repos`:
    a. Checks out adopter on `main`.
    b. Creates a branch `cascade/<governance-commit-sha-short>`.
    c. Copies the listed canonical paths from governance into adopter.

@@ -48,8 +48,7 @@ Runs once per open PR per cron tick. The three layers it consolidates are tightl
 
 - `pr_number`
 - `github_api` client (authenticated as the bot's App installation token)
-- `config.classifier_rules` (for the auto-approval decision)
-- `config.agent_registry` (for trailer validation)
+- The loaded `AppConfig` (in particular `config.skills` for severity/enable toggles and `config.agent_registry` for L4 trailer registry lookup)
 
 ### L1 — Pre-merge gate (5 conditions)
 
@@ -113,7 +112,7 @@ A failed check is considered infra-failure (not a real failure) when:
 
 For each commit on `main` whose subject matches `^\[break-glass-[a-z0-9-]+\]`:
 
-1. Verify the commit author is in `config.owner.allowlisted_actors`.
+1. Verify the commit author is in `config/owner.yml` `allowlisted_actors`.
 2. Verify an ADR (Architecture Decision Record) was filed in `docs/decisions/` within 24h of the commit timestamp, referencing the break-glass commit's SHA.
 3. If either fails, open a `decision:break-glass-unaudited` Issue tagging the owner.
 
@@ -186,7 +185,7 @@ At 6 supervised repos × ~5 open PRs × ~10 API calls per PR + L5 self-scan (~50
 The 4 modules call into the **skills loader** (`src/multiagent_protocol/skills/`) for extensible behavior:
 
 - `pr_validator.py` calls `Validator.check(pr_context)` for each registered validator (built-in C1-C5 + user-added).
-- `classifier.py` calls `ClassifierRule.evaluate(pr_context)` for each registered rule (returns A/B/C/D vote; rules combined per `config.classifier_rules.combine_mode`).
+- `classifier.py` calls `ClassifierRule.evaluate(pr_context)` for each registered rule (returns A/B/C/D vote; the engine takes the **maximum quadrant** across all rules — see `four-quadrants.md` § "Classifier rule composition").
 - `branch_supervisor.py` calls `BranchHook.on_commit(commit)` for each registered hook (built-in: L5 audit; user-added: e.g., changelog enforcer).
 - `decision_inbox.py` and `drift_check.py` do not currently call skills, but the interface is reserved.
 

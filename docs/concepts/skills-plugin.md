@@ -177,7 +177,7 @@ disabled:
   - hook_hallucination_guard  # I am running on a fast-moving prototype repo
 ```
 
-The skill is loaded but its result is ignored. Disabling a built-in **validator** (C1-C5) is not permitted — the loader refuses with `cannot_disable_required_validator`. Use `config.skills.severity_override` to lower the severity instead if you need a soft warning rather than a block.
+The skill is loaded but its result is ignored. Disabling a built-in **validator** (C1-C5) is not permitted — the loader refuses with `cannot_disable_required_validator`. Use `config.skills.severity_overrides` (note: plural — see `schemas/skills.schema.json`) to lower the severity instead if you need a soft warning rather than a block.
 
 ## Future: WASM sandbox
 

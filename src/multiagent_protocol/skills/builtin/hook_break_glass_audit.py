@@ -65,25 +65,55 @@ class BreakGlassAuditHook:
             )
 
         # Check 2: ADR within deadline.
-        if self._adr_finder is not None:
-            adr_exists = self._adr_finder(commit.sha)
-            if not adr_exists:
-                # We do NOT yet know the commit's timestamp here (CommitContext
-                # does not expose it; would require adding a field). For now,
-                # the hook reports unaudited; the deadline is enforced by the
-                # caller who checks adr-finder against the deadline window.
-                return BranchHookResult(
-                    incident_label="decision:break-glass-unaudited",
-                    incident_body=(
-                        f"Commit {commit.short_sha} uses break-glass subject "
-                        f"({commit.subject[:80]!r}) but no ADR referencing "
-                        f"this SHA was found under docs/decisions/. ADR is "
-                        f"required within {int(self.adr_deadline.total_seconds() // 3600)} "
-                        f"hours of the break-glass commit.\n\n"
-                        f"To resolve: add a file `docs/decisions/NNNN_<topic>.md` "
-                        f"with frontmatter `break_glass.commit_sha: \"{commit.sha}\"` "
-                        f"and merge it. The hook re-checks on the next cron tick."
-                    ),
-                )
+        if self._adr_finder is None:
+            return BranchHookResult.none()
 
-        return BranchHookResult.none()
+        adr_exists = self._adr_finder(commit.sha)
+        if adr_exists:
+            # ADR is present — audit closed.
+            return BranchHookResult.none()
+
+        # No ADR yet. If the commit timestamp is known, check whether the
+        # 24-hour deadline (or operator-configured equivalent) has passed.
+        within_window = self._is_within_deadline(commit)
+        if within_window:
+            # Still within the grace period — do NOT open the unaudited
+            # issue yet; the operator may file the ADR shortly. The hook
+            # re-evaluates on the next cron tick.
+            return BranchHookResult.none()
+
+        # Either the commit timestamp is unknown (older bots that did not
+        # populate ``committed_at``) or the deadline has passed. Either way,
+        # surface the unaudited incident.
+        return BranchHookResult(
+            incident_label="decision:break-glass-unaudited",
+            incident_body=(
+                f"Commit {commit.short_sha} uses break-glass subject "
+                f"({commit.subject[:80]!r}) but no ADR referencing this SHA "
+                f"was found under docs/decisions/. ADR is required within "
+                f"{int(self.adr_deadline.total_seconds() // 3600)} hours of "
+                f"the break-glass commit.\n\n"
+                f"To resolve: add a file `docs/decisions/NNNN_<topic>.md` "
+                f"with frontmatter `break_glass.commit_sha: \"{commit.sha}\"` "
+                f"and merge it. The hook re-checks on the next cron tick."
+            ),
+        )
+
+    def _is_within_deadline(self, commit: CommitContext) -> bool:
+        """True iff commit was authored less than ``adr_deadline`` ago.
+
+        Returns False (deadline passed) when the commit's ``committed_at``
+        is missing — older bots that did not populate the field cannot
+        prove they are still within the grace period.
+        """
+        ts = commit.committed_at
+        if not ts:
+            return False
+        try:
+            # GitHub returns "YYYY-MM-DDTHH:MM:SSZ" for commit timestamps.
+            committed = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc
+            )
+        except ValueError:
+            return False
+        return self._clock() - committed < self.adr_deadline

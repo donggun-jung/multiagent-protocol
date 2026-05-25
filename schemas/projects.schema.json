@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://donggun-jung.github.io/multiagent-protocol/schemas/projects.schema.json",
   "title": "projects.yml",
-  "description": "The set of repos this installation supervises. The governance_repo is the canonical doctrine + Decision Inbox host. Supervised repos are the ones whose PRs the bot gates.",
+  "description": "The set of repos this installation supervises, plus the optional Decision Inbox host. The governance_repo is the canonical doctrine + default Decision Inbox host. Supervised repos are the ones whose PRs the bot gates.",
   "type": "object",
   "required": ["governance_repo"],
   "additionalProperties": false,
   "properties": {
     "governance_repo": {
       "type": "string",
-      "description": "Owner/name of the governance repository. Holds canonical doctrine + receives Decision Inbox issues.",
+      "description": "Owner/name of the governance repository. Holds canonical doctrine + receives Decision Inbox issues (unless decision_inbox.repository overrides).",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$",
       "examples": ["your-org/multiagent-protocol"]
     },
@@ -27,6 +27,60 @@
       "type": "string",
       "description": "Owner/name of the bot's own repository, if separate from governance_repo. The classifier votes Quadrant D on PRs to this repo. If absent, defaults to governance_repo.",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+    },
+    "decision_inbox": {
+      "type": "object",
+      "description": "Optional. Override Decision Inbox host and lifecycle thresholds. If absent, defaults are: repository = governance_repo, thresholds = 14-day nudge / 30-day abandon / 60-day auto-close.",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "description": "Owner/name of the repository where Decision Inbox issues are opened. Defaults to governance_repo. Use when you want a separate inbox repo for many supervised repos to share.",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+        },
+        "thresholds": {
+          "type": "object",
+          "description": "How long an inbox issue may remain in each state before escalation.",
+          "additionalProperties": false,
+          "properties": {
+            "nudge_days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 14,
+              "description": "Days of no activity before the bot posts a reminder comment."
+            },
+            "abandon_days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 30,
+              "description": "Days before the issue is labelled decision:abandoned (still open)."
+            },
+            "auto_close_days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 60,
+              "description": "Days before the bot closes the linked PR and the inbox issue."
+            }
+          }
+        }
+      }
+    },
+    "break_glass": {
+      "type": "object",
+      "description": "Optional. Tune the break-glass auditor's ADR deadline. Default: ADR required within 24 hours of any [break-glass-*] commit on main.",
+      "additionalProperties": false,
+      "properties": {
+        "adr_deadline_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 720,
+          "default": 24,
+          "description": "Hours after a break-glass commit during which an ADR referencing the commit SHA must land in docs/decisions/. Past this window the L5 auditor surfaces an 'unaudited' Issue."
+        }
+      }
     }
   }
 }

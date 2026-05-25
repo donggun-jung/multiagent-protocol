@@ -105,7 +105,7 @@ When you change a canonical file in your governance fork, every supervised repo 
 
 If you want to automate cascade PRs anyway:
 
-1. Wait for v0.2.0 + an explicit ADR in `docs/decisions/` that authorizes the bot to open critical-path PRs in adopters. The ADR turns `config.drift_check.auto_cascade` into a supported flag.
+1. Wait for v0.2.0 + an explicit ADR in `docs/decisions/` that authorizes the bot to open critical-path PRs in adopters. The ADR will define an opt-in `drift_check:` block in `config/projects.yml`; the schema does not yet contain it.
 2. Or hand-roll a workflow in your governance fork that, on push to `main`, opens a PR in each adopter with the canonical files copied over. This is operator-specific and we do not ship a default template — the right design depends on whether your adopters share a common owner, who reviews cascade PRs, etc.
 
 ## Sizing notes

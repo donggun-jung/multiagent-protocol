@@ -54,6 +54,7 @@ class CommitContext:
     committer_login: str | None
     parents: tuple[str, ...]
     trailers: TrailerSet
+    committed_at: str | None = None  # ISO-8601 UTC; populated when known
 
     @property
     def short_sha(self) -> str:

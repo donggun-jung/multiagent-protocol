@@ -84,11 +84,11 @@ A PR whose target repository equals the bot's own repository votes Quadrant D.
 
 **Built-in**: `validator_classifier_publisher.py` (Validator, P0)
 
-When the bot reads a `classifier-judgment` check-run from a PR, it verifies `app.slug == config.classifier.publisher_slug` (default: `github-actions`). Mismatched slug → fail-closed (treated as classifier missing → Quadrant D default).
+When the bot reads a `classifier-judgment` check-run from a PR, it verifies `app.slug == config/env.yml` `classifier_publisher_slug` (default: `github-actions`). Mismatched slug → fail-closed (treated as classifier missing → Quadrant D default).
 
 **Why**: Without this, **anyone** who can run a GitHub Actions workflow in **any repo** could publish a check-run named `classifier-judgment` with summary `Quadrant: A`. The bot's auto-approval path would honor it. The publisher-identity gate closes this attack.
 
-**How to disable**: not permitted. Change `config.classifier.publisher_slug` if you publish classifier-judgment from a different App (advanced); the gate itself stays on.
+**How to disable**: not permitted. Change `config/env.yml` `classifier_publisher_slug` if you publish classifier-judgment from a different App (advanced); the gate itself stays on.
 
 ## 7. Mirror cascade is detection, not auto-fix
 
@@ -98,7 +98,7 @@ When the bot detects that a canonical path in a supervised repo diverges from th
 
 **Why**: Auto-cascade is itself a Quadrant D operation (it modifies critical files in adopters without owner approval at the time). Until ADR R-N+1 explicitly authorizes auto-cascade, detection-only is the safe default.
 
-**How to enable auto-cascade** (when implemented): future versions will add `config.drift_check.auto_cascade: true`. Not in v1.0.
+**How to enable auto-cascade** (when implemented): a future version will add an explicit setting to `config/projects.yml` (likely under a `drift_check:` block) that turns auto-cascade on. The exact key name will be defined in the ADR that authorizes the bot to open critical-path PRs in adopters; until then, no schema key exists for this. Not in v1.0.
 
 ## 8. Break-glass requires ADR within 24 hours
 
@@ -108,15 +108,15 @@ A commit on `main` whose subject starts with `[break-glass-*]` triggers L5 audit
 
 **Why**: Break-glass is intentionally costly. The ADR documents what you did and why — the cost discourages casual use, the audit trail keeps the project's reasoning intact across time. See [`docs/concepts/break-glass.md`](break-glass.md).
 
-**How to disable**: not permitted via `disabled:`. You can extend the 24h window via `config.break_glass.adr_deadline_hours` (default 24), but the audit hook always runs.
+**How to disable**: not permitted via `disabled:`. You can extend the 24h window via `config/projects.yml` `break_glass.adr_deadline_hours` (default 24), but the audit hook always runs.
 
 ## 9. Decision Inbox issues track owner reactions only
 
-**Built-in**: `decision_inbox.py` only counts reactions/comments from actors in `config.owner.allowlisted_actors`.
+**Built-in**: `decision_inbox.py` only counts reactions/comments from actors in `config/owner.yml` `allowlisted_actors`.
 
 **Why**: Without this, a teammate or an attacker could approve Quadrant D PRs the owner did not see. The allowlist ensures only authorized actors can route around the owner.
 
-**How to extend**: add additional GitHub logins to `config.owner.allowlisted_actors`. The list is authoritative; no implicit additions.
+**How to extend**: add additional GitHub logins to `config/owner.yml` `allowlisted_actors`. The list is authoritative; no implicit additions.
 
 ## 10. No network calls from user skills
 

@@ -13,7 +13,7 @@ This document specifies the protocol for opening, polling, and resolving inbox i
 
 ## The inbox repository
 
-By default, the inbox lives in the **governance repository** (the one that holds canonical `docs/concepts/`). For solo operators that's usually the same repo as the bot. For larger setups it can be a separate dedicated repo (`config.decision_inbox.repository`).
+By default, the inbox lives in the **governance repository** (the one that holds canonical `docs/concepts/`). For solo operators that's usually the same repo as the bot. For larger setups it can be a separate dedicated repo: set `decision_inbox.repository` in `config/projects.yml` (schema-validated at load time).
 
 All Decision Inbox Issues carry the label `decision:pending-owner` (open) or one of the resolution labels (closed; see "Resolution states" below).
 
@@ -48,9 +48,9 @@ The HTML-comment nonce and head-SHA are **invisible to humans** but read by the 
 
 Every cron tick, `decision_inbox.py`:
 
-1. Lists open Issues in `config.decision_inbox.repository` with label `decision:pending-owner`.
+1. Lists open Issues in `config/projects.yml` `decision_inbox.repository` (falls back to `governance_repo` if absent) with label `decision:pending-owner`.
 2. For each Issue:
-   a. Read reactions on the Issue body. Count only reactions by users in `config.owner.allowlisted_actors`.
+   a. Read reactions on the Issue body. Count only reactions by users in `config/owner.yml` `allowlisted_actors`.
    b. Read comments on the Issue, oldest-to-newest. Look for `/approve A`, `/approve B`, `/approve C`, or `/reject` commands from allowlisted actors.
    c. Read checkbox state on the Issue body. Checkbox edits by allowlisted actors count as ballot votes.
    d. If multiple signals exist, take the **most recent**.
@@ -78,13 +78,13 @@ When closed, an Issue has exactly one of these labels (in addition to `decision:
 
 ## Allowlist enforcement
 
-Only reactions/comments by users in `config.owner.allowlisted_actors` count. This prevents:
+Only reactions/comments by users in `config/owner.yml` `allowlisted_actors` count. This prevents:
 
 - An agent commenting `/approve A` on its own PR's inbox issue (the agent's bot login is not in the allowlist).
 - A spam account creating accounts and 👍-bombing inbox issues.
 - A previously-trusted teammate whose account was compromised post-hoc (the allowlist is checked at each tick, not at issue-open time).
 
-The allowlist is `config.owner.allowlisted_actors` — typically `[<owner-github-login>]` for solo operators, plus optional delegated reviewers.
+The allowlist is `config/owner.yml` `allowlisted_actors` — typically `[<owner-github-login>]` for solo operators, plus optional delegated reviewers.
 
 ## Rate limiting & nudges
 
@@ -94,7 +94,7 @@ Inbox issues are designed for **asynchronous** response, not real-time. The bot 
 - After **30 days**, the bot labels `decision:abandoned`. The Issue stays open (no auto-close), but `decision:abandoned` signals that the linked PR is effectively dead until human action.
 - After **60 days**, the bot closes the linked PR with `decision:auto-resolved-pr-closed` and closes the Issue. The owner can reopen if they want to revive.
 
-These thresholds are configurable in `config.decision_inbox.thresholds`.
+These thresholds are configurable in `config/projects.yml` under `decision_inbox.thresholds` (keys: `nudge_days`, `abandon_days`, `auto_close_days`). Defaults: 14 / 30 / 60.
 
 ## Failure modes
 

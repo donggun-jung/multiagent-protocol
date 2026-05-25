@@ -42,13 +42,13 @@ The prefix has three parts:
 2. A short kebab-case reason code. Recommended codes: `actions-outage`, `bot-self-update`, `security`, `data-recovery`, `legal`.
 3. `]` (literal) then a space and a regular conventional-commit message.
 
-The commit must be authored by an actor in `config.owner.allowlisted_actors`. Authorship is checked by L5; an unauthorized actor's break-glass commit triggers a `decision:break-glass-unauthorized` issue immediately.
+The commit must be authored by an actor in `config/owner.yml` `allowlisted_actors`. Authorship is checked by L5; an unauthorized actor's break-glass commit triggers a `decision:break-glass-unauthorized` issue immediately.
 
 ## What the bot does next
 
 `branch_supervisor.py` runs `L5_break_glass_audit` on every cron tick across `main` HEAD of all registered repos. For each commit matching the break-glass prefix:
 
-1. **Allowlist check.** Author in `config.owner.allowlisted_actors`? If no → open `decision:break-glass-unauthorized` issue, label PR/commit, ping owner. Hard alert.
+1. **Allowlist check.** Author in `config/owner.yml` `allowlisted_actors`? If no → open `decision:break-glass-unauthorized` issue, label PR/commit, ping owner. Hard alert.
 2. **ADR existence check.** Is there a file under `docs/decisions/` referencing this commit's SHA in its body, with a commit timestamp within the last 24 hours? If no → open `decision:break-glass-unaudited` issue, label, ping. Soft alert (passive — the audit issue stays open until ADR lands).
 3. **ADR content check.** Once the ADR exists, parse its frontmatter (`schema_version: 1`, required fields: `adr_number`, `title`, `status`, `date`, `authors`, `supersedes`, `related`, plus a `break_glass:` block with `commit_sha`, `reason_code`, `was_alternative_considered`). If frontmatter is invalid → issue stays open with `decision:break-glass-incomplete-adr`.
 4. **Watermark advance.** Once both checks pass, the watermark advances and the commit is no longer surfaced by L5 next tick.
