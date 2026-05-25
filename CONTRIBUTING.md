@@ -8,7 +8,7 @@ Thank you for your interest in `multiagent-protocol`. This is a small open-sourc
 - **Documentation improvements** — typos, missing concepts, clearer wording. Especially welcome for the Korean mirror under `docs/ko/`.
 - **New built-in skills** that are *generally applicable* (hallucination guards, secret scanners, etc. — not personal preferences).
 - **Adapters for new AI agent vendors** (a one-line addition to `config/agent_registry.example.yml` plus tests).
-- **Translation to additional languages** — see `docs/wizard/locales/` and `docs/{lang}/`.
+- **Translation to additional languages** — see `docs/wizard/js/locales.js` (wizard UI strings) and `docs/{lang}/` (markdown docs).
 
 ## What contributions need a discussion first
 

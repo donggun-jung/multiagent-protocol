@@ -1,6 +1,11 @@
 name: docs
 
-# Deploy docs/ to GitHub Pages on every push to main.
+# Build docs/ with Jekyll and deploy to GitHub Pages on every push to main.
+#
+# Previously this workflow used `upload-pages-artifact` on the raw `docs/`
+# directory, which serves .md files as Content-Type: text/markdown — first-
+# time visitors see raw `# Heading` text. The Jekyll build (driven by
+# docs/_config.yml) renders the markdown as HTML.
 
 on:
   push:
@@ -20,16 +25,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+
   deploy:
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./docs
       - id: deployment
         uses: actions/deploy-pages@v4

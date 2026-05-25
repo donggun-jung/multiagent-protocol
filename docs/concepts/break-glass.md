@@ -95,14 +95,14 @@ The ADR is itself a PR (or a direct commit if you are still in the break-glass w
 
 ## Bot self-update flow
 
-The bot does not gate its own PRs (`BOT_SELF_SUPERVISION` rule 2: chicken-and-egg). When the bot needs to be updated:
+The bot does not gate its own PRs (chicken-and-egg: the L1 evaluator the bot would use to gate its own PR is the same code being changed). When the bot needs to be updated:
 
 1. Make the change locally.
 2. Push a direct commit to `main` of `<bot-repo>` with subject `[break-glass-bot-self-update] <description>`.
 3. Open a regular PR with the ADR in `<governance-repo>/docs/decisions/`.
 4. L5 sees the bot-repo break-glass commit on next tick. ADR check passes when the governance-repo PR merges (which has the ADR file).
 
-This flow is acknowledged-but-deferred-for-improvement: the R14-candidate ADR 0017 proposes a 3-App split that would let the bot self-merge via an owner-deploy App without break-glass. Until that lands, bot self-update is the most common break-glass reason.
+This flow is acknowledged-but-deferred-for-improvement. A possible future ADR (open question — see [`docs/decisions/`](../decisions/) once it lands) would propose a multi-App architecture in which the bot's normal-operation credentials cannot merge to `main` and a separate owner-deploy credential, used only with explicit human approval per PR, would replace the break-glass-bot-self-update flow. Until such an ADR is written and accepted, bot self-update remains the most common (and the only sanctioned) break-glass reason.
 
 ## Why allow break-glass at all?
 

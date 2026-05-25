@@ -68,8 +68,8 @@ The following rules apply to every change, every session, every agent:
 ## Common pitfalls
 
 - **Writing code before reading concepts.** The four-quadrant classifier and the L1-L5 layers have specific names and meanings; renaming them mid-PR creates doctrine ↔ code drift. Read first.
-- **Assuming the predecessor codebase applies.** This is a greenfield project. Old patterns (`R7`, `ADR 0009`, `BOT_SELF_SUPERVISION Rule 4`) are reference material, not inherited rules. If a pattern carries over, it must be re-stated in `docs/concepts/*.md` here.
-- **Adding `donggun-jung` or other predecessor identifiers as canaries.** The CI scan looks for them. Use truly generic placeholders.
+- **Inventing identifiers that do not exist in this repo.** Round numbers (`R7`, `R14`), ADR numbers (`ADR 0009`, `ADR 0017`), or rule references (`BOT_SELF_SUPERVISION Rule 4`) that are not defined in `docs/concepts/*.md` or `docs/decisions/*.md` here are not valid context — they leaked from someone's earlier private project and have no meaning in this repository. If you need to cite a rule, cite a section that actually exists in this repo.
+- **Adding any contributor's GitHub login, email, machine handle, VPS hostname, or other personally-identifying string as a "canary" or example.** The CI scan in `.github/scripts/scan_no_personal_data.py` flags public IPs, email addresses, and SSH-style host aliases; placeholders should use `<your-github-login>`, `you@example.com`, `192.168.1.1`. Real identifiers do not belong anywhere in this repo, including in scan-pattern lists or test fixtures.
 - **Coupling to a specific runner platform.** The bot must work on GitHub Actions Free tier OR a self-hosted runner OR paid cloud. Tests must not assume any of the three.
 
 ## When you are blocked

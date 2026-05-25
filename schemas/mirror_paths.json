@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://multiagent-protocol.github.io/schemas/mirror_paths.json",
+  "$id": "https://donggun-jung.github.io/multiagent-protocol/schemas/mirror_paths.json",
   "title": "mirror_paths.json (canonical-paths registry)",
   "description": "Schema for the file at <governance>/schemas/mirror_paths.json that lists files which must be byte-identical across supervised repos. See docs/concepts/mirror-cascade.md.",
   "type": "object",

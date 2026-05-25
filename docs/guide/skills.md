@@ -199,7 +199,8 @@ class HallucinationGuard:
 Skills are pure functions of context — easy to unit test. Add `tests/skills/test_no_wip_markers.py`:
 
 ```python
-from multiagent_protocol.test_fixtures import make_pr_context, make_commit
+# The fixtures live in tests/conftest.py at the repo root; pytest auto-imports them.
+from tests.conftest import make_pr_context, make_commit
 from config.skills.validators.no_wip_markers import NoWipMarkers
 
 

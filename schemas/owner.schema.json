@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://multiagent-protocol.github.io/schemas/owner.schema.json",
+  "$id": "https://donggun-jung.github.io/multiagent-protocol/schemas/owner.schema.json",
   "title": "owner.yml",
   "description": "Owner identity configuration for a multiagent-protocol installation. The owner is the human (or trusted accounts) authorized to approve Quadrant D PRs and push break-glass commits.",
   "type": "object",

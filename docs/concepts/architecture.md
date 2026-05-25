@@ -159,7 +159,7 @@ Runs once per cron tick. Enforces that **canonical files** in `<governance_repo>
 3. Mismatch → `decision:mirror-drift-incident` Issue with diff summary.
 4. Missing (canonical-required file absent in adopter) → same Issue, with `missing=true` field.
 
-Drift is **detected**, not auto-fixed. Auto-fix would require opening a PR in each adopter, which is its own classifier path — currently the operator handles drift by re-running the cascade workflow manually. (R14 candidate: auto-cascade PRs.)
+Drift is **detected**, not auto-fixed. Auto-fix would require opening a PR in each adopter, which is its own classifier path — currently the operator handles drift by re-running the cascade workflow manually. (Auto-cascade PRs are a planned post-v1.0 feature, gated on an ADR in `docs/decisions/` that explicitly authorizes the bot to open critical-path PRs in adopters.)
 
 ### Outputs
 

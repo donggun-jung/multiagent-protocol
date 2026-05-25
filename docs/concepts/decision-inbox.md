@@ -115,7 +115,7 @@ A new commit lands on the PR (e.g., the author pushed a fix). The inbox issue's 
 
 ### Bot itself produces a Quadrant D PR
 
-The bot does not gate its own PRs (chicken-and-egg per `BOT_SELF_SUPERVISION` rule). Bot-repo PRs use the break-glass flow (`[break-glass-bot-self-update]` commit prefix + ADR within 24h), not the Decision Inbox.
+The bot does not gate its own PRs (chicken-and-egg — see [`break-glass.md`](break-glass.md) § "Bot self-update flow"). Bot-repo PRs use the break-glass flow (`[break-glass-bot-self-update]` commit prefix + ADR within 24h), not the Decision Inbox.
 
 ### Inbox issue accidentally closed by owner
 

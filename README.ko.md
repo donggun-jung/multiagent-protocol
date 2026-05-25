@@ -48,9 +48,9 @@ identity는 commit trailer로 강제되지 (API endpoint X), 새 에이전트 ve
 
 가장 빠른 길은 **web wizard**:
 
-1. [https://multiagent-protocol.github.io/wizard/](https://multiagent-protocol.github.io/wizard/) 브라우저에서 열기.
+1. [https://donggun-jung.github.io/multiagent-protocol/wizard/](https://donggun-jung.github.io/multiagent-protocol/wizard/) 브라우저에서 열기.
 2. 입력: GitHub login, supervised할 repos, 선호 runner tier, 활성화할 built-in skills.
-3. wizard가 4 YAML config + 1-click GitHub App 등록 URL 생성.
+3. wizard가 5 YAML config (`owner.yml`, `projects.yml`, `env.yml`, `skills.yml`, `agent_registry.yml`) + 1-click GitHub App 등록 URL 생성.
 4. `.zip` 다운로드, 본인 fork에 drop, App 등록, Actions secret 2개 설정, push.
 
 또는 wizard 건너뛰고 [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) 수동 가이드.
@@ -69,12 +69,24 @@ identity는 commit trailer로 강제되지 (API endpoint X), 새 에이전트 ve
 
 ## 문서
 
-- [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) — 15분 셋업
-- [`docs/ko/concepts/architecture.md`](docs/ko/concepts/architecture.md) — 봇 구조
-- [`docs/ko/concepts/four-quadrants.md`](docs/ko/concepts/four-quadrants.md) — 자율성 classifier (봇이 결정 vs. 사용자에게 물어봄)
-- [`docs/ko/concepts/five-tier-files.md`](docs/ko/concepts/five-tier-files.md) — AI 에이전트용 repo 파일 구조
-- [`docs/ko/guide/skills.md`](docs/ko/guide/skills.md) — 본인 validator 작성
-- [`docs/ko/guide/break-glass.md`](docs/ko/guide/break-glass.md) — 봇을 우회해야 할 때
+- [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) — 15분 셋업 (한국어 ✓)
+
+다음 문서들은 v0.0.2 시점에 **영어 only**이며 v0.2.0에서 한국어 미러가 추가될 예정입니다:
+
+- [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — 봇 4-module 구조
+- [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — 자율성 classifier
+- [`docs/concepts/five-tier-files.md`](docs/concepts/five-tier-files.md) — repo 5-tier 파일 구조
+- [`docs/concepts/decision-inbox.md`](docs/concepts/decision-inbox.md) — Quadrant D human-in-loop
+- [`docs/concepts/break-glass.md`](docs/concepts/break-glass.md) — 봇 우회 doctrine
+- [`docs/concepts/skills-plugin.md`](docs/concepts/skills-plugin.md) — plugin 인터페이스
+- [`docs/concepts/mirror-cascade.md`](docs/concepts/mirror-cascade.md) — canonical-paths cascade
+- [`docs/concepts/general-preferences.md`](docs/concepts/general-preferences.md) — built-in default 10가지
+- [`docs/guide/multi-repo.md`](docs/guide/multi-repo.md) — multi-repo cascade
+- [`docs/guide/self-hosted-runner.md`](docs/guide/self-hosted-runner.md) — self-hosted runner 배포
+- [`docs/guide/skills.md`](docs/guide/skills.md) — custom validator 작성
+- [`docs/guide/break-glass.md`](docs/guide/break-glass.md) — break-glass 절차
+
+한국어 번역이 필요한 부분이 있으면 Issue로 알려주세요.
 
 ## 기여
 

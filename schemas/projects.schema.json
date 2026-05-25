@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://multiagent-protocol.github.io/schemas/projects.schema.json",
+  "$id": "https://donggun-jung.github.io/multiagent-protocol/schemas/projects.schema.json",
   "title": "projects.yml",
   "description": "The set of repos this installation supervises. The governance_repo is the canonical doctrine + Decision Inbox host. Supervised repos are the ones whose PRs the bot gates.",
   "type": "object",

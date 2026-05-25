@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multiagent-protocol"
-version = "0.1.0"
+version = "0.0.2"
 description = "Self-built branch protection and decision routing for solo developers using multiple AI coding agents."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,10 +44,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://multiagent-protocol.github.io/"
-Documentation = "https://multiagent-protocol.github.io/"
-Repository = "https://github.com/multiagent-protocol/multiagent-protocol"
-Issues = "https://github.com/multiagent-protocol/multiagent-protocol/issues"
+Homepage = "https://donggun-jung.github.io/multiagent-protocol/"
+Documentation = "https://donggun-jung.github.io/multiagent-protocol/"
+Repository = "https://github.com/donggun-jung/multiagent-protocol"
+Issues = "https://github.com/donggun-jung/multiagent-protocol/issues"
 
 [project.scripts]
 multiagent-protocol = "multiagent_protocol.cli:main"

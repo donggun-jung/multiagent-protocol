@@ -38,7 +38,7 @@ Each commit message in this PR should include trailers in this format:
 ```
 Agent-Tool: <claude-code|codex|cursor|gemini-cli|aider|manual|github-actions>
 Agent-Model: <model identifier or "n/a">
-Agent-Session: s_<4-16 lowercase alphanumeric or hyphen, ending alphanumeric>
+Agent-Session: s_<2-14 lowercase alphanumeric/hyphen><alphanumeric>   # full regex: ^s_[a-z0-9-]{2,14}[a-z0-9]$
 Agent-Machine: <your-machine-handle>
 Task-Ref: <Issue#N|PR#N|none|round-N/topic>
 ```

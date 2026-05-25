@@ -1,0 +1,66 @@
+# Jekyll config for GitHub Pages.
+#
+# Without this file, GitHub Pages serves .md files with Content-Type:
+# text/markdown — visitors see raw `# Headings` text. With it, GitHub
+# Pages runs Jekyll's default Minima theme and renders the markdown as
+# HTML.
+#
+# We intentionally use the Minima theme (the GitHub Pages default) rather
+# than a heavier choice. A future v0.3.0 may migrate to MkDocs Material
+# for a sidebar/search/version-switcher experience; until then, Minima
+# is the lowest-friction way to make markdown readable.
+
+theme: minima
+title: multiagent-protocol
+description: >-
+  Self-built branch protection and decision routing for solo developers using
+  multiple AI coding agents. Vendor-neutral, GitHub Free-tier compatible,
+  plugin-extensible.
+
+# Use relative URLs so links work whether served from
+# donggun-jung.github.io/multiagent-protocol/ or from a user's own fork.
+url: ""
+baseurl: ""
+
+# Jekyll's default exclude list is fine; add the wizard's HTML so Jekyll
+# does not try to rewrite it as Markdown.
+include:
+  - wizard
+  - wizard/css
+  - wizard/js
+  - wizard/locales
+
+# Don't try to render the locales JS or wizard JS as Jekyll pages.
+defaults:
+  - scope:
+      path: "wizard"
+    values:
+      layout: null
+      sitemap: false
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
+  toc_levels: "2..4"
+
+plugins:
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-readme-index
+  - jekyll-default-layout
+  - jekyll-titles-from-headings
+
+# Make `[link](file.md)` in markdown work as `[link](file.html)` after Jekyll
+# renders the docs. Without this plugin, markdown-to-markdown links 404
+# because GitHub Pages serves the rendered .html, not the source .md.
+relative_links:
+  enabled: true
+  collections: true
+
+# Show the README in /docs/ as the index when no index.md exists.
+readme_index:
+  enabled: true
+  remove_originals: false
+  with_frontmatter: false

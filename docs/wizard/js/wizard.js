@@ -335,7 +335,7 @@ function buildAgentPrompt(state, files) {
   return `I have generated config files for my multiagent-protocol installation.
 Please help me complete the setup. The config files (5 files under config/)
 are pasted below. Apply them to the repo \`${repo}\` (fork of
-https://github.com/multiagent-protocol/multiagent-protocol):
+https://github.com/donggun-jung/multiagent-protocol):
 
 1. Create a feature branch, e.g. \`setup/initial-config\`.
 2. Write the 5 files exactly as shown.

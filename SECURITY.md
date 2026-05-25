@@ -7,7 +7,7 @@ The `multiagent-protocol` bot holds **merge permission** on the `main` branch of
 Specifically, the following are in-scope security issues:
 
 1. **Authentication bypass** — anything that allows code or commits to merge without the L1 5-condition gate.
-2. **Classifier impersonation** — anything that allows an attacker to publish a `classifier-judgment` check-run that the bot honors (the publisher-identity gate must hold; see `src/multiagent_protocol/skills/builtin/classifier_publisher.py`).
+2. **Classifier impersonation** — anything that allows an attacker to publish a `classifier-judgment` check-run that the bot honors (the publisher-identity gate must hold; see `src/multiagent_protocol/skills/builtin/validator_classifier_publisher.py`).
 3. **Trailer forgery / identity confusion** — anything that allows a commit to pass the L4 identity gate while misrepresenting which agent/session authored it.
 4. **Break-glass bypass** — anything that allows a `[break-glass-*]` commit to land on `main` without triggering L5 audit + ADR-within-24h requirement.
 5. **Decision Inbox manipulation** — anything that allows non-owner reactions/comments to count as "owner approval" on Quadrant D issues.
@@ -26,7 +26,7 @@ The following are **out of scope**:
 
 **Do not open a public GitHub Issue.** Use one of the following channels:
 
-1. **GitHub Security Advisories**: <https://github.com/multiagent-protocol/multiagent-protocol/security/advisories/new>
+1. **GitHub Security Advisories**: <https://github.com/donggun-jung/multiagent-protocol/security/advisories/new>
    Preferred channel. Encrypted in transit, viewable only by maintainers.
 
 2. **Email**: send to the address listed in `MAINTAINERS.md` with `[SECURITY]` in the subject. If you require PGP, request a key in the first message.
@@ -56,7 +56,7 @@ We do not have a bug bounty program. We will credit you in the advisory and CHAN
 Even with a perfect bot, the operator must hold up their end:
 
 - **Run on the GitHub Free tier branch protection limitation, not in spite of it.** If you can pay for GitHub Pro, GitHub's built-in branch protection is auditable and battle-tested by GitHub's security team. This project is for people who cannot or will not pay; you accept the tradeoffs.
-- **Rotate the GitHub App private key periodically.** No specific cadence is required, but if the key ever appears in a log, public repo, or chat transcript, rotate immediately.
+- **Rotate the GitHub App private key on a 90-day cadence, and immediately on any suspected leak.** GitHub Apps support multiple active private keys; generate the new key first, deploy it to Actions secrets, then delete the old key. If the key ever appears in a log, public repo, or chat transcript, rotate immediately and audit `bot-state/classifier_audit.jsonl` for the window in which the leak might have been usable.
 - **Use fine-grained Personal Access Tokens** for any self-hosted runner credentials, scoped to the minimum repos and permissions needed.
 - **Review `Agent-Session` IDs.** A session ID that does not match the regex `^s_[a-z0-9-]{2,14}[a-z0-9]$` is suspicious; the L4 identity gate should already reject it, but watch the audit log.
 - **Read your own Decision Inbox.** The bot routes irreversible-and-critical actions to you for a reason. Do not blanket-approve.
@@ -65,8 +65,7 @@ Even with a perfect bot, the operator must hold up their end:
 
 | Version | Supported              |
 |---------|------------------------|
-| 1.x     | Yes (current)          |
-| 0.x     | Yes (active dev)       |
-| < 0.1.0 | No                     |
+| 0.x     | Yes — current, public-alpha (active development) |
+| pre-0.0.2 | No                   |
 
-We support the latest minor release on the `1.x` line. Patches do not backport to older majors unless explicitly noted.
+There is no `1.x` line yet. We will declare a `1.0.0` release once the cron orchestrator and L2/L4 enforcers are complete (target: v0.2.0) and one external operator has run for 30 days. Until then, all releases are alpha and may break API/schema/CLI compatibility between minor versions.

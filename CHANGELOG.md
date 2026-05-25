@@ -55,4 +55,4 @@ All notable changes to this project will be documented in this file. The format 
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
-[Unreleased]: https://github.com/multiagent-protocol/multiagent-protocol/compare/v0.0.0...HEAD
+[Unreleased]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.0.0...HEAD
