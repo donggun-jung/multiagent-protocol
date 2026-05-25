@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>multiagent-protocol (한국어)</title>
+<style>
+  :root { color-scheme: light; --bg: #f5f7f4; --ink: #1f2428; --muted: #626d78;
+          --panel: #fff; --line: #d8ded6; --accent: #245f73; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+         line-height: 1.65; }
+  .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  header { background: #fff; border-bottom: 1px solid var(--line); padding: 60px 0 40px; }
+  h1 { font-size: 34px; margin: 0 0 8px; }
+  .tagline { color: var(--muted); margin: 0 0 28px; font-size: 16px; }
+  .cta { display: inline-block; background: var(--accent); color: #fff;
+         padding: 12px 24px; border-radius: 6px; text-decoration: none; margin-right: 8px; }
+  .cta.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  main { padding: 40px 0; }
+  section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+                 padding: 22px 26px; margin: 18px 0; }
+  h2 { font-size: 21px; margin: 0 0 12px; }
+  ul { padding-left: 22px; } li { margin: 6px 0; }
+  footer { background: #fff; border-top: 1px solid var(--line); padding: 22px 0; font-size: 13px;
+           color: var(--muted); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>multiagent-protocol</h1>
+    <p class="tagline">여러 AI 코딩 에이전트를 사용하는 1인 개발자/소규모 팀을 위한 self-built branch protection. Vendor-neutral. GitHub Free tier 호환. Plugin 확장 가능.</p>
+    <a class="cta" href="../wizard/">셋업 wizard 열기 →</a>
+    <a class="cta secondary" href="guide/quick-start.md">15분 quick-start</a>
+    <p style="margin-top:14px;"><a href="../">English</a></p>
+  </div>
+</header>
+
+<main>
+<div class="container">
+
+<section class="card">
+  <h2>무엇을 하나요</h2>
+  <ul>
+    <li><strong>L1 사전 머지 게이트</strong> — PR이 머지되기 전 5 조건</li>
+    <li><strong>L2 사후 재검증</strong> — 실제 실패 시 auto-revert, infra-only 실패는 무시 (Actions outage)</li>
+    <li><strong>L3 race-guard</strong> — 머지 직전 base 재확인</li>
+    <li><strong>L4 identity gate</strong> — Agent-* commit trailer를 registry와 대조</li>
+    <li><strong>L5 break-glass auditor</strong> — <code>[break-glass-*]</code> commit 감지 + 24시간 내 ADR 요구</li>
+    <li><strong>Decision Inbox</strong> — Quadrant D (비가역+critical) PR이 구조화된 ballot이 있는 GitHub Issue로 도착</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>왜 "Claude"/"Codex"가 아니고 "multiagent"인가</h2>
+  <p>프로토콜은 모든 에이전트를 동등하게 취급합니다. 새 vendor 추가는 <code>config/agent_registry.yml</code>에 한 줄입니다. Identity는 commit trailer로 강제되며 API endpoint에 의존하지 않습니다.</p>
+</section>
+
+<section class="card">
+  <h2>이게 아닌 것</h2>
+  <ul>
+    <li>CI/CD 시스템 아님 — 본인 test 가져와야 함</li>
+    <li>코드 리뷰어 아님 — 라우팅만; diff 품질 의견 없음</li>
+    <li>GitHub Pro branch protection 대체 아님 (결제 가능하면 그것이 더 간단)</li>
+    <li>Multi-tenant SaaS 아님 — 각자 본인 copy 운영</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>문서</h2>
+  <ul>
+    <li><a href="guide/quick-start.md">Quick start (15분)</a></li>
+    <li><a href="../concepts/architecture.md">Architecture (영문)</a></li>
+    <li><a href="../concepts/four-quadrants.md">Four-quadrant classifier (영문)</a></li>
+    <li><a href="../concepts/break-glass.md">Break-glass (영문)</a></li>
+  </ul>
+  <p style="font-size: 13px; color: var(--muted); margin-top: 12px;">
+    참고: 한국어 mirror는 quick-start guide만 우선 제공됩니다. 나머지 개념 문서의 한국어 mirror는 v1.1에서 추가됩니다 (영어 docs는 안정적이므로 우선순위 후순위).
+  </p>
+</section>
+
+</div>
+</main>
+
+<footer>
+<div class="container">
+  Apache License 2.0 ·
+  <a href="https://github.com/multiagent-protocol/multiagent-protocol">소스</a>
+</div>
+</footer>
+</body>
+</html>

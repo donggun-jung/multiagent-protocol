@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>multiagent-protocol</title>
+<style>
+  :root { color-scheme: light; --bg: #f5f7f4; --ink: #1f2428; --muted: #626d78;
+          --panel: #fff; --line: #d8ded6; --accent: #245f73; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+         line-height: 1.6; }
+  .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  header { background: #fff; border-bottom: 1px solid var(--line); padding: 60px 0 40px; }
+  h1 { font-size: 36px; margin: 0 0 8px; }
+  .tagline { color: var(--muted); margin: 0 0 28px; font-size: 17px; }
+  .cta { display: inline-block; background: var(--accent); color: #fff;
+         padding: 12px 24px; border-radius: 6px; text-decoration: none; margin-right: 8px; }
+  .cta.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  main { padding: 40px 0; }
+  section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+                 padding: 22px 26px; margin: 18px 0; }
+  h2 { font-size: 22px; margin: 0 0 12px; }
+  ul { padding-left: 22px; } li { margin: 6px 0; }
+  footer { background: #fff; border-top: 1px solid var(--line); padding: 22px 0; font-size: 13px;
+           color: var(--muted); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>multiagent-protocol</h1>
+    <p class="tagline">Self-built branch protection and decision routing for solo developers using multiple AI coding agents. Vendor-neutral. GitHub Free-tier compatible. Plugin-extensible.</p>
+    <a class="cta" href="wizard/">Open setup wizard →</a>
+    <a class="cta secondary" href="guide/quick-start.md">Quick-start guide</a>
+    <p style="margin-top:14px;"><a href="ko/">한국어</a></p>
+  </div>
+</header>
+
+<main>
+<div class="container">
+
+<section class="card">
+  <h2>What it does</h2>
+  <ul>
+    <li><strong>L1 pre-merge gate</strong> — 5 conditions a PR must satisfy before merge.</li>
+    <li><strong>L2 post-merge re-validation</strong> — auto-revert on real failures, ignore infra-only failures (Actions outages).</li>
+    <li><strong>L3 race-guard</strong> — re-check the base just before merging.</li>
+    <li><strong>L4 identity gate</strong> — validate Agent-* commit trailers against your registry.</li>
+    <li><strong>L5 break-glass auditor</strong> — surface `[break-glass-*]` commits + demand ADR within 24h.</li>
+    <li><strong>Decision Inbox</strong> — Quadrant D (irreversible + critical) PRs reach you as GitHub Issues with a structured ballot.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Why "multiagent" not "Claude" / "Codex" / etc.</h2>
+  <p>The protocol treats every agent equally. Adding a new vendor takes one line in <code>config/agent_registry.yml</code>. Identity is enforced through commit trailers, not API endpoints.</p>
+</section>
+
+<section class="card">
+  <h2>What it is NOT</h2>
+  <ul>
+    <li>Not a CI/CD system — bring your own tests.</li>
+    <li>Not a code reviewer — it routes to you or auto-approves, never opines on diff quality.</li>
+    <li>Not a replacement for GitHub Pro's branch protection if you can pay.</li>
+    <li>Not a multi-tenant SaaS — each operator runs their own copy.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Documentation</h2>
+  <ul>
+    <li><a href="guide/quick-start.md">Quick start (15 min)</a></li>
+    <li><a href="concepts/architecture.md">Architecture — the 4-module bot</a></li>
+    <li><a href="concepts/four-quadrants.md">Four-quadrant autonomy classifier</a></li>
+    <li><a href="concepts/five-tier-files.md">Five-tier file taxonomy</a></li>
+    <li><a href="concepts/decision-inbox.md">Decision Inbox</a></li>
+    <li><a href="concepts/break-glass.md">Break-glass</a></li>
+    <li><a href="concepts/skills-plugin.md">Skills plugin interface</a></li>
+    <li><a href="concepts/mirror-cascade.md">Mirror cascade</a></li>
+    <li><a href="concepts/general-preferences.md">General preferences (built-in defaults)</a></li>
+    <li><a href="guide/skills.md">Writing your own skill</a></li>
+  </ul>
+</section>
+
+</div>
+</main>
+
+<footer>
+<div class="container">
+  Apache License 2.0 ·
+  <a href="https://github.com/multiagent-protocol/multiagent-protocol">Source</a> ·
+  <a href="https://github.com/multiagent-protocol/multiagent-protocol/issues">Issues</a>
+</div>
+</footer>
+</body>
+</html>
