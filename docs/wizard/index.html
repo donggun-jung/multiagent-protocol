@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>multiagent-protocol — setup wizard</title>
+<link rel="stylesheet" href="css/wizard.css">
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>multiagent-protocol setup wizard</h1>
+    <p class="subtitle">Generate config files for your installation. <strong>Nothing is sent anywhere</strong> — this runs entirely in your browser.</p>
+    <nav class="lang-switch">
+      <button type="button" data-lang="en" class="active">English</button>
+      <button type="button" data-lang="ko">한국어</button>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+<section class="step" data-step="1">
+  <h2><span class="step-num">1</span> <span data-i18n="step1.title">Owner identity</span></h2>
+  <p class="step-help" data-i18n="step1.help">The GitHub login of the person who will approve Quadrant D PRs and push break-glass commits. The bot trusts reactions/comments only from these logins.</p>
+
+  <label>
+    <span data-i18n="step1.login">Your GitHub login</span>
+    <input type="text" id="owner-login" placeholder="your-github-login" autocomplete="off">
+  </label>
+
+  <label>
+    <span data-i18n="step1.allowlisted">Additional allowlisted reviewers (one per line, optional)</span>
+    <textarea id="owner-allowlist" rows="3" placeholder="trusted-reviewer-1&#10;trusted-reviewer-2"></textarea>
+  </label>
+
+  <label>
+    <span data-i18n="step1.display">Display name (optional, used in bot diagnostic comments)</span>
+    <input type="text" id="owner-display" placeholder="Your Name">
+  </label>
+</section>
+
+<section class="step" data-step="2">
+  <h2><span class="step-num">2</span> <span data-i18n="step2.title">Supervised repositories</span></h2>
+  <p class="step-help" data-i18n="step2.help">Which repos do you want the bot to gate? One per line, in <code>owner/repo</code> form.</p>
+
+  <label>
+    <span data-i18n="step2.governance">Governance repo (where doctrine + Decision Inbox live)</span>
+    <input type="text" id="governance-repo" placeholder="your-github-login/multiagent-protocol">
+  </label>
+
+  <label>
+    <span data-i18n="step2.supervised">Supervised repos (one per line)</span>
+    <textarea id="supervised-repos" rows="4" placeholder="your-github-login/some-repo&#10;your-github-login/other-repo"></textarea>
+  </label>
+
+  <label>
+    <span data-i18n="step2.bot_repo">Bot repo (leave blank to use governance repo)</span>
+    <input type="text" id="bot-repo" placeholder="(optional) your-github-login/merge-gate-bot">
+  </label>
+</section>
+
+<section class="step" data-step="3">
+  <h2><span class="step-num">3</span> <span data-i18n="step3.title">Runner tier</span></h2>
+  <p class="step-help" data-i18n="step3.help">Where does the bot's cron tick run? Most users start with the Free tier.</p>
+
+  <label class="radio">
+    <input type="radio" name="runner-tier" value="actions-free" checked>
+    <span>
+      <strong data-i18n="step3.tier1">T1 — GitHub Actions Free</strong>
+      <small data-i18n="step3.tier1_help">Best for 1-3 supervised repos. No infrastructure needed. May exhaust monthly minutes around 4-5 repos.</small>
+    </span>
+  </label>
+
+  <label class="radio">
+    <input type="radio" name="runner-tier" value="self-hosted">
+    <span>
+      <strong data-i18n="step3.tier2">T2 — Self-hosted runner</strong>
+      <small data-i18n="step3.tier2_help">Required for 5+ repos. You provide a VPS, Raspberry Pi, or always-on machine. See docs/guide/self-hosted-runner.md.</small>
+    </span>
+  </label>
+
+  <label class="radio">
+    <input type="radio" name="runner-tier" value="paid-cloud">
+    <span>
+      <strong data-i18n="step3.tier3">T3 — Paid GitHub Actions</strong>
+      <small data-i18n="step3.tier3_help">Pay-as-you-go Actions minutes. Simplest infrastructure but ~$10-50/mo for active fleet.</small>
+    </span>
+  </label>
+</section>
+
+<section class="step" data-step="4">
+  <h2><span class="step-num">4</span> <span data-i18n="step4.title">Built-in skills</span></h2>
+  <p class="step-help" data-i18n="step4.help">Toggle the built-in skills. Leave defaults unless you have a specific reason to disable.</p>
+
+  <label class="checkbox">
+    <input type="checkbox" id="skill-hallucination" checked>
+    <span>
+      <strong data-i18n="step4.hallucination">Hallucination guard</strong>
+      <small data-i18n="step4.hallucination_help">Refuses to merge commits whose body references files that do not exist at the merged SHA. Recommended.</small>
+    </span>
+  </label>
+
+  <label class="checkbox">
+    <input type="checkbox" id="skill-empty-pr" checked>
+    <span>
+      <strong data-i18n="step4.empty_pr">Empty PR → Quadrant D</strong>
+      <small data-i18n="step4.empty_pr_help">A PR with zero file changes is treated as Quadrant D. Recommended (cheap defense against bot-bug or probe PRs).</small>
+    </span>
+  </label>
+
+  <label class="checkbox">
+    <input type="checkbox" id="skill-break-glass" checked disabled>
+    <span>
+      <strong data-i18n="step4.break_glass">Break-glass auditor</strong>
+      <small data-i18n="step4.break_glass_help">Required. Detects [break-glass-*] commits on main and demands ADR within 24h.</small>
+    </span>
+  </label>
+
+  <label class="checkbox">
+    <input type="checkbox" id="skill-trailers" checked disabled>
+    <span>
+      <strong data-i18n="step4.trailers">Agent-* trailer validator (C5)</strong>
+      <small data-i18n="step4.trailers_help">Required. Every commit must declare which AI agent / model / session / machine authored it.</small>
+    </span>
+  </label>
+</section>
+
+<section class="step" data-step="5">
+  <h2><span class="step-num">5</span> <span data-i18n="step5.title">Agent registry</span></h2>
+  <p class="step-help" data-i18n="step5.help">Which AI agents do you use? The bot accepts commits only from these agents' identities.</p>
+
+  <div class="agent-checkboxes">
+    <label><input type="checkbox" value="claude-code" checked> claude-code</label>
+    <label><input type="checkbox" value="codex" checked> codex</label>
+    <label><input type="checkbox" value="cursor" checked> cursor</label>
+    <label><input type="checkbox" value="gemini-cli"> gemini-cli</label>
+    <label><input type="checkbox" value="aider"> aider</label>
+    <label><input type="checkbox" value="manual" checked disabled> manual <small>(required)</small></label>
+    <label><input type="checkbox" value="github-actions" checked disabled> github-actions <small>(required)</small></label>
+  </div>
+
+  <label>
+    <span data-i18n="step5.bot_slug">GitHub App slug (you'll register the App in Step 7; pick a lowercase hyphenated name)</span>
+    <input type="text" id="bot-app-slug" placeholder="your-merge-gate" pattern="[a-z0-9][a-z0-9-]*[a-z0-9]">
+  </label>
+</section>
+
+<section class="step" data-step="6">
+  <h2><span class="step-num">6</span> <span data-i18n="step6.title">Download config files</span></h2>
+  <p class="step-help" data-i18n="step6.help">When you click Generate, the wizard creates the 5 config files. Either download as a ZIP and unzip into your repo, or copy each file individually and open the pre-filled GitHub "create file" link.</p>
+
+  <button type="button" id="generate" class="primary" data-i18n="step6.generate">Generate config files</button>
+
+  <div id="output" class="hidden">
+    <p class="success" data-i18n="step6.ready">✓ Config files generated. Pick how to apply them:</p>
+    <div class="actions">
+      <button type="button" id="download-zip" data-i18n="step6.download">Download config.zip</button>
+      <button type="button" id="copy-prompt" data-i18n="step6.copy_prompt">Copy agent-assist prompt</button>
+    </div>
+    <details>
+      <summary data-i18n="step6.preview">Preview generated files</summary>
+      <div id="preview-files"></div>
+    </details>
+  </div>
+</section>
+
+<section class="step" data-step="7">
+  <h2><span class="step-num">7</span> <span data-i18n="step7.title">Register the GitHub App</span></h2>
+  <p class="step-help" data-i18n="step7.help">After applying the config files, click below to register the GitHub App with the right permissions pre-filled. GitHub will open in a new tab.</p>
+
+  <button type="button" id="open-manifest" class="primary" disabled data-i18n="step7.open">Open GitHub App registration</button>
+  <p class="note" data-i18n="step7.note">This button activates after you generate config files (Step 6). The manifest is built from your inputs.</p>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>
+      multiagent-protocol setup wizard ·
+      <a href="../guide/quick-start.md">Quick start docs</a> ·
+      <a href="https://github.com/multiagent-protocol/multiagent-protocol">Source</a>
+    </p>
+    <p class="footer-privacy" data-i18n="footer.privacy">No data leaves your browser. The wizard does not call GitHub or any server — all generation is JavaScript running locally.</p>
+  </div>
+</footer>
+
+<script src="js/locales.js"></script>
+<script src="js/wizard.js"></script>
+</body>
+</html>
