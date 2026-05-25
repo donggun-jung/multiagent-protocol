@@ -1,0 +1,57 @@
+# Dependabot configuration.
+#
+# Two ecosystems:
+#   1. GitHub Actions — keeps SHA pins in .github/workflows/*.yml up-to-date.
+#      Dependabot writes the new SHA + a # vX.Y.Z comment so the diff is
+#      auditable.
+#   2. pip — keeps pyproject.toml dependency lower bounds in sync with
+#      released PyPI versions. We do not lock or hash-pin yet (planned for
+#      v0.2.0); for now Dependabot is advisory.
+#
+# All Dependabot PRs go through the bot's own gate. Auto-merging Dependabot
+# PRs without review is **not** enabled — they should be reviewed like any
+# other PR. The classifier path-default rule will assign Quadrant B
+# (reversible + critical: .github/workflows/ is a critical path).
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    commit-message:
+      prefix: "deps(actions)"
+      include: scope
+    labels:
+      - dependencies
+      - github-actions
+    open-pull-requests-limit: 5
+    # Group all Action updates into a single PR to reduce review burden.
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    commit-message:
+      prefix: "deps(pip)"
+      include: scope
+    labels:
+      - dependencies
+      - python
+    open-pull-requests-limit: 5
+    # Group runtime and dev deps separately so a security update to a
+    # runtime dep isn't bundled with a dev tool refresh.
+    groups:
+      runtime:
+        dependency-type: production
+      development:
+        dependency-type: development

@@ -42,7 +42,20 @@ class SkillLoadError(Exception):
 
 # Heuristic: these modules are blocked from user skills. Built-in skills are
 # allowed to import anything (they ship with the project, vetted at review).
+# The list covers three categories:
+#   1. Network / IPC — user skills must be pure functions of context.
+#   2. Code-execution surface — pickle/marshal/shelve can deserialize attacker
+#      input into arbitrary code; xmlrpc.* and xml.etree.* are XXE / billion-
+#      laughs risks; ctypes is a foreign-function gateway.
+#   3. Subprocess + os primitives that shell out — same effect as network for
+#      our threat model.
+#
+# This is a heuristic (AST-walk at load time), not a sandbox. A skill can
+# still bypass via importlib.import_module / __import__ / exec / eval. The
+# loader catches the obvious cases; the protocol's security model assumes the
+# operator vets every user skill before installing.
 BLOCKED_USER_IMPORTS = {
+    # Network + IPC.
     "requests",
     "httpx",
     "urllib",
@@ -53,13 +66,32 @@ BLOCKED_USER_IMPORTS = {
     "smtplib",
     "ftplib",
     "telnetlib",
-    "asyncio",  # async network APIs
+    "asyncio",
     "aiohttp",
     "websocket",
     "websockets",
-    "subprocess",  # shell-out is effectively network for our threat model
-    "os.system",
+    "paramiko",
+    # Deserialization-as-code surfaces.
+    "pickle",
+    "_pickle",
+    "marshal",
+    "shelve",
+    "shelve3",
+    # XML-based XXE / billion-laughs surfaces.
+    "xml",
+    "xml.etree",
+    "xml.sax",
+    "xml.dom",
+    "xmlrpc",
+    "xmlrpc.client",
+    "xmlrpc.server",
+    "lxml",
+    # Subprocess and foreign-function gateways.
+    "subprocess",
+    "os.system",  # technically reached via "os" attribute; we also block this name
     "ctypes",
+    "cffi",
+    "multiprocessing",
 }
 
 

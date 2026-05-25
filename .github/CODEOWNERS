@@ -1,0 +1,21 @@
+# CODEOWNERS for multiagent-protocol.
+#
+# Lists who is auto-requested for review on PRs touching specific paths.
+# This file is advisory under the bot's classifier (the L1 gate cares about
+# the `ready-to-merge` label, not GitHub-native review approval), but it
+# helps surface Quadrant D PRs to the right reviewer when there are more
+# than one allowlisted actor.
+#
+# As the project lives on a single maintainer's account (see MAINTAINERS.md),
+# the catch-all here is the maintainer's GitHub login. Forks should replace
+# with their own owner/team.
+
+# Catch-all: review goes to the maintainer.
+* @donggun-jung
+
+# Doctrine + schemas are Quadrant D by classifier rule; double-check by
+# also CODEOWNERS-ing them so GitHub's UI marks the review-required
+# status explicitly.
+/docs/concepts/   @donggun-jung
+/schemas/         @donggun-jung
+/.github/         @donggun-jung

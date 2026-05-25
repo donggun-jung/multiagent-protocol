@@ -10,8 +10,6 @@ Before R3 there were zero tests on this module.
 
 from __future__ import annotations
 
-import re
-
 from multiagent_protocol.decision_inbox import (
     APPROVE_RE,
     REJECT_RE,
@@ -19,7 +17,6 @@ from multiagent_protocol.decision_inbox import (
     parse_nonce_and_sha,
     resolve_verdict,
 )
-
 
 # ---- Issue body schema -----------------------------------------------------
 

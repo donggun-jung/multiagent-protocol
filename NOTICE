@@ -1,0 +1,22 @@
+multiagent-protocol
+Copyright 2026 multiagent-protocol contributors
+
+This product includes software developed by the multiagent-protocol
+project (https://github.com/donggun-jung/multiagent-protocol).
+
+Licensed under the Apache License, Version 2.0 (the "License").
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This NOTICE file is required by Section 4(d) of the Apache 2.0 license
+when distributing the software. Forks should append their own
+attribution under "Modifications" below and otherwise preserve this
+file in any redistributed copy.
+
+Modifications
+-------------
+
+(No modifications by third parties tracked yet. The first external fork
+to add downstream modifications should append entries here with date +
+attribution.)
