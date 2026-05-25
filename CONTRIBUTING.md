@@ -36,7 +36,7 @@ Thank you for your interest in `multiagent-protocol`. This is a small open-sourc
 
    Agent-Tool: <claude-code|codex|cursor|gemini-cli|aider|...>
    Agent-Model: <model identifier>
-   Agent-Session: s_<4-16 lowercase alphanumeric or hyphen, ending alphanumeric>
+   Agent-Session: s_<2-14 lowercase alphanumeric/hyphen><alphanumeric>
    Agent-Machine: <your-machine-handle>
    Task-Ref: <Issue#N | PR#N | none | round-X/<topic>>
 

@@ -45,7 +45,7 @@ Every commit in a PR must have these trailers, well-formed:
 
 - `Agent-Tool: <one of agent_registry.tools>`
 - `Agent-Model: <model id or n/a>`
-- `Agent-Session: s_[a-z0-9-]{4,16}[a-z0-9]`
+- `Agent-Session: s_[a-z0-9-]{2,14}[a-z0-9]`
 - `Agent-Machine: <handle>`
 - `Task-Ref: <Issue#N|PR#N|none|round-X/topic|bot/topic>`
 

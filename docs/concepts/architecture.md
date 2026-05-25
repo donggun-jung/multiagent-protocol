@@ -75,7 +75,7 @@ Every commit must have:
 
 - `Agent-Tool: <one of agent_registry.tools>`
 - `Agent-Model: <one of agent_registry.models[Agent-Tool]>` (or `n/a` for `manual`/`github-actions`)
-- `Agent-Session: s_[a-z0-9-]{4,16}[a-z0-9]` (ends in alphanumeric)
+- `Agent-Session: s_[a-z0-9-]{2,14}[a-z0-9]` (ends in alphanumeric)
 - `Agent-Machine: <one of agent_registry.machines>` (free-form; registered values get extra trust signals)
 - `Task-Ref: (Issue#N|PR#N|none|round-X/<topic>|bot/<topic>)`
 

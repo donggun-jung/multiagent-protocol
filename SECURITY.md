@@ -58,7 +58,7 @@ Even with a perfect bot, the operator must hold up their end:
 - **Run on the GitHub Free tier branch protection limitation, not in spite of it.** If you can pay for GitHub Pro, GitHub's built-in branch protection is auditable and battle-tested by GitHub's security team. This project is for people who cannot or will not pay; you accept the tradeoffs.
 - **Rotate the GitHub App private key periodically.** No specific cadence is required, but if the key ever appears in a log, public repo, or chat transcript, rotate immediately.
 - **Use fine-grained Personal Access Tokens** for any self-hosted runner credentials, scoped to the minimum repos and permissions needed.
-- **Review `Agent-Session` IDs.** A session ID that does not match the regex `^s_[a-z0-9-]{4,16}[a-z0-9]$` is suspicious; the L4 identity gate should already reject it, but watch the audit log.
+- **Review `Agent-Session` IDs.** A session ID that does not match the regex `^s_[a-z0-9-]{2,14}[a-z0-9]$` is suspicious; the L4 identity gate should already reject it, but watch the audit log.
 - **Read your own Decision Inbox.** The bot routes irreversible-and-critical actions to you for a reason. Do not blanket-approve.
 
 ## Supported versions

@@ -56,7 +56,7 @@ The following rules apply to every change, every session, every agent:
    ```
    Agent-Tool: <claude-code|codex|cursor|gemini-cli|aider|manual|github-actions>
    Agent-Model: <model identifier or "n/a">
-   Agent-Session: s_<4-16 lowercase alphanumeric/hyphen, ending alphanumeric>
+   Agent-Session: s_<2-14 lowercase alphanumeric/hyphen><alphanumeric>
    Agent-Machine: <your-machine-handle>
    Task-Ref: <Issue#N|PR#N|none|round-N/topic>
    ```
