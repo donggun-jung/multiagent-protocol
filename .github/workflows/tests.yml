@@ -1,0 +1,60 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+      - name: Test
+        run: pytest -ra
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+      - name: Ruff
+        run: ruff check src/ tests/
+
+  no-personal-data:
+    # Heuristic scan: refuse to merge a PR that introduces hardcoded personal
+    # data outside docs/examples. We look for:
+    #   - email addresses in source code (not in docs/, examples/, or this file)
+    #   - public IPv4 addresses in source code (private ranges OK)
+    #   - SSH-style aliases (Host <name>) in source code
+    # Patterns are intentionally generic — no real predecessor data is encoded
+    # here. Forks should keep this job as-is.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Scan
+        run: |
+          python3 .github/scripts/scan_no_personal_data.py

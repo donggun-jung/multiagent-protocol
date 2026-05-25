@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multiagent-protocol"
+version = "0.1.0"
+description = "Self-built branch protection and decision routing for solo developers using multiple AI coding agents."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+    {name = "multiagent-protocol contributors"}
+]
+keywords = ["github", "branch-protection", "ai-agents", "merge-gate", "claude-code", "codex", "cursor"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = [
+    "PyJWT>=2.8",
+    "cryptography>=41",
+    "requests>=2.31",
+    "PyYAML>=6.0",
+    "jsonschema>=4.20",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+dev = [
+    "multiagent-protocol[test]",
+    "ruff>=0.1",
+    "mypy>=1.7",
+]
+
+[project.urls]
+Homepage = "https://multiagent-protocol.github.io/"
+Documentation = "https://multiagent-protocol.github.io/"
+Repository = "https://github.com/multiagent-protocol/multiagent-protocol"
+Issues = "https://github.com/multiagent-protocol/multiagent-protocol/issues"
+
+[project.scripts]
+multiagent-protocol = "multiagent_protocol.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["multiagent_protocol*"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = ["-ra", "--strict-markers"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true

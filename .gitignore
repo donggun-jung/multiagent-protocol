@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local config (NEVER commit a populated owner.yml — only the schema/example)
+config/owner.local.yml
+config/projects.local.yml
+config/env.local.yml
+*.private-key.pem
+*.pem
+.env.local
+
+# Bot runtime outputs
+bot-tick-output.local.json
+metrics_summary.local.json
+*.log
+
+# Docs build
+site/
+docs/_build/
+.docusaurus/
+.cache-loader/
+
+# Node (for web wizard if we use any tooling)
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
