@@ -8,7 +8,6 @@ condition, or a probe. Forcing owner review is cheap defense. See
 from __future__ import annotations
 
 from multiagent_protocol.skills.base import (
-    ClassifierRule,
     ClassifierVote,
     PRContext,
 )

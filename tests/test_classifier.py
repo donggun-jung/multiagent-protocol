@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from multiagent_protocol.classifier import classify
-from multiagent_protocol.skills.base import ClassifierRule, ClassifierVote
+from multiagent_protocol.skills.base import ClassifierVote
 from multiagent_protocol.types import FileChange, PRContext
 
 

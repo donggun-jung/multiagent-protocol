@@ -142,11 +142,11 @@ class ValidationResult:
     failure_reason: str | None = None
 
     @classmethod
-    def ok(cls) -> "ValidationResult":
+    def ok(cls) -> ValidationResult:
         return cls(passed=True, failure_reason=None)
 
     @classmethod
-    def fail(cls, reason: str) -> "ValidationResult":
+    def fail(cls, reason: str) -> ValidationResult:
         return cls(passed=False, failure_reason=reason)
 
 
@@ -170,5 +170,5 @@ class BranchHookResult:
     incident_body: str | None
 
     @classmethod
-    def none(cls) -> "BranchHookResult":
+    def none(cls) -> BranchHookResult:
         return cls(incident_label=None, incident_body=None)

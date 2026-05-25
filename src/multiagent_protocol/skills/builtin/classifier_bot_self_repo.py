@@ -11,7 +11,6 @@ Quadrant D" and ``docs/concepts/break-glass.md``.
 from __future__ import annotations
 
 from multiagent_protocol.skills.base import (
-    ClassifierRule,
     ClassifierVote,
     PRContext,
 )

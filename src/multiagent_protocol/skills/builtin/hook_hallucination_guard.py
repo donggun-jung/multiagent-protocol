@@ -18,7 +18,6 @@ from __future__ import annotations
 import re
 
 from multiagent_protocol.skills.base import (
-    BranchHook,
     BranchHookResult,
     CommitContext,
 )
@@ -71,7 +70,7 @@ class HallucinationGuardHook:
                 f"Missing paths:\n"
                 + "\n".join(f"- `{p}`" for p in missing)
                 + "\n\nIf these references are intentional (e.g. paths to "
-                f"be added in a follow-up commit), close this issue with "
-                f"a comment explaining."
+                "be added in a follow-up commit), close this issue with "
+                "a comment explaining."
             ),
         )

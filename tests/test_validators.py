@@ -15,7 +15,6 @@ from multiagent_protocol.skills.builtin.validator_ready_to_merge import (
 from multiagent_protocol.skills.builtin.validator_trailers import TrailersValidator
 from multiagent_protocol.types import CheckRunStatus, LabelEvent, TrailerSet
 
-
 # -- Trailers --
 
 def test_trailers_validator_ok(commit_factory, pr_factory):

@@ -20,7 +20,6 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from multiagent_protocol.skills.base import (
-    BranchHook,
     BranchHookResult,
     CommitContext,
 )

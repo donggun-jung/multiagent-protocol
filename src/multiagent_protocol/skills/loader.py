@@ -190,13 +190,9 @@ def load_user_skills(config_root: Path | None = None) -> LoadedSkills:
     if not config_root.exists():
         return skills
 
-    subdirs = {
-        "validators": (skills.validators, "validator"),
-        "classifier": (skills.classifier_rules, "classifier rule"),
-        "branch_hooks": (skills.branch_hooks, "branch hook"),
-    }
+    subdirs = ("validators", "classifier", "branch_hooks")
 
-    for subdir_name, (target_list, label) in subdirs.items():
+    for subdir_name in subdirs:
         subdir = config_root / subdir_name
         if not subdir.exists():
             continue

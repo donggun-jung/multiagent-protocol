@@ -12,11 +12,9 @@ conservative built-in heuristic:
 from __future__ import annotations
 
 from multiagent_protocol.skills.base import (
-    ClassifierRule,
     ClassifierVote,
     PRContext,
 )
-
 
 CRITICAL_PREFIXES = (
     "src/",

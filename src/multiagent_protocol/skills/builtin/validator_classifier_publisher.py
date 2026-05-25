@@ -14,7 +14,6 @@ from __future__ import annotations
 from multiagent_protocol.skills.base import (
     PRContext,
     ValidationResult,
-    Validator,
 )
 
 # Default publisher: the GitHub Actions default runner App slug. Operators

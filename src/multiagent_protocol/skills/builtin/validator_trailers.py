@@ -12,7 +12,6 @@ import re
 from multiagent_protocol.skills.base import (
     PRContext,
     ValidationResult,
-    Validator,
 )
 
 SESSION_PATTERN = re.compile(r"^s_[a-z0-9-]{2,14}[a-z0-9]$")

@@ -11,7 +11,6 @@ from multiagent_protocol.skills.builtin.classifier_path_default import (
 )
 from multiagent_protocol.types import FileChange
 
-
 # -- Path default --
 
 def test_path_default_no_files_returns_a(pr_factory):

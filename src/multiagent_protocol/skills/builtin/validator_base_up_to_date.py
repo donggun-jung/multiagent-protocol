@@ -11,7 +11,6 @@ from __future__ import annotations
 from multiagent_protocol.skills.base import (
     PRContext,
     ValidationResult,
-    Validator,
 )
 
 

@@ -11,10 +11,10 @@ for full semantics.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 from multiagent_protocol.skills.base import ClassifierRule, ClassifierVote
 from multiagent_protocol.types import PRContext, Quadrant
