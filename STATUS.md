@@ -36,9 +36,15 @@ This file is the single source of "what does v0.0.x of multiagent-protocol actua
 | Static web wizard (no backend)                     | implemented     | ✅                | ✅             | ✅            |
 | Wizard: agent-assist prompt                        | implemented     | ✅                | ✅             | ✅            |
 | Wizard: GitHub App Manifest 1-click URL            | implemented     | ✅                | ✅             | ✅            |
-| Config: owner/projects/env/skills/agent_registry   | implemented     | 🚧 4 of 5 loaded; agent_registry loader in v0.1 | ✅             | ✅            |
+| Config: owner/projects/env/skills/agent_registry   | implemented + tested | ✅ all 5 loaded (R2)  | ✅             | ✅            |
 | Config: skills.disabled enforcement                | documented      | ❌ planned        | ✅             | ✅            |
 | Config: skills.severity_overrides enforcement      | documented      | ❌ planned        | ✅             | ✅            |
+| Built-in `validator_owner_approval` (C3)           | implemented + tested | ✅ (R2)           | ✅             | ✅            |
+| Built-in `classifier_auto_revert` (L2 follow-up)   | implemented + tested | ✅ (R2)           | ✅             | ✅            |
+| Decision Inbox `resolve_verdict` security tests    | tested          | ✅ 20 cases (R3)   | ✅             | ✅            |
+| Hallucination guard hook tests                     | tested          | ✅ 9 cases (R3)    | ✅             | ✅            |
+| Break-glass 24-hour deadline check                 | implemented + tested | ✅ (R2; 7 cases)  | ✅             | ✅            |
+| Doctrine ↔ code drift CI test                      | tested          | ✅ 3 cases (R2)    | ✅             | ✅            |
 | JSON Schema for every config file                  | implemented     | ✅                | ✅             | ✅            |
 | Hallucination guard (built-in skill, default-on)   | implemented     | ✅                | ✅             | ✅            |
 | Classifier publisher identity gate                 | implemented     | ✅                | ✅             | ✅            |
