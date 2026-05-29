@@ -167,7 +167,7 @@ def build_runtime_skills(
     # verdict) in process_pr — it is intentionally absent here.
     builtin_validators = [
         ReadyToMergeValidator(allowlisted_actors=config.owner.allowlisted_actors),
-        CiGreenValidator(),
+        CiGreenValidator(allow_no_checks=config.env.allow_no_ci),
         TrailersValidator(),
         ClassifierPublisherValidator(
             publisher_slug=config.env.classifier_publisher_slug

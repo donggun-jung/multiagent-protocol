@@ -1,0 +1,66 @@
+name: release
+
+# Fires when a version tag is pushed. The Docker image publishes for every
+# v* tag (including the v0.9.9 release candidate). PyPI publishing is gated to
+# v1.0.0+ so the RC does not attempt a publish before the PyPI trusted
+# publisher is configured.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  pypi:
+    name: Publish to PyPI (trusted publishing)
+    # Skip for v0.x (the RC); publish for v1.0.0 and later.
+    if: ${{ !startsWith(github.ref_name, 'v0.') }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC trusted publishing — NO token stored in the repo
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.4.0
+        with:
+          python-version: "3.12"
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+      - name: Publish to PyPI
+        # Trusted publishing: configure the publisher once on PyPI
+        # (https://pypi.org/manage/account/publishing/) — no API token in the
+        # repo. To use a token instead, add
+        #   with: { password: ${{ secrets.PYPI_API_TOKEN }} }
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
+
+  docker:
+    name: Publish image to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # push to ghcr.io via the built-in GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9  # v6.1.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ !startsWith(github.ref_name, 'v0.') }}
+      - name: Build + push
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

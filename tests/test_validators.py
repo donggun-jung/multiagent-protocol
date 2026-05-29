@@ -180,6 +180,12 @@ def test_ci_green_empty_check_runs_fails(pr_factory):
     assert not r.passed
 
 
+def test_ci_green_allow_no_checks_passes(pr_factory):
+    # Opt-in (env.yml allow_no_ci): a head with zero checks passes vacuously.
+    pr = pr_factory(check_runs=())
+    assert CiGreenValidator(allow_no_checks=True).check(pr).passed
+
+
 # -- Base up-to-date --
 
 def test_base_up_to_date_matches(pr_factory):

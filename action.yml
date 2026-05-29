@@ -1,0 +1,36 @@
+name: "multiagent-protocol gate"
+description: >-
+  Run one multiagent-protocol cron tick — the self-built merge gate for solo
+  developers using multiple AI coding agents. Pass MERGE_GATE_APP_ID and
+  MERGE_GATE_PRIVATE_KEY as `env:` on the step that uses this action.
+author: "multiagent-protocol contributors"
+branding:
+  icon: "git-merge"
+  color: "blue"
+
+inputs:
+  python-version:
+    description: "Python version to run the bot under."
+    required: false
+    default: "3.11"
+
+# Usage (in your governance repo's cron workflow):
+#
+#   - uses: donggun-jung/multiagent-protocol@v0.9.9
+#     env:
+#       MERGE_GATE_APP_ID: ${{ secrets.MERGE_GATE_APP_ID }}
+#       MERGE_GATE_PRIVATE_KEY: ${{ secrets.MERGE_GATE_PRIVATE_KEY }}
+#
+# The tick reads config/ (and optionally schemas/) from the caller's checkout.
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.4.0
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install multiagent-protocol (from this action's checkout)
+      shell: bash
+      run: pip install --no-cache-dir "${{ github.action_path }}"
+    - name: Run one tick
+      shell: bash
+      run: python -m multiagent_protocol tick

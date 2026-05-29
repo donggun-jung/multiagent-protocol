@@ -17,11 +17,15 @@ class CiGreenValidator:
     name = "validator_ci_green"
     severity = "P0"
 
-    def __init__(self, required_checks: tuple[str, ...] | None = None) -> None:
+    def __init__(self, required_checks: tuple[str, ...] | None = None,
+                 allow_no_checks: bool = False) -> None:
         # If empty, the validator passes only if *all* completed check-runs
         # are success (strict). If a list is provided, only those named
         # checks must be present + green.
+        # ``allow_no_checks`` (env.yml ``allow_no_ci``) lets a head with ZERO
+        # check-runs pass C2 vacuously — for repos that have no CI by design.
         self.required_checks = required_checks or ()
+        self.allow_no_checks = allow_no_checks
 
     def check(self, pr_context: PRContext) -> ValidationResult:
         by_name = {c.name: c for c in pr_context.check_runs}
@@ -47,8 +51,11 @@ class CiGreenValidator:
 
         # No explicit list: every completed check must be success.
         if not pr_context.check_runs:
+            if self.allow_no_checks:
+                return ValidationResult.ok()  # repo has no CI by design (opt-in)
             return ValidationResult.fail(
-                "C2: no check-runs found on PR head (CI may not have started)"
+                "C2: no check-runs found on PR head (CI may not have started). "
+                "If this repo has no CI by design, set env.yml `allow_no_ci: true`."
             )
         for check in pr_context.check_runs:
             if check.status != "completed":

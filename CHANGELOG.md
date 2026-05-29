@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] - 2026-05-30
+
+**1.0 release candidate.** Out for external review; after review fixes it ships as 1.0.
+
+### Added
+- **Distribution pipeline:** `Dockerfile` (+ `.dockerignore` that excludes `config/`
+  so private config never bakes into a published image), a composite `action.yml`
+  (`uses: donggun-jung/multiagent-protocol@v0.9.9`), and
+  `.github/workflows/release.yml` — on a version tag it pushes a GHCR image (every
+  `v*`) and publishes to PyPI via OIDC **trusted publishing** (gated to `v1.0.0+`;
+  no API token stored in the repo).
+- **`env.yml` `allow_no_ci`** (default false): opt-in so a repo with no CI can
+  auto-merge (C2 passes vacuously). Default stays fail-closed.
+- `docs/REVIEW_GUIDE.md` — entry point for external reviewers.
+
+### Changed
+- Version 0.2.0 → 0.9.9; packaging Development Status → Beta.
+- README banner / STATUS / Status section reframed as the **1.0 release
+  candidate**, with the explicit 1.0 scope decisions called out for reviewers.
+
+### Carried-over security posture
+The C3 owner-approval bypass found + closed in v0.2.0 (two independent adversarial
+review rounds) stays covered by regression tests. **152 tests**, ruff clean,
+personal-data scan clean.
+
 ## [0.2.0] - 2026-05-29
 
 The cron orchestrator goes live: a fork now actually evaluates PRs, merges the
@@ -112,5 +137,6 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
+[0.9.9]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.2.0...v0.9.9
 [0.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.0.2-alpha...v0.2.0
 [0.0.2]: https://github.com/donggun-jung/multiagent-protocol/releases/tag/v0.0.2-alpha

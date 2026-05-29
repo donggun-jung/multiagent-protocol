@@ -76,6 +76,7 @@ class EnvConfig:
     runner_tier: str                # "actions-free" | "self-hosted" | "paid-cloud"
     classifier_publisher_slug: str  # default "github-actions"
     bot_app_slug: str               # GitHub App slug, e.g. "my-bot"
+    allow_no_ci: bool = False       # if True, a head with zero checks passes C2
 
 
 @dataclass(frozen=True)
@@ -217,6 +218,7 @@ def load_config(
                 "classifier_publisher_slug", "github-actions"
             ),
             bot_app_slug=env_data["bot_app_slug"],
+            allow_no_ci=bool(env_data.get("allow_no_ci", False)),
         ),
         skills=SkillsConfig(
             enabled=tuple(skills_data.get("enabled", [])),

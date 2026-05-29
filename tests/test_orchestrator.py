@@ -72,6 +72,23 @@ def test_blocked_when_ci_red(fake_api, solo_config):
     assert fake_api.merged == []
 
 
+def test_no_ci_repo_blocked_by_default(fake_api, solo_config):
+    pr = fake_api.register_pr(number=31, labels=("ready-to-merge",),
+                              files=[changed_file("README.md")], checks=[])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "blocked"   # fail-closed: no CI signal
+    assert fake_api.merged == []
+
+
+def test_no_ci_repo_merges_when_allow_no_ci(fake_api, solo_config):
+    cfg = dataclasses.replace(
+        solo_config, env=dataclasses.replace(solo_config.env, allow_no_ci=True))
+    pr = fake_api.register_pr(number=30, labels=("ready-to-merge",),
+                              files=[changed_file("README.md")], checks=[])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "merged"
+
+
 def test_quadrant_d_inbox_is_idempotent(fake_api, solo_config):
     pr = fake_api.register_pr(
         number=6, labels=("ready-to-merge",),

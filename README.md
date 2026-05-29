@@ -9,7 +9,7 @@
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![한국어](https://img.shields.io/badge/lang-한국어-orange.svg)](README.ko.md)
 
-> **v0.2.0 — pre-1.0.** The cron orchestrator is **live**: a fork evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 post-merge re-validation + L5 break-glass). What is still deferred — automatic revert-PR creation, the 60-day L4 burn-in, a Korean mirror of the concept docs — is listed honestly in [`STATUS.md`](STATUS.md). It has **not** yet been run by an external operator for 30 days (the v1.0 bar), so treat it as pre-1.0.
+> **v0.9.9 — 1.0 release candidate.** The cron orchestrator is **live**: a fork evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). This is the candidate going out for external review; after review fixes it ships as 1.0. A few items are explicit **1.0 scope decisions** for reviewers (automatic revert-PR creation, the 60-day L4 burn-in, a Korean mirror of the concept docs) — see [`STATUS.md`](STATUS.md) and [`docs/REVIEW_GUIDE.md`](docs/REVIEW_GUIDE.md).
 
 ---
 
@@ -75,8 +75,8 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 
 ## Status
 
-- **v0.2.0** (current): cron orchestrator live — L1–L5 enforced end-to-end, Decision Inbox open + poll/resolve, L2 detection, L4 advisory registry. 140 tests. See [`STATUS.md`](STATUS.md).
-- **v1.0.0** (next): PyPI release + GitHub Action + Docker image + automatic revert-PR creation + L4 60-day burn-in, after one external operator has run for 30 days.
+- **v0.9.9** (current): **1.0 release candidate.** L1–L5 enforced end-to-end, Decision Inbox open + poll/resolve, distribution pipeline (PyPI/Docker/Action) scaffolded, 152 tests. Out for external review — see [`docs/REVIEW_GUIDE.md`](docs/REVIEW_GUIDE.md).
+- **v1.0.0** (next): apply external-review fixes, ship the PyPI/Docker/Action publish, and rule on the deferred 1.0 scope items (see [`STATUS.md`](STATUS.md)).
 - **Maintenance**: best-effort, no SLA. See [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## Documentation

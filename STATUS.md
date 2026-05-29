@@ -1,18 +1,20 @@
 # Status — what works today, what is planned
 
-Updated 2026-05-29. Authoritative when the README banner cites it.
+Updated 2026-05-30. Authoritative when the README banner cites it.
 
 This file is the single source of "what does `multiagent-protocol` actually do,
 today, when an external operator forks and installs it?". The README and
 concept docs describe the **target** design; this file describes the
-**shipping** behaviour. As of **v0.2.0** the cron orchestrator is live: a fork
-evaluates PRs, merges the auto-approvable quadrants, routes Quadrant D to the
-owner, and audits `main`.
+**shipping** behaviour. As of **v0.9.9** (the 1.0 release candidate) the cron
+orchestrator is live: a fork evaluates PRs, merges the auto-approvable
+quadrants, routes Quadrant D to the owner, and audits `main`. This RC is out
+for external review; see the "1.0 scope decisions" section below for the items
+reviewers are asked to rule on.
 
 ## Implementation matrix
 
-| Feature                                            | Doctrine        | v0.0.2 | v0.2.0 (current) |
-|----------------------------------------------------|-----------------|--------|------------------|
+| Feature                                            | Doctrine        | v0.0.2 | v0.9.9 (RC, current) |
+|----------------------------------------------------|-----------------|--------|----------------------|
 | 4-quadrant classifier (path heuristic, max-vote)   | implemented     | ✅      | ✅                |
 | 4-module bot package layout                        | implemented     | ✅      | ✅                |
 | 5-tier file taxonomy                               | documented      | ✅      | ✅                |
@@ -50,7 +52,10 @@ owner, and audits `main`.
 | English + Korean README                            | implemented     | ✅      | ✅                |
 | Concept docs Korean mirror                         | partial         | ❌      | ❌ EN only (v1.x) |
 | GitHub Pages site                                  | implemented     | ✅      | ✅                |
-| PyPI release / Docker image / published Action     | planned         | ❌      | ❌ (v1.0)         |
+| Config: `env.allow_no_ci` (no-CI repos auto-merge) | implemented     | ❌      | ✅ (opt-in)           |
+| Release pipeline: GHCR image on tag                | implemented     | ❌      | ✅ (`release.yml`)    |
+| PyPI publish (OIDC trusted publishing)             | implemented     | ❌      | 🚧 gated to v1.0.0    |
+| Composite GitHub Action (`action.yml`)             | implemented     | ❌      | ✅                    |
 
 Legend: ✅ shipped · 🚧 partial · ❌ not yet. *planned* means we intend to ship
 it on the version listed.
@@ -96,11 +101,32 @@ you get a **working gate**:
 - **CI-green is fail-closed.** With no `required_checks` configured, C2 requires
   at least one completed check that succeeds; a repo with *no* CI will not
   auto-merge (by design — "no gate" should not silently mean "merge anything").
-  Add any one status check, or configure required checks, to enable merges.
+  Add any one status check, configure required checks, or set `env.yml`
+  `allow_no_ci: true` to opt into a vacuous C2 for repos with no CI by design.
 - **Statelessness + idempotency.** The bot keeps no DB. Watermarks persist
   within a run and via the tick artifact; across runs, duplicate incidents are
   prevented by checking for an existing open issue referencing the same commit,
   not by durable state.
+
+## 1.0 scope decisions for external review
+
+These are deliberately deferred from the RC. Reviewers are asked to rule on
+whether each is a **1.0 blocker** or **post-1.0**:
+
+1. **L2 automatic revert-PR creation.** L2 ships as detection + incident (with
+   the `git revert` command). Having the bot author a revert PR in a supervised
+   repo is itself a Quadrant-D action needing its own ADR + integration tests —
+   same gating rationale as mirror auto-cascade. *Proposed: post-1.0.*
+2. **L4 automatic 60-day burn-in.** The registry gate ships advisory (P2);
+   promote to hard-block today via `severity_overrides`. The automatic
+   advisory→block clock is unbuilt. *Proposed: post-1.0 (manual promote suffices).*
+3. **Korean mirror of the concept docs.** README + quick-start are mirrored; the
+   nine `docs/concepts/*` are EN-only. *Proposed: nice-to-have for 1.0.*
+4. **Multi-account App installations.** Single-account (governance + supervised
+   under one installation) is the supported shape. *Proposed: post-1.0.*
+
+The release pipeline (PyPI / Docker / Action) is scaffolded; the only remaining
+PyPI step is the owner configuring a trusted publisher (an account action).
 
 ## How this file gets updated
 
