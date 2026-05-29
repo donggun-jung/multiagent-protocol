@@ -2,7 +2,64 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-05-29
+
+The cron orchestrator goes live: a fork now actually evaluates PRs, merges the
+auto-approvable quadrants, routes Quadrant D to the owner, and audits `main` —
+the behaviour the v0.0.x docs described as the target.
+
+### Added
+
+- **Orchestrator loop** (`main.py`): per installation → per supervised repo →
+  per open PR runs L1/L3/L4 → merge (A/B/C) / Decision-Inbox issue (D) /
+  diagnostic comment; then L5 break-glass + hallucination scan, L2 post-merge
+  re-validation, mirror-drift check, and the Decision-Inbox poll. Incidents are
+  opened idempotently, so the 5-minute tick is safe despite being stateless.
+- **`runtime.py`** — assembles config-injected built-in skills (owner allowlist,
+  publisher slug, agent registry, bot repo, ADR finder) + user skills; applies
+  `skills.disabled` (with a non-disableable core set) and `severity_overrides`;
+  runs the per-PR decision.
+- **`__main__.py`** — `python -m multiagent_protocol` now works (the bot-cron
+  invocation previously failed with no `__main__`).
+- **L1.C1 actor check** — `ready-to-merge` is verified against the timeline
+  (who applied it), not just presence (`github_api.label_events`).
+- **L1.C3** — owner-approval validator wired with the live classifier verdict.
+- **L2 post-merge re-validation** — re-runs required checks on merged `main`
+  commits with infra-vs-real differentiation (`cancelled` / zero-duration =
+  infra → retry; `skipped` = pass; real failure → incident).
+- **L4 identity gate** — `validator_agent_registry` checks each commit's
+  tool/model against `agent_registry.yml`; ships **advisory (P2)** per the
+  burn-in doctrine (promote to P0 via `severity_overrides`).
+- **Decision Inbox** — idempotent `open` + `resolve_open_issues` (poll owner
+  reactions/comments, head-SHA tamper guard, apply `decision:approved-*` or
+  close the PR on `/reject`).
+- **Graceful no-op** — a tick with no `MERGE_GATE_*` secrets exits 0 with a
+  clear log instead of failing (stops the public upstream's scheduled job from
+  failing every 5 minutes).
+- 30 new tests (orchestrator decisions, L2, L4, inbox resolution, runtime
+  toggles, no-op) — **140 total**.
+
+### Changed
+
+- `pr_validator.evaluate_pr` is now severity-aware (P0/P1 block, P2 warn, P3 audit).
+- `bot-cron.yml` actions pinned to commit SHAs (parity with `tests.yml`).
+- New CI job `no-config-in-public` keeps personal config out of public repos.
+
+### Deferred (documented, not shipped in 0.2.0)
+
+- **L2 auto-revert PR creation**: L2 ships as detection + incident issue (with
+  the `git revert` command). Having the bot author a revert PR in a supervised
+  repo is itself a Quadrant-D action — a documented follow-up, like mirror
+  auto-cascade.
+- **L4 automatic 60-day burn-in** promotion: use `severity_overrides` to promote
+  the registry gate to P0 manually for now.
+- **Watermark commit-back** across runs: watermarks persist within a run + via
+  the tick artifact; incident idempotency already prevents duplicate issues.
+- **Multi-account installations** where governance and supervised repos live
+  under different App installations are not yet handled (single-account is the
+  supported shape).
+
+## [0.0.2] - 2026-05-26
 
 ### Added
 
@@ -55,4 +112,5 @@ All notable changes to this project will be documented in this file. The format 
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
-[Unreleased]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.0.0...HEAD
+[0.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.0.2-alpha...v0.2.0
+[0.0.2]: https://github.com/donggun-jung/multiagent-protocol/releases/tag/v0.0.2-alpha

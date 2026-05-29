@@ -9,7 +9,7 @@
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![한국어](https://img.shields.io/badge/lang-한국어-orange.svg)](README.ko.md)
 
-> ⚠️ **public-alpha — v0.0.2.** The doctrine, schemas, web wizard, and skills plugin contract are stable. The bot's cron orchestrator and several enforcers (24h ADR window, label-event sourcing, agent registry tool/model lookup) ship as **skeletons** in v0.x and are completed in v0.2.0. Read [`STATUS.md`](STATUS.md) for the canonical "what works today vs. what is planned" table before relying on this for production. We will not push features without flagging this header again.
+> **v0.2.0 — pre-1.0.** The cron orchestrator is **live**: a fork evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 post-merge re-validation + L5 break-glass). What is still deferred — automatic revert-PR creation, the 60-day L4 burn-in, a Korean mirror of the concept docs — is listed honestly in [`STATUS.md`](STATUS.md). It has **not** yet been run by an external operator for 30 days (the v1.0 bar), so treat it as pre-1.0.
 
 ---
 
@@ -24,11 +24,11 @@ If you are a single developer using two or more AI coding agents to work on the 
 
 `multiagent-protocol` is a **portable, vendor-neutral, self-built equivalent of branch protection** that runs entirely from your own GitHub account on the Free tier. It enforces:
 
-- **Pre-merge gate (L1)** — 5 conditions a PR must satisfy before it can merge (label, CI green, owner approval or auto-approval per classifier, base up-to-date, identity trailers present). *Implemented in v0.0.2 as standalone evaluators (C1–C5). The L3 race-guard wraps the merge call. Owner-approval validator and label-event sourcing ship in v0.2.0.*
-- **Post-merge re-validation (L2)** — same checks rerun on the merged commit; auto-revert if they fail post-merge but not for infrastructure-only failures. *L2 logic is **planned** for v0.2.0; `branch_supervisor.py` currently runs L5 only.*
-- **Race-guard (L3)** — re-check the PR's base against `origin/main` HEAD just before merge; the bot's `merge_pr` call passes a `sha` precondition that GitHub enforces server-side. *Implemented.*
-- **Identity gate (L4)** — validate every commit's `Agent-Tool`, `Agent-Model`, `Agent-Session`, `Agent-Machine`, `Task-Ref` trailers against your registry. *Trailer-format check is implemented; registry-based tool/model lookup is **planned** for v0.2.0.*
-- **Break-glass auditor (L5)** — scan `main` for `[break-glass-*]` commits and require an ADR within 24 hours. *Implemented; the 24-hour deadline check ships in v0.2.0.*
+- **Pre-merge gate (L1)** — 5 conditions a PR must satisfy before it can merge (label, CI green, owner approval or auto-approval per classifier, base up-to-date, identity trailers present). *Wired end-to-end in v0.2.0: C1 verifies the label was applied by an allowlisted actor (timeline), C3 owner-approval reads the live classifier verdict, and the cron loop merges / opens an inbox issue / comments accordingly.*
+- **Post-merge re-validation (L2)** — required checks rerun on the merged commit; infrastructure-only failures (cancelled / never-run) are ignored. *Implemented as detection + incident in v0.2.0; automatic revert-PR creation is a documented follow-up (see [`STATUS.md`](STATUS.md)).*
+- **Race-guard (L3)** — re-check the PR's base against `main` HEAD just before merge; the `merge_pr` call passes a `sha` precondition GitHub enforces server-side, and a stale base triggers an `update-branch` rebase. *Implemented.*
+- **Identity gate (L4)** — validate every commit's `Agent-*` / `Task-Ref` trailers against your registry. *Trailer-format (C5) is implemented; registry tool/model lookup ships **advisory (P2)** in v0.2.0 — promote to a hard block via `severity_overrides`. The 60-day burn-in is later.*
+- **Break-glass auditor (L5)** — scan `main` for `[break-glass-*]` commits and require an ADR within 24 hours. *Implemented, including the 24-hour ADR deadline check (v0.2.0).*
 
 The protocol is split into a small bot (Python, ~3 kLOC, plug-in extensible) and a doctrine layer (Markdown files that an agent reads at session start). The bot runs as a GitHub App on a 5-minute cron — on GitHub Actions Free tier for small repos, or on a self-hosted runner for larger workloads.
 
@@ -75,10 +75,8 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 
 ## Status
 
-- **v0.0.2** (current): **public-alpha**. Doctrine + schemas + wizard + plugin contract stable. Bot cron orchestrator + several enforcers ship as skeletons (see header banner + [`STATUS.md`](STATUS.md)).
-- **v0.1.0** (next): doctrine ↔ code drift closed. All concept docs map 1-to-1 to implemented behaviour.
-- **v0.2.0**: cron orchestrator complete. L2 + L4 registry + L5 24-hour deadline enforced.
-- **v1.0.0**: PyPI release + GitHub Action + Docker image, after one external operator has run for 30 days.
+- **v0.2.0** (current): cron orchestrator live — L1–L5 enforced end-to-end, Decision Inbox open + poll/resolve, L2 detection, L4 advisory registry. 140 tests. See [`STATUS.md`](STATUS.md).
+- **v1.0.0** (next): PyPI release + GitHub Action + Docker image + automatic revert-PR creation + L4 60-day burn-in, after one external operator has run for 30 days.
 - **Maintenance**: best-effort, no SLA. See [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## Documentation

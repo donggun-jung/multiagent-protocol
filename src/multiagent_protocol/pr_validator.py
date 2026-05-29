@@ -33,26 +33,40 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PRValidationOutcome:
-    """Result of running L1 + classifier on a PR."""
+    """Result of running L1 + classifier on a PR.
+
+    Severity-aware: a failing validator blocks the merge only if its severity
+    is ``P0`` or ``P1``. ``P2`` failures are surfaced as non-blocking warnings;
+    ``P3`` failures are audit-only (recorded in ``results`` but neither block
+    nor comment). See ``docs/concepts/general-preferences.md`` § "Severity".
+    """
 
     pr_context: PRContext
-    validator_results: tuple[tuple[str, bool, str | None], tuple[str, ...]]  # ((name, passed, reason), ...)
     classifier_quadrant: str
-    all_passed: bool
-    failure_reasons: tuple[str, ...]
+    results: tuple[tuple[str, bool, str | None, str], ...]  # (name, passed, reason, severity)
+    all_passed: bool                       # no P0/P1 failures
+    failure_reasons: tuple[str, ...]       # P0/P1 (blocking) failure reasons
+    warnings: tuple[str, ...]              # P2 (non-blocking) failure reasons
 
     def diagnostic_comment(self) -> str:
-        if self.all_passed:
+        if self.all_passed and not self.warnings:
             return (
                 f"Merge Gate L1 — all conditions satisfied "
                 f"(Quadrant: {self.classifier_quadrant})."
             )
-        lines = ["Merge Gate L1 — merge blocked:"]
-        for reason in self.failure_reasons:
-            lines.append(f"- {reason}")
+        lines: list[str] = []
+        if not self.all_passed:
+            lines.append("Merge Gate L1 — merge blocked:")
+            for reason in self.failure_reasons:
+                lines.append(f"- {reason}")
+        if self.warnings:
+            lines.append("")
+            lines.append("Warnings (non-blocking):")
+            for reason in self.warnings:
+                lines.append(f"- {reason}")
         lines.append(
-            "\nFix the items above and the bot will re-evaluate on the "
-            "next cron tick."
+            "\nFix the blocking items above and the bot will re-evaluate on "
+            "the next cron tick."
         )
         return "\n".join(lines)
 
@@ -66,9 +80,17 @@ def build_pr_context(api: GitHubAPI, pr_payload: dict) -> PRContext:
     commits_data = api.pr_commits(owner, repo, number)
     files_data = api.pr_files(owner, repo, number)
     checks_data = api.check_runs(owner, repo, pr_payload["head"]["sha"])
-    # label events: GitHub timeline API; for simplicity we approximate by
-    # fetching events filtered to "labeled". Real impl would call timeline.
-    label_events: tuple[LabelEvent, ...] = ()
+    # Label-add events from the timeline API — lets C1 check *who* applied
+    # ``ready-to-merge``, not just that it is present.
+    label_events: tuple[LabelEvent, ...] = tuple(
+        LabelEvent(
+            label=le["label"],
+            actor_login=le["actor"],
+            created_at=le.get("created_at", ""),
+        )
+        for le in api.label_events(owner, repo, number)
+        if le.get("label") and le.get("actor")
+    )
 
     commits = tuple(
         CommitContext(
@@ -133,26 +155,41 @@ def _normalize_file_status(s: str) -> str:
     return "modified"
 
 
+_BLOCKING_SEVERITIES = ("P0", "P1")
+
+
 def evaluate_pr(
     pr_context: PRContext,
     validators: list[Validator],
+    classifier_quadrant: str = "A",
 ) -> PRValidationOutcome:
-    """Run every validator; record pass/fail; collect failure reasons."""
-    results: list[tuple[str, bool, str | None]] = []
-    failure_reasons: list[str] = []
-    for v in validators:
-        r = v.check(pr_context)
-        results.append((v.name, r.passed, r.failure_reason))
-        if not r.passed and r.failure_reason:
-            failure_reasons.append(r.failure_reason)
+    """Run every validator; bucket failures by severity.
 
-    all_passed = all(p for _, p, _ in results)
+    A failure blocks the merge (``all_passed = False``) only at ``P0``/``P1``.
+    ``P2`` failures become non-blocking warnings; ``P3`` failures are recorded
+    but neither block nor surface in the diagnostic comment.
+    """
+    results: list[tuple[str, bool, str | None, str]] = []
+    blocking: list[str] = []
+    warnings: list[str] = []
+    for v in validators:
+        severity = getattr(v, "severity", "P0")
+        r = v.check(pr_context)
+        results.append((v.name, r.passed, r.failure_reason, severity))
+        if not r.passed and r.failure_reason:
+            if severity in _BLOCKING_SEVERITIES:
+                blocking.append(r.failure_reason)
+            elif severity == "P2":
+                warnings.append(r.failure_reason)
+            # P3: audit-only — recorded in results, neither blocks nor warns.
+
     return PRValidationOutcome(
         pr_context=pr_context,
-        validator_results=(tuple(results), ()),  # type: ignore[arg-type]
-        classifier_quadrant="A",  # filled in by caller from classifier.classify
-        all_passed=all_passed,
-        failure_reasons=tuple(failure_reasons),
+        classifier_quadrant=classifier_quadrant,
+        results=tuple(results),
+        all_passed=not blocking,
+        failure_reasons=tuple(blocking),
+        warnings=tuple(warnings),
     )
 
 

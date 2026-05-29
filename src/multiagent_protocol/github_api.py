@@ -153,6 +153,25 @@ class GitHubAPI:
                 runs.append(page)
         return runs
 
+    def label_events(self, owner: str, repo: str, number: int) -> list[dict]:
+        """Return ``labeled`` events from the PR/issue timeline.
+
+        Used by C1 to verify ``ready-to-merge`` was applied by an allowlisted
+        actor — not merely present. Each entry is
+        ``{"label", "actor", "created_at"}``. The GitHub timeline API is GA;
+        no preview media type is required.
+        """
+        events: list[dict] = []
+        for e in self._paginate(f"/repos/{owner}/{repo}/issues/{number}/timeline"):
+            if e.get("event") != "labeled":
+                continue
+            events.append({
+                "label": (e.get("label") or {}).get("name"),
+                "actor": (e.get("actor") or {}).get("login"),
+                "created_at": e.get("created_at", ""),
+            })
+        return events
+
     def main_head_sha(self, owner: str, repo: str) -> str:
         r = self._request("GET", f"/repos/{owner}/{repo}/branches/main")
         r.raise_for_status()
@@ -299,3 +318,49 @@ class GitHubAPI:
             return None
         content = base64.b64decode(data["content"])
         return hashlib.sha256(content).hexdigest()
+
+    def get_contents(self, owner: str, repo: str, path: str, ref: str = "main"):
+        """Return GitHub's ``contents`` JSON for a file or directory.
+
+        A file yields a dict; a directory yields a list. Returns ``None`` on
+        404 so callers can treat absence as a normal case.
+        """
+        r = self._request(
+            "GET", f"/repos/{owner}/{repo}/contents/{path}", params={"ref": ref}
+        )
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
+    def get_file_text(
+        self, owner: str, repo: str, path: str, ref: str = "main"
+    ) -> str | None:
+        """Return the decoded UTF-8 text of a file at ``ref``, or None if absent."""
+        import base64
+
+        data = self.get_contents(owner, repo, path, ref)
+        if not isinstance(data, dict) or data.get("encoding") != "base64":
+            return None
+        return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+
+    def list_dir(self, owner: str, repo: str, path: str, ref: str = "main") -> list[dict]:
+        """Return directory entries at ``path`` (empty list if absent / not a dir)."""
+        data = self.get_contents(owner, repo, path, ref)
+        return data if isinstance(data, list) else []
+
+    # -- Branch update (L3 auto-rebase) --
+
+    def update_branch(self, owner: str, repo: str, number: int) -> bool:
+        """Update the PR branch with its base (GitHub's "Update branch" button).
+
+        Used by the L3 race-guard when ``main`` advanced past the PR's base:
+        rather than merge against a stale base, the bot rebases the PR branch
+        and lets the next tick re-evaluate. Returns True if GitHub accepted the
+        update (HTTP 202); False if there was nothing to do or a conflict
+        (HTTP 422) — in either case the merge is not attempted this tick.
+        """
+        r = self._request(
+            "PUT", f"/repos/{owner}/{repo}/pulls/{number}/update-branch"
+        )
+        return r.status_code == 202

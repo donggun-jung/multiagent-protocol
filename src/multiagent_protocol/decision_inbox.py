@@ -175,3 +175,110 @@ def resolve_verdict(
     # Most-recent timestamp wins. ISO-8601 lexicographic sort works.
     events.sort(key=lambda x: x[0])
     return events[-1][1]  # type: ignore[return-value]
+
+
+# -- Orchestration: poll open inbox issues → apply the owner's verdict --
+
+PR_REF_RE = re.compile(r"PR:\s*`([^`#]+)#(\d+)`")
+
+
+def parse_pr_ref(issue_body_text: str) -> tuple[str, int] | None:
+    """Read the ``- PR: `owner/repo#N``` line from an inbox issue body.
+
+    Returns ``(full_name, number)`` or ``None`` if the line is absent.
+    """
+    m = PR_REF_RE.search(issue_body_text)
+    if not m:
+        return None
+    return m.group(1), int(m.group(2))
+
+
+@dataclass(frozen=True)
+class InboxResolution:
+    """One inbox issue resolved (or refused) during a tick."""
+
+    issue_number: int
+    pr_full_name: str
+    pr_number: int
+    verdict: str   # "approved-A" | "approved-B" | "approved-C" | "rejected" | "tampered"
+    action: str    # "labeled" | "closed-pr" | "tamper-skip"
+
+
+def resolve_open_issues(
+    api: GitHubAPI,
+    governance_owner: str,
+    governance_repo: str,
+    allowlisted_actors: tuple[str, ...],
+) -> list[InboxResolution]:
+    """Poll open ``decision:pending-owner`` issues and apply owner verdicts.
+
+    For each issue with an owner verdict (reaction/comment by an allowlisted
+    actor): verify the PR head still matches the SHA the decision was opened
+    against (tamper guard), then either label the PR ``decision:approved-*``
+    (so L1.C3 passes on the next tick and the PR merges) or close the PR on
+    ``/reject``. The inbox issue is closed once the verdict is applied.
+
+    Returns the list of resolutions taken (for tick metrics + logging).
+    """
+    resolutions: list[InboxResolution] = []
+    issues = api.list_issues(
+        governance_owner, governance_repo, labels=PENDING_LABEL, state="open"
+    )
+    for issue in issues:
+        # The issues endpoint also returns PRs; skip anything that is a PR.
+        if "pull_request" in issue:
+            continue
+        body = issue.get("body") or ""
+        issue_number = issue["number"]
+        _nonce, head_sha = parse_nonce_and_sha(body)
+        pr_ref = parse_pr_ref(body)
+        if pr_ref is None or not head_sha:
+            continue
+        pr_full_name, pr_number = pr_ref
+        pr_owner, _, pr_repo = pr_full_name.partition("/")
+
+        reactions = api.list_issue_reactions(governance_owner, governance_repo, issue_number)
+        comments = api.list_issue_comments(governance_owner, governance_repo, issue_number)
+        verdict = resolve_verdict(reactions, comments, allowlisted_actors)
+        if verdict is None:
+            continue
+
+        # Tamper guard: the PR head must still equal the SHA we asked about.
+        try:
+            pr = api.pr(pr_owner, pr_repo, pr_number)
+        except Exception as e:
+            logger.warning("inbox: could not fetch PR %s: %s", pr_full_name, e)
+            continue
+        current_head = (pr.get("head") or {}).get("sha")
+        if current_head != head_sha:
+            api.post_comment(
+                governance_owner, governance_repo, issue_number,
+                f"⚠️ PR head changed since this decision opened "
+                f"(`{head_sha[:7]}` → `{(current_head or '?')[:7]}`). The prior "
+                f"approval is void; the bot will re-evaluate the new head. "
+                f"Re-approve against the new head if still desired.",
+            )
+            resolutions.append(InboxResolution(
+                issue_number, pr_full_name, pr_number, "tampered", "tamper-skip",
+            ))
+            continue
+
+        if verdict == "rejected":
+            api.post_comment(
+                pr_owner, pr_repo, pr_number,
+                "Closed per Decision Inbox `/reject` (owner rejected this PR).",
+            )
+            api.close_issue(pr_owner, pr_repo, pr_number)  # PRs close via the issues endpoint
+            api.close_issue(governance_owner, governance_repo, issue_number)
+            resolutions.append(InboxResolution(
+                issue_number, pr_full_name, pr_number, verdict, "closed-pr",
+            ))
+        else:
+            # approved-A/B/C → label the PR so owner_approval (C3) passes.
+            api.add_label(pr_owner, pr_repo, pr_number, f"decision:{verdict}")
+            api.close_issue(governance_owner, governance_repo, issue_number)
+            resolutions.append(InboxResolution(
+                issue_number, pr_full_name, pr_number, verdict, "labeled",
+            ))
+
+    return resolutions

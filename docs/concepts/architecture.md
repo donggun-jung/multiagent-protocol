@@ -108,6 +108,8 @@ A failed check is considered infra-failure (not a real failure) when:
 
 `conclusion == "skipped"` is **not** infra-failure: it means the workflow's own `if:` condition evaluated false (intentional protocol skip). Treating skipped as infra was a known false-negative in earlier designs.
 
+**Shipping status (v0.2.0):** L2 ships as **detection + incident**. On a real post-merge failure the bot opens a `decision:post-merge-revalidation` issue carrying the `git revert <sha>` command; it does not yet *author* the revert PR. Having the bot commit to a supervised repo is itself a Quadrant-D action that needs its own ADR — the same rationale that keeps mirror auto-cascade manual. The `classifier_auto_revert` rule + `decision:auto-revert` label are already in place for when a revert PR is opened (by you now, or by a future auto-revert feature). See [`STATUS.md`](../../STATUS.md).
+
 ### L5 — Break-glass auditor
 
 For each commit on `main` whose subject matches `^\[break-glass-[a-z0-9-]+\]`:
