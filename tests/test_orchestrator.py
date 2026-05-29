@@ -11,7 +11,7 @@ import dataclasses
 
 from multiagent_protocol.main import main
 from multiagent_protocol.runtime import build_runtime_skills, process_pr
-from tests.conftest import changed_file, make_check
+from tests.conftest import changed_file, make_check, raw_commit
 
 
 def _rt(api, cfg):
@@ -95,6 +95,7 @@ def test_c1_fails_when_label_by_non_allowlisted(fake_api, solo_config):
 
 
 def test_quadrant_d_with_owner_approval_label_merges(fake_api, solo_config):
+    # Owner (your-github-login) applied the approval label, fresh vs head → merges.
     pr = fake_api.register_pr(
         number=9, labels=("ready-to-merge", "decision:approved-A"),
         files=[changed_file("src/x.py", status="removed")])
@@ -102,6 +103,38 @@ def test_quadrant_d_with_owner_approval_label_merges(fake_api, solo_config):
     assert d.action == "merged"
     assert d.quadrant == "D"
     assert len(fake_api.merged) == 1
+
+
+def test_exploit_a_self_applied_approval_does_not_merge(fake_api, solo_config):
+    # A non-allowlisted collaborator self-applies decision:approved-A on a
+    # Quadrant-D PR that legitimately has owner-applied ready-to-merge.
+    pr = fake_api.register_pr(
+        number=20, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"label": "decision:approved-A", "actor": "mallory", "created_at": "2026-05-25T00:01:00Z"},
+        ])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "inbox"        # routed to owner, NOT merged
+    assert fake_api.merged == []
+
+
+def test_exploit_b_stale_approval_after_forcepush_does_not_merge(fake_api, solo_config):
+    # Owner approved at 00:00; a force-push then landed head at 00:10. The
+    # stale approval must not merge unreviewed code.
+    pr = fake_api.register_pr(
+        number=21, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],
+        head_sha="h" * 40,
+        commits=[raw_commit(sha="h" * 40, date="2026-05-25T00:10:00Z")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login", "created_at": "2026-05-25T00:11:00Z"},
+            {"label": "decision:approved-A", "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+        ])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "inbox"        # stale approval voided
+    assert fake_api.merged == []
 
 
 # -- runtime builder: disabled + severity_overrides ---------------------------

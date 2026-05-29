@@ -288,9 +288,14 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
             "; ".join(outcome.failure_reasons)[:200],
         )
 
-    # C3 — owner approval. Passes for Quadrant A/B/C (auto-approval) or for a
-    # Quadrant-D PR that already carries an owner ``decision:approved-*`` label.
-    owner_approval = OwnerApprovalValidator(classifier_verdict=verdict.quadrant)
+    # C3 — owner approval. Passes for Quadrant A/B/C (auto-approval), or for a
+    # Quadrant-D PR whose ``decision:approved-*`` label was applied by the
+    # owner/bot at or after the current head (see OwnerApprovalValidator).
+    owner_approval = OwnerApprovalValidator(
+        classifier_verdict=verdict.quadrant,
+        allowlisted_actors=config.owner.allowlisted_actors,
+        bot_user=f"{config.env.bot_app_slug}[bot]",
+    )
     _apply_severity([owner_approval], runtime.severity_overrides)
     if not owner_approval.check(ctx).passed:
         # Quadrant D with no owner approval yet → route to the Decision Inbox.

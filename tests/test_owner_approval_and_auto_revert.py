@@ -12,65 +12,118 @@ from multiagent_protocol.skills.builtin.classifier_auto_revert import (
 from multiagent_protocol.skills.builtin.validator_owner_approval import (
     OwnerApprovalValidator,
 )
+from multiagent_protocol.types import CommitContext, LabelEvent, TrailerSet
 
-# -- Owner approval --
+OWNER = ("owner",)
+BOT = "my-bot[bot]"
+
+
+def _approval_event(label="decision:approved-A", actor="owner", at="2026-05-25T00:00:00Z"):
+    return LabelEvent(label=label, actor_login=actor, created_at=at)
+
+
+def _commit(sha="h" * 40, date="2026-05-25T00:00:00Z"):
+    return CommitContext(
+        sha=sha, subject="x", body="", author_login="a", committer_login="a",
+        parents=(), trailers=TrailerSet(), committed_at=date,
+    )
+
+
+# -- Owner approval: auto-approval path (A/B/C) --
 
 def test_owner_approval_passes_when_classifier_a(pr_factory):
-    pr = pr_factory()
-    v = OwnerApprovalValidator(classifier_verdict="A")
-    assert v.check(pr).passed
+    assert OwnerApprovalValidator(classifier_verdict="A").check(pr_factory()).passed
 
 
 def test_owner_approval_passes_when_classifier_b(pr_factory):
-    pr = pr_factory()
-    v = OwnerApprovalValidator(classifier_verdict="B")
-    assert v.check(pr).passed
+    assert OwnerApprovalValidator(classifier_verdict="B").check(pr_factory()).passed
 
 
 def test_owner_approval_passes_when_classifier_c(pr_factory):
-    pr = pr_factory()
-    v = OwnerApprovalValidator(classifier_verdict="C")
+    assert OwnerApprovalValidator(classifier_verdict="C").check(pr_factory()).passed
+
+
+# -- Owner approval: Quadrant-D label path (verified) --
+
+def test_owner_approval_passes_with_owner_applied_label(pr_factory):
+    pr = pr_factory(labels=("decision:approved-A",), label_events=(_approval_event(),))
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
     assert v.check(pr).passed
 
 
-def test_owner_approval_passes_when_label_approved_a(pr_factory):
-    pr = pr_factory(labels=("decision:approved-A",))
-    v = OwnerApprovalValidator(classifier_verdict="D")
+def test_owner_approval_passes_with_bot_applied_label(pr_factory):
+    pr = pr_factory(
+        labels=("decision:approved-B",),
+        label_events=(_approval_event("decision:approved-B", actor=BOT),),
+    )
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
     assert v.check(pr).passed
 
 
-def test_owner_approval_passes_when_label_approved_b(pr_factory):
-    pr = pr_factory(labels=("decision:approved-B",))
-    v = OwnerApprovalValidator(classifier_verdict="D")
+def test_owner_approval_rejects_self_applied_label(pr_factory):
+    # Exploit A: a non-allowlisted collaborator self-applies the approval label.
+    pr = pr_factory(
+        labels=("decision:approved-A",),
+        label_events=(_approval_event(actor="mallory"),),
+    )
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
+
+
+def test_owner_approval_rejects_stale_label_after_forcepush(pr_factory):
+    # Exploit B: approval applied at 00:00, then a force-push lands a head
+    # commit at 00:05 → the approval predates the current head → void.
+    pr = pr_factory(
+        labels=("decision:approved-A",),
+        head_sha="h" * 40,
+        commits=(_commit(date="2026-05-25T00:05:00Z"),),
+        label_events=(_approval_event(at="2026-05-25T00:00:00Z"),),
+    )
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
+
+
+def test_owner_approval_passes_when_approval_after_head(pr_factory):
+    # Approval applied at 00:05, head commit at 00:00 → fresh → valid.
+    pr = pr_factory(
+        labels=("decision:approved-A",),
+        head_sha="h" * 40,
+        commits=(_commit(date="2026-05-25T00:00:00Z"),),
+        label_events=(_approval_event(at="2026-05-25T00:05:00Z"),),
+    )
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
     assert v.check(pr).passed
 
 
-def test_owner_approval_passes_when_label_approved_c(pr_factory):
-    pr = pr_factory(labels=("decision:approved-C",))
-    v = OwnerApprovalValidator(classifier_verdict="D")
-    assert v.check(pr).passed
+def test_owner_approval_rejects_label_present_without_event(pr_factory):
+    # Label present but no timeline event for it → cannot verify applier → fail.
+    pr = pr_factory(labels=("decision:approved-A",), label_events=())
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
+
+
+def test_owner_approval_rejects_event_without_current_label(pr_factory):
+    # Event exists but the label was removed since (not currently present).
+    pr = pr_factory(labels=(), label_events=(_approval_event(),))
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
 
 
 def test_owner_approval_fails_quadrant_d_no_approval(pr_factory):
-    pr = pr_factory(labels=())
-    v = OwnerApprovalValidator(classifier_verdict="D")
-    r = v.check(pr)
+    r = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER).check(pr_factory(labels=()))
     assert not r.passed
     assert "C3" in r.failure_reason
-    assert "D" in r.failure_reason
 
 
 def test_owner_approval_fails_when_classifier_unknown_no_label(pr_factory):
-    pr = pr_factory(labels=())
-    v = OwnerApprovalValidator(classifier_verdict=None)
-    r = v.check(pr)
+    r = OwnerApprovalValidator(classifier_verdict=None, allowlisted_actors=OWNER).check(pr_factory(labels=()))
     assert not r.passed
     assert "unknown" in r.failure_reason
 
 
 def test_owner_approval_ignores_unrelated_labels(pr_factory):
     pr = pr_factory(labels=("ready-to-merge", "documentation"))
-    v = OwnerApprovalValidator(classifier_verdict="D")
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER)
     assert not v.check(pr).passed
 
 

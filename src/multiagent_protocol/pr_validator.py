@@ -101,6 +101,7 @@ def build_pr_context(api: GitHubAPI, pr_payload: dict) -> PRContext:
             committer_login=(c.get("committer") or {}).get("login"),
             parents=tuple(p["sha"] for p in c.get("parents", [])),
             trailers=parse_trailers(c["commit"]["message"]),
+            committed_at=((c.get("commit") or {}).get("committer") or {}).get("date"),
         )
         for c in commits_data
     )
