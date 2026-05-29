@@ -53,10 +53,14 @@ dmypy.json
 *~
 .DS_Store
 
-# Local config (NEVER commit a populated owner.yml — only the schema/example)
-config/owner.local.yml
-config/projects.local.yml
-config/env.local.yml
+# Personal config layer — PRIVATE. See docs/concepts/configuration-model.md.
+# Everything under top-level config/ is YOUR data (identity, repo list, agent
+# registry, custom skills) and must never enter this PUBLIC framework repo via
+# `git add .`. Only config/README.md is tracked. In your own PRIVATE deployment
+# fork you DO commit config/ — drop these two lines there, or `git add -f`.
+# (The examples/ tree holds placeholders only and is safe to commit.)
+/config/*
+!/config/README.md
 *.private-key.pem
 *.pem
 .env.local

@@ -45,12 +45,17 @@ The wizard generates four files:
 
 It also generates a **1-click GitHub App registration URL**. Save it; you will use it in Step 4.
 
-Click "Download config.zip" and unzip it into the root of your fork. Commit:
+Click "Download config.zip" and unzip it into the root of your fork.
+
+> ⚠️ **Keep your fork PRIVATE.** `config/` holds your identity and repo list —
+> personal data. It is git-ignored by default so it can never leak into the
+> public upstream; in your **private** governance fork you force-add it (`-f`).
+> See [`../concepts/configuration-model.md`](../concepts/configuration-model.md).
 
 ```bash
 cd <your-protocol-fork>
 unzip ~/Downloads/multiagent-protocol-config.zip
-git add config/
+git add -f config/          # -f: config/ is git-ignored by default
 git commit -m "config: initial owner + projects + env"
 git push
 ```

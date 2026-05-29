@@ -61,3 +61,24 @@ jobs:
       - name: Scan
         run: |
           python3 .github/scripts/scan_no_personal_data.py
+
+  no-config-in-public:
+    # Personal config (config/) must never be committed to a PUBLIC repo. In
+    # this framework's public upstream, config/ is git-ignored and only
+    # config/README.md is tracked. A PRIVATE deployment fork commits its own
+    # config/ and is exempt — this job is skipped when the repo is private.
+    # See docs/concepts/configuration-model.md.
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Refuse tracked personal config in a public repo
+        run: |
+          tracked="$(git ls-files config/ | grep -vx 'config/README.md' || true)"
+          if [ -n "$tracked" ]; then
+            echo "::error::Personal config must not be committed to a PUBLIC repo:"
+            printf '  %s\n' $tracked
+            echo "config/ is your PRIVATE layer — see docs/concepts/configuration-model.md"
+            exit 1
+          fi
+          echo "OK: config/ holds no tracked personal files in this public repo."

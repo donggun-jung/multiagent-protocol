@@ -44,7 +44,7 @@ Lane 2 + add:
 
 The following rules apply to every change, every session, every agent:
 
-1. **No hardcoded personal data.** Never commit a real GitHub login, email address, machine name, VPS hostname, IP, or SSH alias. Use placeholders (`<your-github-login>`, `${OWNER_LOGIN}`, `example.com`, `192.168.1.1`). The CI scan in `.github/scripts/scan_no_personal_data.py` enforces this.
+1. **No hardcoded personal data.** Never commit a real GitHub login, email address, machine name, VPS hostname, IP, or SSH alias. Use placeholders (`<your-github-login>`, `${OWNER_LOGIN}`, `example.com`, `192.168.1.1`). The CI scan in `.github/scripts/scan_no_personal_data.py` enforces this. Personal data belongs in the git-ignored `config/` layer (see [`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md)), never in tracked framework files.
 
 2. **No hallucinated APIs or files.** If you reference a function, file, or doc, it must exist. If you propose adding one, explicitly mark it `(to be added)` and either add it in the same PR or open a follow-up Issue.
 

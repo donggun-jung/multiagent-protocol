@@ -47,6 +47,15 @@ Identity is enforced through commit trailers, not API endpoints, so adding a new
 - **Not a replacement for branch protection on GitHub Pro.** If you can pay, GitHub's built-in protection is simpler. This is for people on the Free tier or with reasons to self-build.
 - **Not a multi-tenant SaaS.** Each owner runs their own copy. No accounts, no servers (the optional web wizard is a static site that runs in your browser).
 
+## Framework vs. your config
+
+This repo is the **framework** — shared, public, generic. Your **config**
+(identity, repo list, agent registry, custom skills) is a separate **private**
+data layer under `config/`. The product = framework + your config; there is no
+"public version" and "my version" of the *code*, only different config. The web
+wizard generates your config layer for you. See
+[`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md).
+
 ## Quick start (15 minutes)
 
 The fastest path is the **web wizard**:
@@ -76,6 +85,7 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 
 - [`docs/guide/quick-start.md`](docs/guide/quick-start.md) — 15-minute setup
 - [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — how the bot is organized
+- [`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md) — framework (public) vs. your config (private): one codebase, two data layers
 - [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — the autonomy classifier (when does the bot decide vs. ask you)
 - [`docs/concepts/five-tier-files.md`](docs/concepts/five-tier-files.md) — how to organize a repo for AI agents
 - [`docs/guide/skills.md`](docs/guide/skills.md) — writing your own validators
