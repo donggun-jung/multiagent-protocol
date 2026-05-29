@@ -83,11 +83,16 @@ class OwnerApprovalValidator:
         )
 
     def _head_commit_date(self, pr_context: PRContext) -> str | None:
+        """Date of the **head** commit, or None if it cannot be determined.
+
+        No fallback to other commits: if the head SHA is not among the PR's
+        commits, or carries no date, freshness is unverifiable and the caller
+        must fail **closed** (a ``max()`` of older commit dates would hand an
+        attacker a too-early baseline that a stale approval clears)."""
         for c in pr_context.commits:
-            if c.sha == pr_context.head_sha and c.committed_at:
-                return c.committed_at
-        dates = [c.committed_at for c in pr_context.commits if c.committed_at]
-        return max(dates) if dates else None
+            if c.sha == pr_context.head_sha:
+                return c.committed_at  # may be None → caller fails closed
+        return None
 
     def _has_verified_approval(self, pr_context: PRContext) -> bool:
         head_date = self._head_commit_date(pr_context)
@@ -100,8 +105,12 @@ class OwnerApprovalValidator:
             # Applied by an allowlisted owner or the bot — not self-applied.
             if not self._trusted_applier(event.actor_login):
                 continue
-            # Applied at/after the current head — a force-push voids it.
-            if head_date and event.created_at and event.created_at < head_date:
+            # Freshness must be *establishable*: without a head-commit date or
+            # an event timestamp we cannot prove the approval post-dates the
+            # head, so we fail closed (a force-push must void prior approval).
+            if not head_date or not event.created_at:
+                continue
+            if event.created_at < head_date:
                 continue
             return True
         return False

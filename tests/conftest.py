@@ -192,7 +192,11 @@ class FakeAPI:
             "user": {"login": author},
         }
         self._prs.setdefault((owner, repo), []).append(payload)
-        self._commits[number] = commits if commits is not None else [raw_commit()]
+        # Default commit IS the head commit (sha + date present) so C3's
+        # freshness check can resolve a head date; override via `commits`.
+        self._commits[number] = (
+            commits if commits is not None else [raw_commit(sha=head_sha)]
+        )
         self._files[number] = list(files)
         self._checks[head_sha] = list(checks) if checks is not None else [green_check()]
         # By default, each label was applied by an allowlisted actor (so C1's

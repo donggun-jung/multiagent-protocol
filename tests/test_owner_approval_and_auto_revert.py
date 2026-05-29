@@ -46,18 +46,49 @@ def test_owner_approval_passes_when_classifier_c(pr_factory):
 # -- Owner approval: Quadrant-D label path (verified) --
 
 def test_owner_approval_passes_with_owner_applied_label(pr_factory):
-    pr = pr_factory(labels=("decision:approved-A",), label_events=(_approval_event(),))
+    pr = pr_factory(
+        labels=("decision:approved-A",), commits=(_commit(),),
+        label_events=(_approval_event(),),
+    )
     v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
     assert v.check(pr).passed
 
 
 def test_owner_approval_passes_with_bot_applied_label(pr_factory):
     pr = pr_factory(
-        labels=("decision:approved-B",),
+        labels=("decision:approved-B",), commits=(_commit(),),
         label_events=(_approval_event("decision:approved-B", actor=BOT),),
     )
     v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
     assert v.check(pr).passed
+
+
+def test_owner_approval_fails_closed_when_head_date_unknown(pr_factory):
+    # Head commit carries no date → freshness unverifiable → fail closed.
+    head = CommitContext(sha="h" * 40, subject="x", body="", author_login="a",
+                         committer_login="a", parents=(), trailers=TrailerSet(),
+                         committed_at=None)
+    pr = pr_factory(labels=("decision:approved-A",), head_sha="h" * 40,
+                    commits=(head,), label_events=(_approval_event(),))
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
+
+
+def test_owner_approval_fails_closed_when_event_timestamp_empty(pr_factory):
+    # Approval event with empty created_at → fail closed (cannot prove fresh).
+    pr = pr_factory(labels=("decision:approved-A",), head_sha="h" * 40,
+                    commits=(_commit(),), label_events=(_approval_event(at=""),))
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
+
+
+def test_owner_approval_fails_closed_when_head_sha_absent_from_commits(pr_factory):
+    # Head SHA not among the PR's commits → no max() fallback → fail closed.
+    other = _commit(sha="z" * 40, date="2026-05-25T00:00:00Z")
+    pr = pr_factory(labels=("decision:approved-A",), head_sha="h" * 40,
+                    commits=(other,), label_events=(_approval_event(at="2026-05-25T09:00:00Z"),))
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
 
 
 def test_owner_approval_rejects_self_applied_label(pr_factory):

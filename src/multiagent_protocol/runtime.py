@@ -291,10 +291,14 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     # C3 — owner approval. Passes for Quadrant A/B/C (auto-approval), or for a
     # Quadrant-D PR whose ``decision:approved-*`` label was applied by the
     # owner/bot at or after the current head (see OwnerApprovalValidator).
+    # Prefer the App's *actual* slug (authoritative) over operator-typed config
+    # so a mistyped bot_app_slug cannot silently break the approve→merge flow.
+    auth = getattr(api, "auth", None)
+    app_slug = auth.app_slug() if auth is not None else None
     owner_approval = OwnerApprovalValidator(
         classifier_verdict=verdict.quadrant,
         allowlisted_actors=config.owner.allowlisted_actors,
-        bot_user=f"{config.env.bot_app_slug}[bot]",
+        bot_user=f"{app_slug or config.env.bot_app_slug}[bot]",
     )
     _apply_severity([owner_approval], runtime.severity_overrides)
     if not owner_approval.check(ctx).passed:

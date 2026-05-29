@@ -46,6 +46,8 @@ class AppAuth:
         self._session = session or requests.Session()
         # installation_id -> (token, expires_at_epoch)
         self._installation_tokens: dict[int, tuple[str, float]] = {}
+        self._app_slug_value: str | None = None
+        self._app_slug_fetched = False
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> AppAuth:
@@ -89,6 +91,36 @@ class AppAuth:
         )
         r.raise_for_status()
         return r.json()
+
+    def app_slug(self) -> str | None:
+        """Return this App's slug (for building the bot user login).
+
+        The merge gate verifies ``decision:approved-*`` labels against the
+        bot's OWN identity (``<slug>[bot]``) rather than operator-typed
+        ``config/env.yml`` ``bot_app_slug`` — so a mistyped slug cannot
+        silently break the approve→merge flow. Cached for the process; returns
+        None if the lookup fails (the caller then falls back to config).
+        """
+        if self._app_slug_fetched:
+            return self._app_slug_value
+        self._app_slug_fetched = True
+        try:
+            token = self.build_app_jwt()
+            r = self._session.get(
+                f"{GITHUB_API}/app",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                timeout=30,
+            )
+            r.raise_for_status()
+            self._app_slug_value = r.json().get("slug")
+        except Exception as e:
+            logger.warning("could not resolve App slug (using config fallback): %s", e)
+            self._app_slug_value = None
+        return self._app_slug_value
 
     def installation_token(self, installation_id: int, now: float | None = None) -> str:
         """Return a valid installation access token, refreshing if needed."""
