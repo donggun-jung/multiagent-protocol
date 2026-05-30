@@ -46,7 +46,7 @@
   <h2>무엇을 하나요</h2>
   <ul>
     <li><strong>L1 사전 머지 게이트</strong> — PR이 머지되기 전 5 조건</li>
-    <li><strong>L2 사후 재검증</strong> — 실제 실패 시 auto-revert, infra-only 실패는 무시 (Actions outage)</li>
+    <li><strong>L2 사후 재검증</strong> — main의 실제 회귀를 탐지해 revert 명령이 담긴 인시던트를 생성, infra-only 실패는 무시 (Actions outage)</li>
     <li><strong>L3 race-guard</strong> — 머지 직전 base 재확인</li>
     <li><strong>L4 identity gate</strong> — Agent-* commit trailer를 registry와 대조</li>
     <li><strong>L5 break-glass auditor</strong> — <code>[break-glass-*]</code> commit 감지 + 24시간 내 ADR 요구</li>

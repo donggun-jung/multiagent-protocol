@@ -1,4 +1,4 @@
 """multiagent-protocol — vendor-neutral branch protection for solo devs using multiple AI agents."""
 
-__version__ = "0.9.9"
+__version__ = "1.0.0"
 

@@ -8,10 +8,9 @@ the bot's own repo tracks the last commit each supervised repo has been
 processed up to. Re-processing the same commit on every tick would be O(N)
 on commit count; the watermark makes it O(delta).
 
-For now we only implement L5 break-glass detection. L2 (post-merge
-re-validation) is a follow-up since it requires re-running the L1
-validator set against a merged SHA, which needs the same machinery as
-pr_validator.
+Both run here: L5 break-glass detection and L2 post-merge re-validation
+(``revalidate_main`` below — detection + incident; automatic revert-PR
+creation is post-1.0, see ``STATUS.md``).
 """
 
 from __future__ import annotations
@@ -129,7 +128,7 @@ def _to_commit_context(raw: dict) -> CommitContext:
 # *infra* failure (cancelled / zero-duration) is left unsettled so the next
 # tick retries it; ``skipped`` is an intentional protocol skip and passes.
 #
-# This v0.2.0 implementation is **detection + incident**. Opening a revert PR
+# This implementation is **detection + incident**. Opening a revert PR
 # automatically (the architecture's eventual goal) is deferred for the same
 # reason auto-cascade is: it has the bot author commits in a supervised repo,
 # which is itself a Quadrant-D action that needs its own ADR + integration

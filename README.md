@@ -5,11 +5,11 @@
 > One human, many agents. Different sessions, different machines, different models — same `main` branch. This protocol stops them from stepping on each other, gates merges through a self-built check, and routes irreversible decisions back to you instead of letting agents decide.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: public-alpha](https://img.shields.io/badge/status-public--alpha-orange.svg)](MAINTAINERS.md)
+[![Status: v1.0](https://img.shields.io/badge/status-v1.0-brightgreen.svg)](STATUS.md)
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![한국어](https://img.shields.io/badge/lang-한국어-orange.svg)](README.ko.md)
 
-> **v0.9.9 — 1.0 release candidate.** The cron orchestrator is **live**: a fork evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). This is the candidate going out for external review; after review fixes it ships as 1.0. A few items are explicit **1.0 scope decisions** for reviewers (automatic revert-PR creation, the 60-day L4 burn-in, a Korean mirror of the concept docs) — see [`STATUS.md`](STATUS.md) and [`docs/REVIEW_GUIDE.md`](docs/REVIEW_GUIDE.md).
+> **v1.0.0.** The cron orchestrator is **live**: a fork evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). Hardened through multiple rounds of independent external review (including a Quadrant-D approval bypass found and closed). A few capabilities are intentionally **post-1.0** — automatic revert-PR creation, the automatic 60-day L4 burn-in (promote manually via `severity_overrides` today), and a Korean mirror of the concept docs — see [`STATUS.md`](STATUS.md).
 
 ---
 
@@ -75,8 +75,8 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 
 ## Status
 
-- **v0.9.9** (current): **1.0 release candidate.** L1–L5 enforced end-to-end, Decision Inbox open + poll/resolve, distribution pipeline (PyPI/Docker/Action) scaffolded, 152 tests. Out for external review — see [`docs/REVIEW_GUIDE.md`](docs/REVIEW_GUIDE.md).
-- **v1.0.0** (next): apply external-review fixes, ship the PyPI/Docker/Action publish, and rule on the deferred 1.0 scope items (see [`STATUS.md`](STATUS.md)).
+- **v1.0.0** (current): first stable release. L1–L5 enforced end-to-end, Decision Inbox open + poll/resolve, distribution pipeline (Docker/Action live, PyPI on tag), 167 tests. Hardened through multiple rounds of independent external review.
+- **Post-1.0**: automatic revert-PR creation, automatic 60-day L4 burn-in, Korean mirror of the concept docs, multi-account installations (see [`STATUS.md`](STATUS.md)).
 - **Maintenance**: best-effort, no SLA. See [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## Documentation

@@ -36,12 +36,13 @@ The wizard asks for:
 3. **Runner tier**: pick "T1 — GitHub Actions Free" for the quick start.
 4. **Skills to enable**: leave the defaults.
 
-The wizard generates four files:
+The wizard generates five files:
 
 - `config/owner.yml`
 - `config/projects.yml`
 - `config/env.yml`
 - `config/skills.yml`
+- `config/agent_registry.yml` — the tools/models the L4 identity gate trusts
 
 It also generates a **1-click GitHub App registration URL**. Save it; you will use it in Step 4.
 

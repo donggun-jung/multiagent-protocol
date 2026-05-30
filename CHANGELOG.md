@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-05-30
+
+First **stable** release, after multiple rounds of independent external review
+(Claude Opus, GPT-5-Codex). Resolves the review's P0/P1 findings.
+
+### Fixed (external-review P0/P1)
+- **check-runs parser:** `github_api.check_runs` returned the
+  `{total_count, check_runs}` envelope's KEYS instead of the check-run objects
+  (the test fake served lists, hiding it) — this broke L1.C2 + L2 against live
+  GitHub. Now extracts the array; + `test_github_api.py` (envelope, pagination,
+  label_events, AppAuth.app_slug — previously 0 coverage).
+- **`/approve C` now DEFERS** (doctrine: needs-more-info), not merge: labels
+  `decision:deferred`, leaves the inbox issue open.
+- **`decision_inbox.repository`** is honoured at runtime (was always governance_repo).
+- **severity_overrides** can no longer downgrade a core L1 validator (C1–C5,
+  publisher) below blocking; **skills.enabled** is now an allowlist for user
+  skills (was parsed-but-dead).
+- **L2 no-checks** respects `allow_no_ci` (was silently "passed"); a deployment
+  fork with config/ but no secrets now exits **non-zero** (was a green no-op
+  hiding a non-running gate).
+- **GitHub Pages** renders (build source → Actions; landing links → `.html`).
+- **`decision:auto-revert`** label is provenance-checked (owner/bot, at/after
+  head) via the shared `label_provenance` helper that also backs C3.
+
+### Changed
+- Version → 1.0.0; packaging status → Production/Stable. `action.yml` usage now
+  shows the required `actions/checkout`. Docs swept for stale version labels and
+  L2/L4 over-claims.
+
+167 tests, ruff clean, personal-data scan clean.
+
 ## [0.9.9] - 2026-05-30
 
 **1.0 release candidate.** Out for external review; after review fixes it ships as 1.0.
@@ -137,6 +168,7 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
+[1.0.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.0.0
 [0.9.9]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.2.0...v0.9.9
 [0.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.0.2-alpha...v0.2.0
 [0.0.2]: https://github.com/donggun-jung/multiagent-protocol/releases/tag/v0.0.2-alpha

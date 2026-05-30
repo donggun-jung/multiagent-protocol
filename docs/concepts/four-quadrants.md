@@ -103,14 +103,14 @@ When IR and CR are not cleanly determined:
 1. **Empty PR (no file changes)** → Quadrant D. An empty PR with `ready-to-merge` is suspicious enough to wake the owner.
 2. **Multi-quadrant PR** (e.g., one file fits A, another fits D) → take the **highest-quadrant** (D > B > C > A). One critical file taints the whole PR.
 3. **Bot's own repo PRs** → Quadrant D regardless of contents (bot does not self-merge; see [`break-glass.md`](break-glass.md)).
-4. **Auto-revert PRs** (opened by L2 after detecting post-merge failure) → Quadrant C with label `decision:auto-revert`. These need to land fast.
+4. **Auto-revert PRs** carrying a *verified* `decision:auto-revert` label (owner- or bot-applied at/after head — see `classifier_auto_revert`) → Quadrant C, so recovery lands fast. Because the engine takes the **maximum** quadrant, this cannot lower a genuinely Quadrant-D revert; and an unverified (self-applied / stale) label is ignored. Automatic, bot-authored revert PRs are post-1.0 (see [`STATUS.md`](../../STATUS.md)); until then the owner applies this label to a revert they opened.
 
 ## L4 burn-in: 60-day advisory window
 
-When a new agent vendor or model is added to `agent_registry.yml`, the L4 identity gate is **advisory** (warns but does not block) for the first 60 days. During burn-in:
+When a new agent vendor or model is added to `agent_registry.yml`, the L4 identity gate is **advisory** (warns but does not block). The **automatic** 60-day promotion described below is *planned* (post-1.0; see [`STATUS.md`](../../STATUS.md)); in v1.0 the gate ships advisory (`validator_agent_registry`, severity P2) and you promote it to hard-block manually with `config/skills.yml` `severity_overrides: {validator_agent_registry: P0}`. The intended automatic burn-in:
 
 - The bot records the new identity in `tick_metrics.l4_burn_in[agent_id]`.
-- If the agent never produces a Quadrant-D PR rejection in 60 days, the identity is **promoted** to hard-block status (mismatched trailers fail L1.C5).
+- If the agent never produces a Quadrant-D PR rejection in 60 days, the identity is **promoted** to hard-block status (an unregistered tool/model then fails the L4 registry check — distinct from C5, which checks trailer *format*).
 - If the agent does produce rejections, the burn-in clock resets.
 
 This avoids the "every new agent vendor breaks every PR" problem when adding `Aider 0.x` or `Codex 2.0` to a fleet that has been using `Claude Code` for months.

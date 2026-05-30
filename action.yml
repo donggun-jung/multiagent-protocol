@@ -16,12 +16,13 @@ inputs:
 
 # Usage (in your governance repo's cron workflow):
 #
-#   - uses: donggun-jung/multiagent-protocol@v0.9.9
+#   - uses: actions/checkout@v4          # REQUIRED — the tick reads config/
+#                                        # (and optionally schemas/) from the
+#                                        # caller's checkout
+#   - uses: donggun-jung/multiagent-protocol@v1.0.0
 #     env:
 #       MERGE_GATE_APP_ID: ${{ secrets.MERGE_GATE_APP_ID }}
 #       MERGE_GATE_PRIVATE_KEY: ${{ secrets.MERGE_GATE_PRIVATE_KEY }}
-#
-# The tick reads config/ (and optionally schemas/) from the caller's checkout.
 runs:
   using: "composite"
   steps:

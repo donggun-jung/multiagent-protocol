@@ -6,7 +6,7 @@ title: Multi-repo cascade setup
 
 This guide assumes you have completed [`quick-start.md`](quick-start.md) for a single supervised repo and now want to add a second, third, or more. The protocol scales by **mirror cascade** — the governance repo holds canonical doctrine, and every supervised repo mirrors a small set of byte-identical files.
 
-> **Status (v0.0.2):** the cron orchestrator that runs L1 across multiple repos in a single tick is a skeleton; see [`STATUS.md`](../../STATUS.md). The doctrine and drift-detection logic in this guide work today, but the full loop (`for installation: for pr in list_open_prs: ...`) lands in v0.2.0. You can still install on multiple repos now — the manifest cascade and drift Issue path work — but the bot will not yet comment on PRs in any of them.
+> **v1.0.0:** the cron orchestrator runs L1–L5 across all your supervised repos in a single tick (`for installation: for pr in list_open_prs: ...`) — install the App on each repo and they are all gated. Mirror cascade + drift are **detection-only** (the bot opens a drift Issue; auto-cascade PRs are post-1.0). See [`STATUS.md`](../../STATUS.md).
 
 ## Prerequisites
 
@@ -105,7 +105,7 @@ When you change a canonical file in your governance fork, every supervised repo 
 
 If you want to automate cascade PRs anyway:
 
-1. Wait for v0.2.0 + an explicit ADR in `docs/decisions/` that authorizes the bot to open critical-path PRs in adopters. The ADR will define an opt-in `drift_check:` block in `config/projects.yml`; the schema does not yet contain it.
+1. Wait for a future release + an explicit ADR in `docs/decisions/` that authorizes the bot to open critical-path PRs in adopters. The ADR will define an opt-in `drift_check:` block in `config/projects.yml`; the schema does not yet contain it.
 2. Or hand-roll a workflow in your governance fork that, on push to `main`, opens a PR in each adopter with the canonical files copied over. This is operator-specific and we do not ship a default template — the right design depends on whether your adopters share a common owner, who reviews cascade PRs, etc.
 
 ## Sizing notes

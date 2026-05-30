@@ -63,9 +63,9 @@ Even with a perfect bot, the operator must hold up their end:
 
 ## Supported versions
 
-| Version | Supported              |
-|---------|------------------------|
-| 0.x     | Yes — current, public-alpha (active development) |
-| pre-0.0.2 | No                   |
+| Version | Supported     |
+|---------|---------------|
+| 1.0.x   | Yes — current |
+| < 1.0   | No            |
 
-There is no `1.x` line yet. We will declare a `1.0.0` release once the cron orchestrator and L2/L4 enforcers are complete (target: v0.2.0) and one external operator has run for 30 days. Until then, all releases are alpha and may break API/schema/CLI compatibility between minor versions.
+`1.0.0` is the first stable release: the cron orchestrator and the L1–L5 enforcers ship working, after multiple rounds of independent external review. We aim to keep API/schema/CLI compatibility within the `1.x` line.

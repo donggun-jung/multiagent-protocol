@@ -8,7 +8,7 @@ GitHub Actions Free gives **2,000 minutes/month** on private repos. The bot-cron
 
 This guide explains how to move the cron tick onto your own always-on machine. After this, the per-tick Actions minutes consumed by your bot is **zero**.
 
-> **Status (v0.0.2):** the workflow side of this (the `runs-on:` selector) is straightforward and works today. The bot's behaviour does not change between Actions-Free and self-hosted; only the runner host changes.
+> The bot's behaviour does not change between Actions-Free and self-hosted; only the runner host (the `runs-on:` selector) changes.
 
 ## Prerequisites
 

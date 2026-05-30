@@ -5,15 +5,14 @@ Updated 2026-05-30. Authoritative when the README banner cites it.
 This file is the single source of "what does `multiagent-protocol` actually do,
 today, when an external operator forks and installs it?". The README and
 concept docs describe the **target** design; this file describes the
-**shipping** behaviour. As of **v0.9.9** (the 1.0 release candidate) the cron
-orchestrator is live: a fork evaluates PRs, merges the auto-approvable
-quadrants, routes Quadrant D to the owner, and audits `main`. This RC is out
-for external review; see the "1.0 scope decisions" section below for the items
-reviewers are asked to rule on.
+**shipping** behaviour. As of **v1.0.0** the cron orchestrator is live: a fork
+evaluates PRs, merges the auto-approvable quadrants, routes Quadrant D to the
+owner, and audits `main`. The "1.0 scope decisions" section below records what
+is intentionally left for a later release.
 
 ## Implementation matrix
 
-| Feature                                            | Doctrine        | v0.0.2 | v0.9.9 (RC, current) |
+| Feature                                            | Doctrine        | v0.0.2 | v1.0.0 (current) |
 |----------------------------------------------------|-----------------|--------|----------------------|
 | 4-quadrant classifier (path heuristic, max-vote)   | implemented     | ✅      | ✅                |
 | 4-module bot package layout                        | implemented     | ✅      | ✅                |
@@ -60,13 +59,13 @@ reviewers are asked to rule on.
 Legend: ✅ shipped · 🚧 partial · ❌ not yet. *planned* means we intend to ship
 it on the version listed.
 
-Test coverage: **140 pytest cases** (was 110 at v0.0.2) — orchestrator
+Test coverage: **167 pytest cases** (was 110 at v0.0.2) — orchestrator
 decisions, L2 re-validation, L4 registry, Decision-Inbox resolution, runtime
 toggles, and the no-secrets no-op are now under test.
 
-## What it means to fork this today (v0.2.0)
+## What it means to fork this today (v1.0.0)
 
-If you fork at v0.2.0 and follow the [Quick start](docs/guide/quick-start.md),
+If you fork at v1.0.0 and follow the [Quick start](docs/guide/quick-start.md),
 you get a **working gate**:
 
 - The cron tick lists open PRs, classifies each, evaluates L1 (label by an

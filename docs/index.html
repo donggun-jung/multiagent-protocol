@@ -46,7 +46,7 @@
   <h2>What it does</h2>
   <ul>
     <li><strong>L1 pre-merge gate</strong> — 5 conditions a PR must satisfy before merge.</li>
-    <li><strong>L2 post-merge re-validation</strong> — auto-revert on real failures, ignore infra-only failures (Actions outages).</li>
+    <li><strong>L2 post-merge re-validation</strong> — detect real regressions on <code>main</code> and file an incident with the revert command; ignore infra-only failures (Actions outages).</li>
     <li><strong>L3 race-guard</strong> — re-check the base just before merging.</li>
     <li><strong>L4 identity gate</strong> — validate Agent-* commit trailers against your registry.</li>
     <li><strong>L5 break-glass auditor</strong> — surface `[break-glass-*]` commits + demand ADR within 24h.</li>
