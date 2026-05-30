@@ -166,7 +166,7 @@ Add the `ready-to-merge` label via the GitHub UI. Wait another ~5 minutes. The b
 
 ### The wizard says my browser cannot generate the App Manifest URL
 
-- The wizard is JavaScript-only and runs in your browser. If the URL generation fails, copy the manifest JSON shown in the wizard's "Manual fallback" section and paste it into `https://github.com/settings/apps/new` manually.
+- The wizard is JavaScript-only and runs in your browser. If the pop-up is blocked or the URL is too long, expand the wizard's **Manual fallback** section under Step 7: it shows the full registration URL (copy it into your address bar) plus the raw manifest JSON for registering the App by hand at `https://github.com/settings/apps/new`.
 
 ## Frequently asked questions
 

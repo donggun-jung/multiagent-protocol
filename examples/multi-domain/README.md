@@ -2,7 +2,7 @@
 
 An operator running 5 supervised repos at a scale where GitHub Actions Free minutes run out mid-month and the `agent_registry.yml` `["*"]` wildcards in earlier examples are no longer the right tradeoff. Switches to `runner_tier: self-hosted` and lists model identifiers explicitly.
 
-> **About the example's "multi-domain" name.** The repo names here (`finance-app`, `marketing-site`, …) are conventional product names, not formally separated domains with per-domain rules. The differentiator from the `small-team/` example is **count + runner tier + agent-registry strictness**, not per-domain classifier rules. Per-domain rule files at the config level are a planned v0.2.0 feature; today, per-domain rules are written as custom Validator skills under `config/skills/validators/` (see [`docs/guide/skills.md`](../../docs/guide/skills.md)).
+> **About the example's "multi-domain" name.** The repo names here (`finance-app`, `marketing-site`, …) are conventional product names, not formally separated domains with per-domain rules. The differentiator from the `small-team/` example is **count + runner tier + agent-registry strictness**, not per-domain classifier rules. Per-domain rule files at the config level are a planned post-1.0 feature; today, per-domain rules are written as custom Validator skills under `config/skills/validators/` (see [`docs/guide/skills.md`](../../docs/guide/skills.md)).
 
 ## What's different from `small-team`
 

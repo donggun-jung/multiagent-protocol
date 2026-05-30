@@ -16,4 +16,4 @@ The simplest setup: one person, one repo they want supervised. The bot runs on G
 3. Replace `your-github-login/some-repo` with your supervised repo's path.
 4. Push to `main`, install the GitHub App, set Actions secrets, enable the cron workflow.
 
-See `docs/guide/quick-start.md` for the full walkthrough.
+See `docs/guide/quick-start.md` for the full walkthrough, and [`../README.md`](../README.md) for the decision tree comparing all three examples.

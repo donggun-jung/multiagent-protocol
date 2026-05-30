@@ -1,4 +1,8 @@
-# Reviewer guide — multiagent-protocol v0.9.9 (1.0 release candidate)
+# Reviewer guide — multiagent-protocol
+
+> **Status:** this guide drove the pre-1.0 external review. That review is
+> complete and its P0/P1 findings shipped as **v1.0.0**; the guide is kept as
+> the historical record of what reviewers were asked to assess.
 
 Thank you for reviewing. This is the entry point: it tells you what to assess,
 in what order, and which open questions need your judgement. Target time: a
@@ -22,8 +26,8 @@ This is a **greenfield public re-creation** of a private predecessor. The
 personal data (one owner's identity, VPS, repo list) is gone by design; the
 doctrine and the security lessons survived. Since v0.2.0 the cron orchestrator
 went from a skeleton to **live** — a fork now actually evaluates and merges PRs.
-v0.9.9 adds the distribution pipeline (PyPI/Docker/Action) and is the candidate
-for 1.0.
+The v0.9.9 release candidate added the distribution pipeline (PyPI/Docker/Action);
+after the review's fixes it shipped as v1.0.0.
 
 ## Suggested read order
 

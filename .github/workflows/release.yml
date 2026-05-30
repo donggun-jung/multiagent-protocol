@@ -1,9 +1,9 @@
 name: release
 
 # Fires when a version tag is pushed. The Docker image publishes for every
-# v* tag (including the v0.9.9 release candidate). PyPI publishing is gated to
-# v1.0.0+ so the RC does not attempt a publish before the PyPI trusted
-# publisher is configured.
+# v* tag. PyPI publishing is gated to v1.0.0+ (any pre-1.0 v0.x tag is skipped)
+# so a tag cannot attempt a publish before the PyPI trusted publisher is
+# configured.
 on:
   push:
     tags: ["v*"]
@@ -14,7 +14,7 @@ permissions:
 jobs:
   pypi:
     name: Publish to PyPI (trusted publishing)
-    # Skip for v0.x (the RC); publish for v1.0.0 and later.
+    # Skip any pre-1.0 v0.x tag; publish for v1.0.0 and later.
     if: ${{ !startsWith(github.ref_name, 'v0.') }}
     runs-on: ubuntu-latest
     permissions:

@@ -21,6 +21,7 @@ models:
   github-actions: ["n/a"]
 
 # Recognized machine handles. Machines NOT listed still pass the gate, but
-# go into L4 burn-in (advisory for 60 days, then promoted to hard-block
-# unless the machine has produced a Quadrant D rejection during burn-in).
+# go into L4 burn-in: advisory only (P2). Promotion to a hard block is manual
+# today (set it via skills.severity_overrides); the automatic 60-day burn-in
+# is a post-1.0 feature.
 machines: []

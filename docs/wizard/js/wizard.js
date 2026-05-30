@@ -298,9 +298,9 @@ function crc32(data, table) {
 // GitHub App manifest URL builder
 // -----------------------------------------------------------------------------
 
-function buildManifestUrl(state) {
+function buildManifest(state) {
   const name = state.botAppSlug || "merge-gate-bot";
-  const manifest = {
+  return {
     name: name,
     url: `https://github.com/${state.governanceRepo}`,
     hook_attributes: {
@@ -320,8 +320,11 @@ function buildManifestUrl(state) {
     },
     default_events: [],
   };
-  const json = JSON.stringify(manifest);
+}
+
+function buildManifestUrl(state) {
   // GitHub expects the manifest in a `manifest` query param, URL-encoded.
+  const json = JSON.stringify(buildManifest(state));
   return `https://github.com/settings/apps/new?manifest=${encodeURIComponent(json)}`;
 }
 
@@ -394,6 +397,12 @@ document.getElementById("generate").addEventListener("click", () => {
 
   output.classList.remove("hidden");
   document.getElementById("open-manifest").disabled = false;
+
+  // Manual fallback: expose the registration URL + raw manifest JSON so the
+  // user is not stuck if the pop-up is blocked or the URL is too long.
+  document.getElementById("manifest-url").value = buildManifestUrl(state);
+  document.getElementById("manifest-json").value = JSON.stringify(buildManifest(state), null, 2);
+  document.getElementById("manifest-fallback").classList.remove("hidden");
 });
 
 document.getElementById("download-zip").addEventListener("click", () => {

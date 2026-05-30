@@ -39,14 +39,13 @@ The bot will pick up the new installation on the next tick.
 
 ## Step 3 — Decide which files cascade
 
-The set of files that must be **byte-identical** across every supervised repo is `governance/schemas/mirror_paths.json` `canonical_paths`. Defaults are conservative:
+The set of files that must be **byte-identical** across every supervised repo is `canonical_paths` in `schemas/mirror_paths.json` (in your governance repo). Defaults are conservative — point them at files that actually exist in your governance fork, since the seed loop in Step 4 copies each one:
 
 ```json
 {
   "canonical_paths": [
-    ".github/workflows/protocol_check.yml",
     "schemas/agent_registry.schema.json",
-    "schemas/classifier_rules.schema.json"
+    "schemas/skills.schema.json"
   ]
 }
 ```
@@ -60,13 +59,13 @@ If you want laxer — one adopter is allowed to diverge on a specific file — a
   "canonical_paths": [...],
   "exceptions": {
     "repo-b": [
-      "schemas/classifier_rules.schema.json"
+      "schemas/skills.schema.json"
     ]
   }
 }
 ```
 
-`repo-b` may now diverge on `classifier_rules.schema.json`; every other adopter must still match.
+`repo-b` may now diverge on `schemas/skills.schema.json`; every other adopter must still match.
 
 ## Step 4 — Initial seed
 
@@ -78,10 +77,10 @@ cd <your-fork>/repo-b
 git checkout -b setup/mirror-canonical-files
 
 # Copy the canonical files from your governance fork.
-# (Replace ~/repos/multiagent-protocol with your governance fork's path.)
-for p in $(jq -r '.canonical_paths[]' ~/repos/multiagent-protocol/schemas/mirror_paths.json); do
+# (Replace $HOME/repos/multiagent-protocol with your governance fork's path.)
+for p in $(jq -r '.canonical_paths[]' "$HOME/repos/multiagent-protocol/schemas/mirror_paths.json"); do
   mkdir -p "$(dirname "$p")"
-  cp "~/repos/multiagent-protocol/$p" "$p"
+  cp "$HOME/repos/multiagent-protocol/$p" "$p"
 done
 
 git add .

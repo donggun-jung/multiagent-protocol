@@ -5,8 +5,11 @@
 > 사람 1명, 에이전트 여럿. 서로 다른 세션, 서로 다른 머신, 서로 다른 모델 — 같은 `main`. 이 프로토콜은 그들이 서로를 밟지 않도록 막고, merge를 self-built check로 게이트하며, **돌이킬 수 없는 결정은 에이전트가 아니라 사람에게 라우팅합니다.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: active](https://img.shields.io/badge/status-active-green.svg)](MAINTAINERS.md)
+[![Status: v1.0](https://img.shields.io/badge/status-v1.0-brightgreen.svg)](STATUS.md)
+[![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
+
+> **v1.0.0.** Cron 오케스트레이터가 **가동 중**입니다: fork가 열린 PR을 평가하고, auto-approve 가능한 quadrant(A/B/C)를 머지하며, 비가역+critical 변경(D)은 Decision Inbox로 라우팅하고, `main`을 감사(L2+L5)합니다. 여러 차례 독립 외부 리뷰로 hardening했습니다(Quadrant D 승인 우회 1건 발견·차단 포함). 일부 기능은 의도적으로 **post-1.0**입니다 — 자동 revert-PR 생성, 자동 60일 L4 burn-in(현재는 `severity_overrides`로 수동 승격), concept 문서 한국어 미러 — [`STATUS.md`](STATUS.md) 참고.
 
 ---
 
@@ -22,7 +25,7 @@
 `multiagent-protocol`은 **GitHub Free 위에서 동작하는, vendor-neutral, portable한 self-built branch protection**입니다. 다음을 강제합니다:
 
 - **L1 사전 머지 게이트**: PR이 머지되기 전에 5 조건 (`ready-to-merge` 라벨, CI green, owner 승인 또는 classifier auto-approve, base up-to-date, identity trailer)
-- **L2 사후 재검증**: 머지된 commit에서 같은 체크 재실행; 실패 시 auto-revert (단, infra-only 실패는 제외)
+- **L2 사후 재검증**: 머지된 commit에서 같은 체크 재실행; 실패(인프라성 실패 제외)는 `git revert` 명령을 담은 incident Issue로 보고 — 자동 revert-PR 생성은 post-1.0
 - **L3 race-guard**: PR base를 머지 직전에 `origin/main` HEAD와 재비교; drift 시 auto-rebase + 재CI
 - **L4 identity gate**: 모든 commit의 `Agent-Tool`, `Agent-Model`, `Agent-Session`, `Agent-Machine`, `Task-Ref` trailer를 등록한 registry와 대조
 - **L5 break-glass auditor**: `[break-glass-*]` 접두 commit을 `main`에서 스캔하고 24시간 내 ADR 요구
@@ -44,6 +47,10 @@ identity는 commit trailer로 강제되지 (API endpoint X), 새 에이전트 ve
 - **GitHub Pro branch protection 대체 X**: 결제 가능하면 GitHub 내장 protection이 더 간단. 이건 Free tier 또는 self-build 이유 있는 사용자용.
 - **Multi-tenant SaaS X**: 각 사용자가 본인 copy 운영. 계정/서버 없음 (optional web wizard는 브라우저에서 도는 정적 사이트).
 
+## Framework vs. 내 config
+
+이 repo는 **framework** (공유·공개·generic)입니다. 내 **config** (identity, repo 목록, agent registry, custom skill)는 `config/` 아래 별도의 **private** 데이터 레이어입니다. 제품 = framework + 내 config; *코드*의 "공개 버전"과 "내 버전"이 따로 있는 게 아니라 config만 다릅니다. Web wizard가 이 config 레이어를 생성해 줍니다. [`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md) (영문) 참고.
+
 ## Quick start (15분)
 
 가장 빠른 길은 **web wizard**:
@@ -59,19 +66,19 @@ identity는 commit trailer로 강제되지 (API endpoint X), 새 에이전트 ve
 
 봇은 **4 모듈** (의도적으로 5-layer 아님 — layer는 1-to-1로 매핑되지만 `pr_validator.py`가 L1+L3+L4 통합, `branch_supervisor.py`가 L2+L5 통합). 상태는 GitHub에 (PR 객체, Decision Inbox용 Issue, repo 파일의 canonical doctrine). 봇 자신은 cron tick 간 stateless. 사용자가 결정해야 할 것(Quadrant D: 비가역 + critical)은 `decision:pending-owner` 라벨 Issue로 도착; 나머지(A/B/C)는 classifier가 auto-approve.
 
-전체 설계: [`docs/ko/concepts/architecture.md`](docs/ko/concepts/architecture.md).
+전체 설계: [`docs/concepts/architecture.md`](docs/concepts/architecture.md) (영문).
 
 ## 상태
 
-- **v0.x**: 활성 개발 중.
-- **v1.0.0**: 첫 공개 release (목표: docs + web wizard + example repos 완성 시).
+- **v1.0.0 (현재)**: 첫 stable release. L1–L5 end-to-end 강제, Decision Inbox open + poll/resolve, 배포 파이프라인(Docker/Action 가동, tag 시 PyPI), 167 테스트. 여러 차례 독립 외부 리뷰로 hardening.
+- **Post-1.0**: 자동 revert-PR 생성, 자동 60일 L4 burn-in, concept 문서 한국어 미러, multi-account 설치 ([`STATUS.md`](STATUS.md) 참고).
 - **Maintenance**: best-effort, SLA 없음. [`MAINTAINERS.md`](MAINTAINERS.md) 참고.
 
 ## 문서
 
 - [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) — 15분 셋업 (한국어 ✓)
 
-다음 문서들은 v0.0.2 시점에 **영어 only**이며 v0.2.0에서 한국어 미러가 추가될 예정입니다:
+다음 concept/guide 문서들은 현재 **영어 only**이며 한국어 미러는 **post-1.0** 로드맵입니다:
 
 - [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — 봇 4-module 구조
 - [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — 자율성 classifier

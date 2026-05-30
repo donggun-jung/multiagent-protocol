@@ -51,6 +51,10 @@ const LOCALES = {
     "step7.help": "After applying the config files, click below to register the GitHub App with the right permissions pre-filled. GitHub will open in a new tab.",
     "step7.open": "Open GitHub App registration",
     "step7.note": "This button activates after you generate config files (Step 6). The manifest is built from your inputs.",
+    "step7.fallback_summary": "Manual fallback (button blocked or URL too long)",
+    "step7.fallback_help": "If the button is blocked by a pop-up blocker or your browser rejects the long URL, copy this registration URL into your address bar:",
+    "step7.fallback_json": "Or register the App by hand at",
+    "step7.fallback_json2": "— set the permissions from this manifest:",
 
     "footer.privacy": "No data leaves your browser. The wizard does not call GitHub or any server — all generation is JavaScript running locally."
   },
@@ -104,6 +108,10 @@ const LOCALES = {
     "step7.help": "Config 파일 적용 후, 아래 버튼으로 권한이 미리 채워진 GitHub App 등록 페이지로 이동. GitHub이 새 탭에서 열립니다.",
     "step7.open": "GitHub App 등록 열기",
     "step7.note": "Step 6에서 config 파일을 생성하면 이 버튼이 활성화됩니다. Manifest는 입력값으로부터 빌드됩니다.",
+    "step7.fallback_summary": "수동 대체 (버튼이 막히거나 URL이 너무 길 때)",
+    "step7.fallback_help": "팝업 차단으로 버튼이 막히거나 브라우저가 긴 URL을 거부하면, 아래 등록 URL을 주소창에 복사해 붙여넣으세요:",
+    "step7.fallback_json": "또는 다음에서 App을 직접 등록하세요:",
+    "step7.fallback_json2": "— 이 manifest의 권한을 그대로 설정하세요:",
 
     "footer.privacy": "데이터는 브라우저를 벗어나지 않습니다. Wizard는 GitHub이나 어떤 서버도 호출하지 않습니다 — 모든 생성은 로컬에서 JavaScript로 실행."
   }

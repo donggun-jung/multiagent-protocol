@@ -36,12 +36,13 @@ Wizard가 물어보는 것:
 3. **Runner tier**: quick start는 "T1 — GitHub Actions Free" 선택
 4. **활성화할 skill**: 기본값 그대로 유지
 
-Wizard가 4 파일 생성:
+Wizard가 5 파일 생성:
 
 - `config/owner.yml`
 - `config/projects.yml`
 - `config/env.yml`
 - `config/skills.yml`
+- `config/agent_registry.yml`
 
 추가로 **1-click GitHub App 등록 URL** 생성. 저장해 두기 (Step 4에서 사용).
 
@@ -50,8 +51,8 @@ Wizard가 4 파일 생성:
 ```bash
 cd <your-protocol-fork>
 unzip ~/Downloads/multiagent-protocol-config.zip
-git add config/
-git commit -m "config: initial owner + projects + env"
+git add -f config/   # config/ 는 .gitignore 대상이므로 -f 로 강제 스테이징
+git commit -m "config: initial owner + projects + env + skills + agent_registry"
 git push
 ```
 
@@ -163,7 +164,7 @@ GitHub UI로 `ready-to-merge` 라벨 추가. 다시 ~5분 대기. 봇이 재평�
 
 ### Wizard "브라우저가 App Manifest URL 생성 못함"
 
-- Wizard는 JS-only로 브라우저에서 실행. URL 생성 실패 시 wizard의 "Manual fallback" 섹션에 표시된 manifest JSON 복사해서 `https://github.com/settings/apps/new`에 수동 붙여넣기.
+- Wizard는 JS-only로 브라우저에서 실행. 팝업 차단이나 URL이 너무 길어 안 열리면, Step 7의 **Manual fallback (수동 대체)** 섹션을 펼치세요: 등록 URL 전체(주소창에 복사)와, `https://github.com/settings/apps/new`에서 App을 직접 등록할 때 쓸 manifest JSON이 표시됩니다.
 
 ## 자주 묻는 질문
 

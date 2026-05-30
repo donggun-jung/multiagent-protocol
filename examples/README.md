@@ -21,7 +21,7 @@ If unsure, **start with `solo-developer/`**. You can graduate to `small-team/` o
 | `env.runner_tier`                 | `actions-free`   | `actions-free`   | `self-hosted`                                      |
 | `bot_repo` distinct from `governance_repo` | no       | no               | yes (bot lives in a dedicated repo)                |
 | `decision_inbox.repository` override | no (defaults to governance) | no | optional — see the example for the rationale       |
-| `agent_registry.yml` tools        | 5 (claude-code, codex, cursor, gemini-cli, aider, plus manual + github-actions) | 5 (same as solo) | 3 (claude-code, codex, cursor only — locked-down)  |
+| `agent_registry.yml` tools        | 7 (5 agents: claude-code, codex, cursor, gemini-cli, aider; + manual + github-actions) | 7 (same as solo) | 5 (3 agents: claude-code, codex, cursor — locked-down; + manual + github-actions) |
 | `agent_registry.yml` models       | wildcard `["*"]` per tool | wildcard          | specific model IDs (no wildcards)                  |
 | `skills.severity_overrides`       | empty (defaults) | `no_wip_markers: P0` (team policy: WIP blocks) | empty (no team policy yet) |
 | Custom skills in `config/skills/` | none             | none             | none (but the structure is ready for per-domain rules) |

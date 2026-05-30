@@ -171,6 +171,16 @@
 
   <button type="button" id="open-manifest" class="primary" disabled data-i18n="step7.open">Open GitHub App registration</button>
   <p class="note" data-i18n="step7.note">This button activates after you generate config files (Step 6). The manifest is built from your inputs.</p>
+
+  <details id="manifest-fallback" class="hidden">
+    <summary data-i18n="step7.fallback_summary">Manual fallback (button blocked or URL too long)</summary>
+    <p class="step-help"><span data-i18n="step7.fallback_help">If the button is blocked by a pop-up blocker or your browser rejects the long URL, copy this registration URL into your address bar:</span></p>
+    <textarea id="manifest-url" readonly rows="3" spellcheck="false"></textarea>
+    <p class="step-help"><span data-i18n="step7.fallback_json">Or register the App by hand at</span>
+      <a href="https://github.com/settings/apps/new" target="_blank" rel="noopener noreferrer">github.com/settings/apps/new</a>
+      <span data-i18n="step7.fallback_json2">— set the permissions from this manifest:</span></p>
+    <textarea id="manifest-json" readonly rows="14" spellcheck="false"></textarea>
+  </details>
 </section>
 
 </main>
@@ -179,7 +189,7 @@
   <div class="container">
     <p>
       multiagent-protocol setup wizard ·
-      <a href="../guide/quick-start.md">Quick start docs</a> ·
+      <a href="../guide/quick-start.html">Quick start docs</a> ·
       <a href="https://github.com/donggun-jung/multiagent-protocol">Source</a>
     </p>
     <p class="footer-privacy" data-i18n="footer.privacy">No data leaves your browser. The wizard does not call GitHub or any server — all generation is JavaScript running locally.</p>

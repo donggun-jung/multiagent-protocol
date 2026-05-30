@@ -213,6 +213,10 @@ button:disabled {
   display: none;
 }
 
+.hidden {
+  display: none;
+}
+
 .success {
   color: var(--good);
   font-weight: 500;
