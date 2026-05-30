@@ -30,6 +30,14 @@ First **stable** release, after multiple rounds of independent external review
 - Version → 1.0.0; packaging status → Production/Stable. `action.yml` usage now
   shows the required `actions/checkout`. Docs swept for stale version labels and
   L2/L4 over-claims.
+- Korean README + quick-start refreshed to v1.0 parity (status badge, L2
+  wording, 5-file config count, `git add -f`, framework-vs-config section).
+- Wizard gained a **Manual fallback** section (copyable registration URL + raw
+  manifest JSON) so a blocked pop-up / over-long URL no longer dead-ends the
+  install. `multi-repo.md` seed loop fixed (real canonical paths, correct
+  `mirror_paths.json` path, `$HOME` instead of an unexpanded `~`).
+- `docs.yml` actions SHA-pinned (it holds `id-token`/`pages: write`). mypy
+  reconciled from an unmet `strict = true` to an honest advisory config.
 
 167 tests, ruff clean, personal-data scan clean.
 
