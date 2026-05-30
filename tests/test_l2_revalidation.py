@@ -64,3 +64,19 @@ def test_no_new_commits_returns_watermark(fake_api):
     incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": "x" * 40})
     assert incidents == []
     assert wm == "x" * 40
+
+
+def test_no_checks_unsettled_by_default(fake_api):
+    # A commit with no check-runs is left unsettled (fail-closed, like C2) so a
+    # regression that landed before CI is not silently passed.
+    _seed(fake_api, "f" * 40, [])
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    assert incidents == []
+    assert wm is None   # watermark did NOT advance
+
+
+def test_no_checks_passes_with_allow_no_ci(fake_api):
+    _seed(fake_api, "g" * 40, [])
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {}, allow_no_ci=True)
+    assert incidents == []
+    assert wm == "g" * 40   # opted-in → settled

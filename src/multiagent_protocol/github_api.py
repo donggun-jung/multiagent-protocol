@@ -140,17 +140,29 @@ class GitHubAPI:
         ))
 
     def check_runs(self, owner: str, repo: str, sha: str) -> list[dict]:
+        """Return the check-runs on a commit.
+
+        The check-runs endpoint does NOT return a bare list — it wraps results
+        in a ``{"total_count": N, "check_runs": [...]}`` envelope. The generic
+        ``_paginate`` (which ``yield from``s the body) would yield the dict's
+        *keys* (``"total_count"``, ``"check_runs"``) instead of check-run
+        objects, so this endpoint paginates itself and extracts the array.
+        """
         runs: list[dict] = []
-        for page in self._paginate(
-            f"/repos/{owner}/{repo}/commits/{sha}/check-runs",
-            params={"filter": "all"},
-        ):
-            # GitHub returns {check_runs: [...], total_count: N} per page;
-            # the paginator yields top-level objects. We need to flatten.
-            if isinstance(page, dict) and "check_runs" in page:
-                runs.extend(page["check_runs"])
-            else:
-                runs.append(page)
+        page = 1
+        while True:
+            r = self._request(
+                "GET", f"/repos/{owner}/{repo}/commits/{sha}/check-runs",
+                params={"filter": "all", "per_page": 100, "page": page},
+            )
+            r.raise_for_status()
+            data = r.json()
+            batch = data.get("check_runs", []) if isinstance(data, dict) else []
+            runs.extend(batch)
+            total = data.get("total_count") if isinstance(data, dict) else None
+            if len(batch) < 100 or (total is not None and len(runs) >= total):
+                break
+            page += 1
         return runs
 
     def label_events(self, owner: str, repo: str, number: int) -> list[dict]:

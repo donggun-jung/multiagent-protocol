@@ -28,6 +28,7 @@ not touch labels.
 
 from __future__ import annotations
 
+from multiagent_protocol.label_provenance import has_verified_label
 from multiagent_protocol.skills.base import (
     PRContext,
     ValidationResult,
@@ -63,54 +64,19 @@ class OwnerApprovalValidator:
         if self.classifier_verdict in ("A", "B", "C"):
             return ValidationResult.ok()
 
-        # Owner-approval path: a *verified* approval label.
-        if self._has_verified_approval(pr_context):
+        # Owner-approval path: a *verified* approval label — applied by the
+        # owner/bot at or after the current head (see label_provenance).
+        if has_verified_label(
+            pr_context, APPROVAL_LABELS, self.allowlisted_actors, self.bot_user
+        ):
             return ValidationResult.ok()
 
         quadrant_str = self.classifier_verdict or "unknown"
         return ValidationResult.fail(
             f"C3: owner approval missing (quadrant={quadrant_str}). "
             f"Either the classifier must vote A/B/C, or an allowlisted actor "
-            f"must approve via the Decision Inbox (👍 / `/approve [A|B|C]`) "
+            f"must approve via the Decision Inbox (👍 / `/approve [A|B]`) "
             f"against the current head. A bare `decision:approved-*` label is "
             f"not honoured unless it was applied by the owner/bot at or after "
             f"the current head commit."
         )
-
-    def _trusted_applier(self, actor: str | None) -> bool:
-        return actor is not None and (
-            actor in self.allowlisted_actors or actor == self.bot_user
-        )
-
-    def _head_commit_date(self, pr_context: PRContext) -> str | None:
-        """Date of the **head** commit, or None if it cannot be determined.
-
-        No fallback to other commits: if the head SHA is not among the PR's
-        commits, or carries no date, freshness is unverifiable and the caller
-        must fail **closed** (a ``max()`` of older commit dates would hand an
-        attacker a too-early baseline that a stale approval clears)."""
-        for c in pr_context.commits:
-            if c.sha == pr_context.head_sha:
-                return c.committed_at  # may be None → caller fails closed
-        return None
-
-    def _has_verified_approval(self, pr_context: PRContext) -> bool:
-        head_date = self._head_commit_date(pr_context)
-        for event in pr_context.label_events:
-            if event.label not in APPROVAL_LABELS:
-                continue
-            # The label must still be present (not since removed).
-            if event.label not in pr_context.labels:
-                continue
-            # Applied by an allowlisted owner or the bot — not self-applied.
-            if not self._trusted_applier(event.actor_login):
-                continue
-            # Freshness must be *establishable*: without a head-commit date or
-            # an event timestamp we cannot prove the approval post-dates the
-            # head, so we fail closed (a force-push must void prior approval).
-            if not head_date or not event.created_at:
-                continue
-            if event.created_at < head_date:
-                continue
-            return True
-        return False

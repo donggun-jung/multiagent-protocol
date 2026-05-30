@@ -85,23 +85,25 @@ def main(argv: list[str] | None = None) -> int:
     has_config = config_dir.exists()
     has_secrets = _has_secrets(os.environ)
 
-    # Graceful no-op when run without App credentials. The PUBLIC framework
-    # repo has neither secrets nor a config/ (config/ is git-ignored) — it is
-    # not a deployment, so the scheduled tick exits cleanly instead of failing
-    # every 5 minutes. A deployment that has config/ but no secrets is likely
-    # misconfigured: we warn but still exit 0 (do not spam build failures).
+    # No App credentials. Two distinct cases:
+    #  - No config/ either → this is the PUBLIC framework upstream, not a
+    #    deployment (config/ is git-ignored). Exit 0 so the scheduled tick does
+    #    not fail every 5 minutes.
+    #  - config/ IS present → a deployment that is missing its secrets. That is
+    #    a misconfiguration; a "bot-only merge gate" should FAIL LOUDLY (exit
+    #    non-zero) rather than show a green check while gating nothing.
     if not has_secrets:
         if has_config:
-            logger.warning(
+            logger.error(
                 "config/ is present but MERGE_GATE_APP_ID / MERGE_GATE_PRIVATE_KEY "
-                "are not set. If this is your deployment, add the Actions secrets "
-                "(see docs/guide/quick-start.md). Skipping this tick."
+                "are not set — the gate is NOT running. Add the Actions secrets "
+                "(see docs/guide/quick-start.md)."
             )
-        else:
-            logger.info(
-                "no App credentials and no config/ — this is the framework "
-                "upstream, not a deployment. Nothing to do; exiting cleanly."
-            )
+            return 1
+        logger.info(
+            "no App credentials and no config/ — this is the framework "
+            "upstream, not a deployment. Nothing to do; exiting cleanly."
+        )
         return 0
 
     if not has_config:
@@ -129,6 +131,9 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("found %d installation(s)", len(installations))
 
     gov_owner, _, gov_repo = config.projects.governance_repo.partition("/")
+    # Decision Inbox issues live in decision_inbox.repository (defaults to the
+    # governance repo); incidents (drift/break-glass/post-merge) stay in gov.
+    inbox_owner, _, inbox_repo = config.projects.effective_inbox_repository.partition("/")
     watermarks = load_watermarks()
     supervised = list(config.projects.supervised_repos)
     metrics: dict[str, int] = {
@@ -180,7 +185,10 @@ def main(argv: list[str] | None = None) -> int:
 
             # L2 post-merge re-validation.
             try:
-                l2_incidents, l2_wm = revalidate_main(api, owner, name, (), watermarks)
+                l2_incidents, l2_wm = revalidate_main(
+                    api, owner, name, (), watermarks,
+                    allow_no_ci=config.env.allow_no_ci,
+                )
                 for inc in l2_incidents:
                     if _open_incident_if_new(
                         api, gov_owner, gov_repo, inc.label, inc.body, inc.commit_sha[:7]
@@ -213,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
 
             try:
                 resolutions = resolve_open_issues(
-                    api, gov_owner, gov_repo, config.owner.allowlisted_actors
+                    api, inbox_owner, inbox_repo, config.owner.allowlisted_actors
                 )
                 metrics["inbox_resolved"] += len(resolutions)
                 for r in resolutions:

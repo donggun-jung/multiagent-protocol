@@ -78,6 +78,19 @@ NON_DISABLEABLE = frozenset({
     "hook_break_glass_audit",
 })
 
+# Core L1 validators whose severity must stay blocking (P0/P1). The operator
+# may not downgrade them to warn/audit via severity_overrides — that would let
+# a PR with no ready-to-merge label, or red CI, auto-merge as Quadrant A.
+CORE_L1_VALIDATORS = frozenset({
+    "validator_ready_to_merge",
+    "validator_ci_green",
+    "validator_owner_approval",
+    "validator_base_up_to_date",
+    "validator_trailers",
+    "validator_classifier_publisher",
+})
+_BLOCKING_SEVERITIES = ("P0", "P1")
+
 # Passive-audit issue labels for auto-approved B / C PRs (four-quadrants.md).
 AUDIT_LABEL = {
     "B": "decision:auto-approved-critical-reversible",
@@ -96,6 +109,8 @@ class RuntimeSkills:
     static_branch_hooks: list  # break-glass (governance-bound) + user hooks
     disabled: frozenset
     severity_overrides: dict
+    enabled: frozenset = frozenset()   # non-empty = allowlist of skills to run
+    bot_user: str | None = None        # the bot App's user login (<slug>[bot])
 
 
 @dataclass(frozen=True)
@@ -117,6 +132,18 @@ def _main_head_lookup(api: GitHubAPI):
         owner, _, repo = full_name.partition("/")
         return api.main_head_sha(owner, repo)
     return lookup
+
+
+def _resolve_bot_user(config: AppConfig, api: GitHubAPI) -> str:
+    """The bot App's user login (``<slug>[bot]``).
+
+    Prefer the App's *actual* slug (authoritative, from ``GET /app``) over the
+    operator-typed ``env.yml`` ``bot_app_slug`` so a typo cannot silently break
+    the approve→merge flow. Falls back to config if the lookup is unavailable
+    (e.g. the FakeAPI in tests has no ``.auth``)."""
+    auth = getattr(api, "auth", None)
+    app_slug = auth.app_slug() if auth is not None else None
+    return f"{app_slug or config.env.bot_app_slug}[bot]"
 
 
 def _adr_finder(api: GitHubAPI, gov_owner: str, gov_repo: str):
@@ -143,12 +170,26 @@ def _adr_finder(api: GitHubAPI, gov_owner: str, gov_repo: str):
 def _apply_severity(validators: list, overrides: dict) -> None:
     for v in validators:
         name = getattr(v, "name", None)
-        if name in overrides and hasattr(v, "severity"):
-            v.severity = overrides[name]
+        if name not in overrides or not hasattr(v, "severity"):
+            continue
+        target = overrides[name]
+        if name in CORE_L1_VALIDATORS and target not in _BLOCKING_SEVERITIES:
+            logger.warning(
+                "ignoring severity_override %s=%s — a core L1 validator may not "
+                "be downgraded below blocking (P0/P1).", name, target,
+            )
+            continue
+        v.severity = target
 
 
-def _enabled(name: str, disabled: frozenset) -> bool:
-    return name not in disabled or name in NON_DISABLEABLE
+def _enabled(name: str, disabled: frozenset, enabled: frozenset = frozenset()) -> bool:
+    if name in NON_DISABLEABLE:
+        return True                       # core security skills always run
+    if name in disabled:
+        return False
+    if enabled and name not in enabled:
+        return False                      # non-empty `enabled` = allowlist
+    return True
 
 
 def build_runtime_skills(
@@ -160,8 +201,10 @@ def build_runtime_skills(
 ) -> RuntimeSkills:
     """Construct configured built-in skills + user skills; apply toggles."""
     disabled = frozenset(config.skills.disabled)
+    enabled = frozenset(config.skills.enabled)
     overrides = dict(config.skills.severity_overrides)
     gov_owner, _, gov_repo = config.projects.governance_repo.partition("/")
+    bot_user = _resolve_bot_user(config, api)
 
     # owner_approval is constructed per-PR (it needs the PR's classifier
     # verdict) in process_pr — it is intentionally absent here.
@@ -180,7 +223,9 @@ def build_runtime_skills(
         PathDefaultClassifier(),
         BotSelfRepoClassifier(bot_repo_full_name=config.projects.effective_bot_repo),
         EmptyPrClassifier(),
-        AutoRevertClassifier(),
+        AutoRevertClassifier(
+            allowlisted_actors=config.owner.allowlisted_actors, bot_user=bot_user
+        ),
     ]
 
     # Repo-agnostic hooks (the ADR finder is governance-bound, not per-repo).
@@ -195,12 +240,15 @@ def build_runtime_skills(
 
     user = load_user_skills(config_dir / "skills" if config_dir else None)
 
+    # Built-ins always run (modulo `disabled`). A non-empty `enabled` is an
+    # allowlist for *user-added* skills only — it can never switch off a
+    # built-in gate (that would let everything auto-merge).
     validators = [v for v in builtin_validators if _enabled(v.name, disabled)]
-    validators += list(user.validators)
+    validators += [v for v in user.validators if _enabled(v.name, disabled, enabled)]
     rules = [r for r in builtin_rules if _enabled(r.name, disabled)]
-    rules += list(user.classifier_rules)
+    rules += [r for r in user.classifier_rules if _enabled(r.name, disabled, enabled)]
     hooks = [h for h in builtin_hooks if _enabled(h.name, disabled)]
-    hooks += list(user.branch_hooks)
+    hooks += [h for h in user.branch_hooks if _enabled(h.name, disabled, enabled)]
 
     _apply_severity(validators, overrides)
 
@@ -210,6 +258,8 @@ def build_runtime_skills(
         static_branch_hooks=hooks,
         disabled=disabled,
         severity_overrides=overrides,
+        enabled=enabled,
+        bot_user=bot_user,
     )
 
 
@@ -273,7 +323,9 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     """
     ctx = build_pr_context(api, pr_payload)
     full = ctx.full_name
-    gov_owner, _, gov_repo = config.projects.governance_repo.partition("/")
+    # Decision-Inbox issues (pending-owner + B/C audit) go to the configured
+    # inbox repo (decision_inbox.repository), defaulting to the governance repo.
+    gov_owner, _, gov_repo = config.projects.effective_inbox_repository.partition("/")
 
     verdict = classify(ctx, runtime.classifier_rules, audit_log_path)
 
@@ -291,14 +343,11 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     # C3 — owner approval. Passes for Quadrant A/B/C (auto-approval), or for a
     # Quadrant-D PR whose ``decision:approved-*`` label was applied by the
     # owner/bot at or after the current head (see OwnerApprovalValidator).
-    # Prefer the App's *actual* slug (authoritative) over operator-typed config
-    # so a mistyped bot_app_slug cannot silently break the approve→merge flow.
-    auth = getattr(api, "auth", None)
-    app_slug = auth.app_slug() if auth is not None else None
+    # ``runtime.bot_user`` is the App's resolved ``<slug>[bot]`` identity.
     owner_approval = OwnerApprovalValidator(
         classifier_verdict=verdict.quadrant,
         allowlisted_actors=config.owner.allowlisted_actors,
-        bot_user=f"{app_slug or config.env.bot_app_slug}[bot]",
+        bot_user=runtime.bot_user,
     )
     _apply_severity([owner_approval], runtime.severity_overrides)
     if not owner_approval.check(ctx).passed:

@@ -68,3 +68,15 @@ def test_approve_b_uses_b_label(fake_api):
     res = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
     assert res[0].verdict == "approved-B"
     assert ("example", "repo", 46, "decision:approved-B") in fake_api.labels_added
+
+
+def test_approve_c_defers_does_not_merge_or_close(fake_api):
+    # Ballot C = defer (doctrine), NOT a merge.
+    _seed_pending(fake_api, issue_number=10, pr_number=47, head_sha="h" * 40)
+    fake_api.seed_comment(10, "owner", "/approve C")
+    res = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res[0].verdict == "deferred" and res[0].action == "deferred"
+    assert ("example", "repo", 47, "decision:deferred") in fake_api.labels_added
+    assert not any(lbl.startswith("decision:approved") for *_, lbl in fake_api.labels_added)
+    assert ("gov", "repo", 10) not in fake_api.closed   # inbox issue stays OPEN
+    assert fake_api.merged == []

@@ -158,16 +158,48 @@ def test_owner_approval_ignores_unrelated_labels(pr_factory):
     assert not v.check(pr).passed
 
 
-# -- Auto-revert classifier --
+# -- Auto-revert classifier (provenance-checked, like C3) --
 
-def test_auto_revert_classifier_votes_c(pr_factory):
-    pr = pr_factory(labels=("decision:auto-revert",))
-    v = AutoRevertClassifier().evaluate(pr)
+def test_auto_revert_votes_c_when_owner_applied_fresh(pr_factory):
+    pr = pr_factory(
+        labels=("decision:auto-revert",), commits=(_commit(),),
+        label_events=(_approval_event("decision:auto-revert", actor="owner"),),
+    )
+    v = AutoRevertClassifier(allowlisted_actors=OWNER, bot_user=BOT).evaluate(pr)
     assert v.quadrant == "C"
-    assert "auto-revert" in v.reasoning
 
 
-def test_auto_revert_classifier_votes_a_when_label_absent(pr_factory):
+def test_auto_revert_votes_a_when_label_absent(pr_factory):
     pr = pr_factory(labels=("documentation",))
-    v = AutoRevertClassifier().evaluate(pr)
+    v = AutoRevertClassifier(allowlisted_actors=OWNER, bot_user=BOT).evaluate(pr)
     assert v.quadrant == "A"
+
+
+def test_auto_revert_votes_a_when_self_applied(pr_factory):
+    # A non-allowlisted actor self-applies the label → not honoured.
+    pr = pr_factory(
+        labels=("decision:auto-revert",), commits=(_commit(),),
+        label_events=(_approval_event("decision:auto-revert", actor="mallory"),),
+    )
+    v = AutoRevertClassifier(allowlisted_actors=OWNER, bot_user=BOT).evaluate(pr)
+    assert v.quadrant == "A"
+
+
+def test_auto_revert_votes_a_when_stale(pr_factory):
+    # Applied before the current head (force-push) → voided.
+    pr = pr_factory(
+        labels=("decision:auto-revert",), head_sha="h" * 40,
+        commits=(_commit(date="2026-05-25T00:05:00Z"),),
+        label_events=(_approval_event("decision:auto-revert", at="2026-05-25T00:00:00Z"),),
+    )
+    v = AutoRevertClassifier(allowlisted_actors=OWNER, bot_user=BOT).evaluate(pr)
+    assert v.quadrant == "A"
+
+
+def test_auto_revert_zero_arg_is_noop(pr_factory):
+    # The loader's 0-arg instance trusts nobody → always votes A.
+    pr = pr_factory(
+        labels=("decision:auto-revert",), commits=(_commit(),),
+        label_events=(_approval_event("decision:auto-revert", actor="owner"),),
+    )
+    assert AutoRevertClassifier().evaluate(pr).quadrant == "A"

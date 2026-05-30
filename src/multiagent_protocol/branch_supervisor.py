@@ -164,6 +164,7 @@ def _classify_commit_checks(
     repo: str,
     sha: str,
     required_checks: tuple[str, ...],
+    allow_no_ci: bool = False,
 ) -> tuple[str, list[str]]:
     """Return ``(status, failing_names)`` for one merged commit.
 
@@ -174,6 +175,12 @@ def _classify_commit_checks(
         c for c in checks
         if not required_checks or c.get("name") in required_checks
     ]
+    if not relevant:
+        # No checks on this commit. Mirror C2's fail-closed stance: settle it
+        # only if the operator opted into allow_no_ci; otherwise leave it
+        # unsettled (retry) so a regression that landed before CI started — or
+        # in a repo that silently dropped CI — is not quietly passed.
+        return ("passed" if allow_no_ci else "infra"), []
     real: list[str] = []
     infra = False
     for c in relevant:
@@ -200,6 +207,7 @@ def revalidate_main(
     watermarks: dict[str, str],
     *,
     l2_key_suffix: str = ":l2",
+    allow_no_ci: bool = False,
 ) -> tuple[list[SupervisorIncident], str | None]:
     """L2: re-validate merged commits on ``main`` since the L2 watermark.
 
@@ -219,7 +227,9 @@ def revalidate_main(
     new_watermark = since
     for raw in reversed(raw_commits):  # oldest first
         sha = raw["sha"]
-        status, failing = _classify_commit_checks(api, owner, repo, sha, required_checks)
+        status, failing = _classify_commit_checks(
+            api, owner, repo, sha, required_checks, allow_no_ci=allow_no_ci
+        )
         if status == "infra":
             # Unsettled — do not advance past this commit; retry next tick.
             break

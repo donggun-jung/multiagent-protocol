@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 PENDING_LABEL = "decision:pending-owner"
 
-Verdict = Literal["approved-A", "approved-B", "approved-C", "rejected"]
+# Ballot A/B = approve (merge); C = defer (needs more info, do NOT merge);
+# reject = close. See docs/concepts/four-quadrants.md § "Quadrant D".
+Verdict = Literal["approved-A", "approved-B", "approved-C", "rejected", "deferred"]
 
 APPROVE_RE = re.compile(r"^\s*/approve\s+([ABC])\s*$", re.MULTILINE | re.IGNORECASE)
 REJECT_RE = re.compile(r"^\s*/reject\s*$", re.MULTILINE | re.IGNORECASE)
@@ -168,7 +170,8 @@ def resolve_verdict(
             events.append((ts, "rejected"))
         elif m_app:
             letter = m_app.group(1).upper()
-            events.append((ts, f"approved-{letter}"))
+            # Ballot C = "defer / needs more info" (doctrine) — NOT a merge.
+            events.append((ts, "deferred" if letter == "C" else f"approved-{letter}"))
 
     if not events:
         return None
@@ -273,8 +276,24 @@ def resolve_open_issues(
             resolutions.append(InboxResolution(
                 issue_number, pr_full_name, pr_number, verdict, "closed-pr",
             ))
+        elif verdict == "deferred":
+            # Ballot C — defer / needs more info. Do NOT merge. Label the PR and
+            # leave the inbox issue OPEN so the owner can later flip to
+            # `/approve A|B` or `/reject`. Idempotent: skip if already deferred.
+            pr_labels = {(lbl.get("name")) for lbl in (pr.get("labels") or [])}
+            if "decision:deferred" in pr_labels:
+                continue
+            api.add_label(pr_owner, pr_repo, pr_number, "decision:deferred")
+            api.post_comment(
+                governance_owner, governance_repo, issue_number,
+                "Deferred per `/approve C` (needs more info). The PR is **not** "
+                "merged; re-decide with 👍 / `/approve [A|B]` / `/reject`.",
+            )
+            resolutions.append(InboxResolution(
+                issue_number, pr_full_name, pr_number, verdict, "deferred",
+            ))
         else:
-            # approved-A/B/C → label the PR so owner_approval (C3) passes.
+            # approved-A/B → label the PR so owner_approval (C3) passes.
             api.add_label(pr_owner, pr_repo, pr_number, f"decision:{verdict}")
             api.close_issue(governance_owner, governance_repo, issue_number)
             resolutions.append(InboxResolution(

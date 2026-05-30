@@ -154,13 +154,14 @@ def test_owner_comment_approve_b_resolves_approved_b():
     assert verdict == "approved-B"
 
 
-def test_owner_comment_approve_c_resolves_approved_c():
+def test_owner_comment_approve_c_resolves_deferred():
+    # Ballot C = "defer / needs more info" (doctrine), NOT a merge approval.
     verdict = resolve_verdict(
         reactions=[],
         comments=[_comment("/approve c", OWNER)],
         allowlisted_actors=(OWNER,),
     )
-    assert verdict == "approved-C"
+    assert verdict == "deferred"
 
 
 def test_owner_comment_reject_resolves_rejected():

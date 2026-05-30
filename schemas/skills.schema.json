@@ -8,21 +8,21 @@
   "properties": {
     "enabled": {
       "type": "array",
-      "description": "Skills explicitly enabled. If empty, all auto-discovered skills run. Listing a skill here makes the loader log a warning if the file is missing.",
+      "description": "Allowlist for USER-added skills: if non-empty, only the user skills named here run (built-in skills always run regardless). If empty, all auto-discovered user skills run.",
       "items": {"type": "string", "minLength": 1, "maxLength": 100},
       "uniqueItems": true,
       "default": []
     },
     "disabled": {
       "type": "array",
-      "description": "Skill names to skip even if loaded. Cannot disable a built-in L1 validator (C1-C5); use severity_overrides instead.",
+      "description": "Skill names to skip even if loaded. Built-in L1 validators (C1-C5) and other core security skills cannot be disabled or downgraded below blocking.",
       "items": {"type": "string", "minLength": 1, "maxLength": 100},
       "uniqueItems": true,
       "default": []
     },
     "severity_overrides": {
       "type": "object",
-      "description": "Per-skill severity override. Keys are skill names, values are 'P0'/'P1'/'P2'/'P3'.",
+      "description": "Per-skill severity override (keys = skill names, values = P0/P1/P2/P3). A core L1 validator (C1-C5, classifier-publisher) cannot be downgraded below blocking (P0/P1) — such an override is ignored.",
       "additionalProperties": {
         "type": "string",
         "enum": ["P0", "P1", "P2", "P3"]

@@ -154,6 +154,22 @@ def test_exploit_b_stale_approval_after_forcepush_does_not_merge(fake_api, solo_
     assert fake_api.merged == []
 
 
+def test_self_applied_auto_revert_label_does_not_merge_quadrant_d(fake_api, solo_config):
+    # A self-applied decision:auto-revert on a Quadrant-D (src delete) PR must
+    # NOT merge: the label is unverified (votes A) AND max-vote keeps it D.
+    pr = fake_api.register_pr(
+        number=42, labels=("ready-to-merge", "decision:auto-revert"),
+        files=[changed_file("src/x.py", status="removed")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"label": "decision:auto-revert", "actor": "mallory", "created_at": "2026-05-25T00:01:00Z"},
+        ])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "inbox"
+    assert d.quadrant == "D"
+    assert fake_api.merged == []
+
+
 # -- runtime builder: disabled + severity_overrides ---------------------------
 
 def test_disabled_skill_removed(fake_api, solo_config):
@@ -194,9 +210,32 @@ def test_main_no_secrets_no_config_returns_0(tmp_path, monkeypatch):
     assert main([]) == 0
 
 
-def test_main_no_secrets_with_config_returns_0(tmp_path, monkeypatch):
+def test_main_no_secrets_with_config_returns_nonzero(tmp_path, monkeypatch):
     monkeypatch.delenv("MERGE_GATE_APP_ID", raising=False)
     monkeypatch.delenv("MERGE_GATE_PRIVATE_KEY", raising=False)
     (tmp_path / "config").mkdir()
     monkeypatch.chdir(tmp_path)
-    assert main([]) == 0  # config present but no secrets → warn, exit cleanly
+    # config present but no secrets → a deployment misconfig → fail loudly.
+    assert main([]) == 1
+
+
+def test_severity_override_cannot_downgrade_core_l1(fake_api, solo_config):
+    cfg = dataclasses.replace(
+        solo_config,
+        skills=dataclasses.replace(
+            solo_config.skills,
+            severity_overrides={"validator_ready_to_merge": "P3", "validator_ci_green": "P3"}),
+    )
+    rt = build_runtime_skills(cfg, fake_api, config_dir=None)
+    sev = {v.name: v.severity for v in rt.validators}
+    assert sev["validator_ready_to_merge"] == "P0"   # downgrade ignored
+    assert sev["validator_ci_green"] == "P0"
+
+
+def test_enabled_allowlist_helper():
+    from multiagent_protocol.runtime import _enabled
+    allow = frozenset({"user_skill_a"})
+    assert _enabled("user_skill_a", frozenset(), allow)       # in allowlist
+    assert not _enabled("user_skill_b", frozenset(), allow)   # not in allowlist
+    assert _enabled("validator_trailers", frozenset({"validator_trailers"}), allow)  # core always on
+    assert _enabled("anything", frozenset())                  # empty allowlist = all
