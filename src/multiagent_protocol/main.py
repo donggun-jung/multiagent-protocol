@@ -82,32 +82,42 @@ def main(argv: list[str] | None = None) -> int:
 
     config_dir = Path("config")
     schemas_dir = Path("schemas")
-    has_config = config_dir.exists()
+    # config/ always contains a tracked README.md placeholder, so the directory
+    # exists even on the framework upstream. A real *deployment* is signalled by
+    # the actual YAML config files (owner/projects/env), which are git-ignored
+    # and only present once someone runs the wizard and commits their config.
+    has_config = any(
+        (config_dir / name).exists()
+        for name in ("owner.yml", "projects.yml", "env.yml")
+    )
     has_secrets = _has_secrets(os.environ)
 
     # No App credentials. Two distinct cases:
-    #  - No config/ either → this is the PUBLIC framework upstream, not a
-    #    deployment (config/ is git-ignored). Exit 0 so the scheduled tick does
-    #    not fail every 5 minutes.
-    #  - config/ IS present → a deployment that is missing its secrets. That is
-    #    a misconfiguration; a "bot-only merge gate" should FAIL LOUDLY (exit
-    #    non-zero) rather than show a green check while gating nothing.
+    #  - No deployment config either → the PUBLIC framework upstream (or a fresh
+    #    fork), not a running deployment. Exit 0 so the scheduled tick does not
+    #    fail every 5 minutes.
+    #  - Deployment config IS present → a deployment that is missing its secrets.
+    #    That is a misconfiguration; a "bot-only merge gate" should FAIL LOUDLY
+    #    (exit non-zero) rather than show a green check while gating nothing.
     if not has_secrets:
         if has_config:
             logger.error(
-                "config/ is present but MERGE_GATE_APP_ID / MERGE_GATE_PRIVATE_KEY "
-                "are not set — the gate is NOT running. Add the Actions secrets "
-                "(see docs/guide/quick-start.md)."
+                "config/ holds a deployment config but MERGE_GATE_APP_ID / "
+                "MERGE_GATE_PRIVATE_KEY are not set — the gate is NOT running. "
+                "Add the Actions secrets (see docs/guide/quick-start.md)."
             )
             return 1
         logger.info(
-            "no App credentials and no config/ — this is the framework "
+            "no App credentials and no deployment config — this is the framework "
             "upstream, not a deployment. Nothing to do; exiting cleanly."
         )
         return 0
 
     if not has_config:
-        logger.error("config/ directory not found. Run the wizard first.")
+        logger.error(
+            "no deployment config found under config/ (need owner.yml, "
+            "projects.yml, env.yml). Run the wizard first."
+        )
         return 2
     try:
         config = load_config(config_dir, schemas_dir if schemas_dir.exists() else None)
