@@ -210,12 +210,28 @@ def test_main_no_secrets_no_config_returns_0(tmp_path, monkeypatch):
     assert main([]) == 0
 
 
-def test_main_no_secrets_with_config_returns_nonzero(tmp_path, monkeypatch):
+def test_main_no_secrets_readme_only_config_returns_0(tmp_path, monkeypatch):
+    # The framework upstream tracks config/README.md, so config/ always EXISTS
+    # in a checkout. That placeholder alone is NOT a deployment — the scheduled
+    # tick must still no-op (exit 0), not fail every 5 minutes.
     monkeypatch.delenv("MERGE_GATE_APP_ID", raising=False)
     monkeypatch.delenv("MERGE_GATE_PRIVATE_KEY", raising=False)
-    (tmp_path / "config").mkdir()
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+    (cfg / "README.md").write_text("placeholder — your private config goes here\n")
     monkeypatch.chdir(tmp_path)
-    # config present but no secrets → a deployment misconfig → fail loudly.
+    assert main([]) == 0
+
+
+def test_main_no_secrets_with_deployment_config_returns_nonzero(tmp_path, monkeypatch):
+    monkeypatch.delenv("MERGE_GATE_APP_ID", raising=False)
+    monkeypatch.delenv("MERGE_GATE_PRIVATE_KEY", raising=False)
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+    # a real deployment commits the YAML config files (owner/projects/env)
+    (cfg / "owner.yml").write_text("owner_login: someone\n")
+    monkeypatch.chdir(tmp_path)
+    # deployment config present but no secrets → misconfig → fail loudly.
     assert main([]) == 1
 
 
