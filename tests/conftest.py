@@ -107,21 +107,23 @@ def pr_factory():
 # ---------------------------------------------------------------------------
 
 
-def green_check(name: str = "ci", slug: str = "github-actions") -> dict:
+def green_check(name: str = "ci", slug: str = "github-actions",
+                summary: str = "") -> dict:
     return {
         "name": name, "status": "completed", "conclusion": "success",
         "started_at": "2026-05-25T00:00:00Z", "completed_at": "2026-05-25T00:01:00Z",
-        "app": {"slug": slug}, "output": {"summary": ""},
+        "app": {"slug": slug}, "output": {"summary": summary},
     }
 
 
 def make_check(name: str, conclusion: str, *, status: str = "completed",
                started_at: str = "2026-05-25T00:00:00Z",
-               completed_at: str = "2026-05-25T00:01:00Z", slug: str = "github-actions") -> dict:
+               completed_at: str = "2026-05-25T00:01:00Z", slug: str = "github-actions",
+               summary: str = "") -> dict:
     return {
         "name": name, "status": status, "conclusion": conclusion,
         "started_at": started_at, "completed_at": completed_at,
-        "app": {"slug": slug}, "output": {"summary": ""},
+        "app": {"slug": slug}, "output": {"summary": summary},
     }
 
 

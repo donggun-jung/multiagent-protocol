@@ -80,3 +80,34 @@ def test_no_checks_passes_with_allow_no_ci(fake_api):
     incidents, wm = revalidate_main(fake_api, "o", "r", (), {}, allow_no_ci=True)
     assert incidents == []
     assert wm == "g" * 40   # opted-in → settled
+
+
+# -- R1: L2 honours required_checks --------------------------------------------
+
+def test_l2_required_check_failure_opens_incident(fake_api):
+    # The named required check 'build' is present + failing → real failure.
+    _seed(fake_api, "h" * 40, [make_check("build", "failure")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "h" * 40
+    assert wm == "h" * 40
+
+
+def test_l2_required_check_only_inspects_named(fake_api):
+    # 'build' (required) is green; an unrelated 'flaky' check is red. Because L2
+    # filters to required checks, the unrelated red does not open an incident.
+    _seed(fake_api, "i" * 40,
+          [make_check("build", "success"), make_check("flaky", "failure")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert incidents == []
+    assert wm == "i" * 40
+
+
+def test_l2_required_check_missing_is_unsettled(fake_api):
+    # The required check 'build' is absent on the merged commit (only 'lint'
+    # ran). With required_checks set, the named check is not present → no
+    # relevant checks → fail-closed (infra/unsettled), watermark holds.
+    _seed(fake_api, "j" * 40, [make_check("lint", "success")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert incidents == []
+    assert wm is None   # did not advance — re-checked next tick

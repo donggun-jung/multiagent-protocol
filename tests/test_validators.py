@@ -162,6 +162,32 @@ def test_ci_green_required_list_missing_check(pr_factory):
     assert "'test' is missing" in r.failure_reason
 
 
+def test_ci_green_required_present_plus_unrelated_passes(pr_factory):
+    # R1: each named required check is present+green; an unrelated extra check
+    # does not matter (the required-list path only inspects named checks).
+    pr = pr_factory(check_runs=(
+        CheckRunStatus(
+            name="test", status="completed", conclusion="success",
+            started_at=None, completed_at=None, app_slug=None, output_summary=None,
+        ),
+        CheckRunStatus(
+            name="some-other-check", status="completed", conclusion="neutral",
+            started_at=None, completed_at=None, app_slug=None, output_summary=None,
+        ),
+    ))
+    assert CiGreenValidator(required_checks=("test",)).check(pr).passed
+
+
+def test_ci_green_required_missing_fails_even_with_allow_no_checks(pr_factory):
+    # R1 fail-closed: allow_no_checks only relaxes the EMPTY-required-list path.
+    # When a required check is named, a missing one FAILS regardless.
+    pr = pr_factory(check_runs=())
+    v = CiGreenValidator(required_checks=("test",), allow_no_checks=True)
+    r = v.check(pr)
+    assert not r.passed
+    assert "'test' is missing" in r.failure_reason
+
+
 def test_ci_green_neutral_passes_strict(pr_factory):
     pr = pr_factory(check_runs=(
         CheckRunStatus(

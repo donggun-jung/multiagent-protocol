@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - Unreleased
+
+**Fleet-parity additions.** Four additive, backward-compatible capabilities a
+running fleet depends on. Every new behavior is gated on new **optional** config;
+with that config absent, the gate is byte-identical to 1.0.0 (the prior 168 tests
+are unchanged). No existing gate logic changed except to thread in the new
+optional inputs.
+
+### Added
+
+- **R1 — named required checks.** A new optional `required_checks: [string]`:
+  a global default in `env.yml` plus an optional per-repo override in
+  `projects.yml` (`repo_overrides.<owner/name>.required_checks`). Per-repo wins,
+  else global, else `[]` (= 1.0.0's "all completed checks succeed"). When
+  non-empty, **each** named check must be present on the head SHA and conclude
+  `success` — a missing required check **fails C2 fail-closed**, regardless of
+  `allow_no_ci` (which only applies when the list is empty). Threaded through C2
+  (`CiGreenValidator` per repo in `runtime.process_pr`) and L2 post-merge
+  re-validation (`main.revalidate_main`, which previously always passed `()`).
+- **R2 — read the published classifier verdict.** New built-in classifier rule
+  `classifier_published_verdict`: reads the `classifier-judgment` check-run on
+  the PR head, verifies the canonical publisher (`env.classifier_publisher_slug`,
+  same identity gate as `validator_classifier_publisher`), parses a
+  `Quadrant: X` (A/B/C/D) marker from its output/summary, and **votes** that
+  quadrant into the max-vote engine. Because the engine takes the MAX, a
+  published verdict can only **raise** (toward owner control), never lower.
+  Absent / wrong-publisher / unparseable / ambiguous → **abstain** (votes the
+  lowest quadrant, never raises an exception).
+- **R3 — unauthorized-push detector** (the code-level alternative to paid branch
+  protection). New built-in branch hook `hook_unauthorized_push`: over recent
+  `main` commits, flags any commit whose committer is **not** the bot, whose
+  subject is **not** a `[break-glass-*]` commit (those belong to the L5
+  break-glass auditor), **and** whose committer login is **not** in the owner
+  allowlist → opens a `decision:unauthorized-push` incident (idempotently, via
+  the supervisor's existing per-SHA issue dedupe).
+- **DEC-C — audit-only repo tier.** New optional `audit_only_repos: [name]` in
+  `projects.yml`. An audit-only repo is **excluded** from the per-open-PR L1–L4
+  gating loop but **included** in `branch_supervisor` (L2 post-merge + L5
+  break-glass + the new R3 detector). Lets the governance repo be audited
+  without the self-gating paradox. Default: no repo is audit-only.
+
+### Config + schema
+
+- `schemas/env.schema.json`: optional `required_checks` (array of non-empty
+  strings, unique).
+- `schemas/projects.schema.json`: optional `audit_only_repos` (array of
+  `owner/name`) and `repo_overrides` (map of `owner/name` →
+  `{ required_checks: [...] }`, `additionalProperties:false`).
+- `docs/concepts/general-preferences.md` § 6 (R2) and § 8/new § 11 (R3)
+  documented; `docs/guide/multi-repo.md` gains a "Named required checks",
+  "Audit-only repos", and "Published classifier verdict" subsection.
+
+### Tests
+
+- **45 new tests → 213 total** (config loader + schema acceptance, C2 + L2
+  required-checks, the published-verdict rule incl. max-vote-only-raises and
+  wrong-publisher abstention, the unauthorized-push hook incl. idempotency, and
+  end-to-end `main()` audit-only gating). ruff clean; the 168 prior tests pass
+  unchanged.
+
 ## [1.0.0] - 2026-05-30
 
 First **stable** release, after multiple rounds of independent external review
@@ -176,6 +236,7 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
+[1.1.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.0.0
 [0.9.9]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.2.0...v0.9.9
 [0.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.0.2-alpha...v0.2.0

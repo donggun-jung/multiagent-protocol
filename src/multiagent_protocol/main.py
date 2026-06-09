@@ -159,24 +159,32 @@ def main(argv: list[str] | None = None) -> int:
 
         for full in [r for r in supervised if r.split("/")[0] == account]:
             owner, _, name = full.partition("/")
+            # DEC-C: an audit-only repo is scanned on main (L2 + L5 + the
+            # unauthorized-push detector) but its open PRs are NOT gated — L1-L4
+            # is skipped. This lets the governance repo be supervised without the
+            # self-gating paradox. Default: no repo is audit-only.
+            audit_only = config.projects.is_audit_only(full)
 
-            # L1 + L3 + L4 per open PR.
-            try:
-                prs = api.list_open_prs(owner, name)
-            except Exception as e:
-                logger.error("list PRs failed for %s: %s", full, e)
-                prs = []
-            for pr_payload in prs:
-                number = pr_payload.get("number")
+            # L1 + L3 + L4 per open PR (skipped entirely for audit-only repos).
+            if audit_only:
+                logger.info("repo %s is audit-only — skipping L1-L4 PR gating", full)
+            else:
                 try:
-                    d = process_pr(api, config, runtime, pr_payload, audit_log_path=AUDIT_LOG)
-                    metrics[d.action] = metrics.get(d.action, 0) + 1
-                    logger.info(
-                        "PR %s#%s → %s (Q%s) %s",
-                        full, number, d.action, d.quadrant, d.detail,
-                    )
+                    prs = api.list_open_prs(owner, name)
                 except Exception as e:
-                    logger.error("process PR %s#%s failed: %s", full, number, e)
+                    logger.error("list PRs failed for %s: %s", full, e)
+                    prs = []
+                for pr_payload in prs:
+                    number = pr_payload.get("number")
+                    try:
+                        d = process_pr(api, config, runtime, pr_payload, audit_log_path=AUDIT_LOG)
+                        metrics[d.action] = metrics.get(d.action, 0) + 1
+                        logger.info(
+                            "PR %s#%s → %s (Q%s) %s",
+                            full, number, d.action, d.quadrant, d.detail,
+                        )
+                    except Exception as e:
+                        logger.error("process PR %s#%s failed: %s", full, number, e)
 
             # L5 break-glass + hallucination scan.
             try:
@@ -193,10 +201,16 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as e:
                 logger.error("L5 scan failed for %s: %s", full, e)
 
-            # L2 post-merge re-validation.
+            # L2 post-merge re-validation. R1: honour the same effective
+            # required_checks (per-repo override > global default > ()) that C2
+            # uses, so a named check that must be green pre-merge must also be
+            # green on the merged commit.
+            l2_required = config.projects.effective_required_checks(
+                full, config.env.required_checks
+            )
             try:
                 l2_incidents, l2_wm = revalidate_main(
-                    api, owner, name, (), watermarks,
+                    api, owner, name, l2_required, watermarks,
                     allow_no_ci=config.env.allow_no_ci,
                 )
                 for inc in l2_incidents:

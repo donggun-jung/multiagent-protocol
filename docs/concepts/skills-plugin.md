@@ -130,6 +130,7 @@ Shipped with the project:
 | `classifier_empty_pr.py`          | D for any PR with 0 file changes                           |
 | `classifier_bot_self_repo.py`     | D for any PR targeting the bot's own repo                  |
 | `classifier_auto_revert.py`       | C for PRs labeled `decision:auto-revert`                   |
+| `classifier_published_verdict.py` | The `Quadrant: X` published in the canonical `classifier-judgment` check-run (votes A/B/C/D; max-vote → raise-only; abstains if absent/non-canonical/unparseable) |
 
 ### Branch hooks
 
@@ -137,6 +138,7 @@ Shipped with the project:
 |-----------------------------------|------------------------------------------------------------|
 | `hook_break_glass_audit.py`       | L5 — `[break-glass-*]` commits on main + ADR-within-24h    |
 | `hook_hallucination_guard.py`     | (general preference) refuses to merge a commit whose body references a file/symbol that does not exist in the repo at the merged SHA |
+| `hook_unauthorized_push.py`       | (code-level branch protection) opens `decision:unauthorized-push` for a `main` commit that is not the bot's, not `[break-glass-*]`, and not by an allowlisted actor |
 
 The `hallucination_guard` hook is on by default because hallucinated references are one of the highest-frequency failure modes for AI-generated commits. Disable in `config.skills.disabled` if you have a specific reason.
 
