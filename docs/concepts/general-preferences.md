@@ -137,14 +137,9 @@ GitHub's "only the App may push to `main`" branch protection is a paid feature o
 
 **Why**: Without paid branch protection, nothing at GitHub's layer stops a stray push or a leaked token from writing to `main` around the merge gate. This hook turns such a write into a visible incident on the next tick.
 
-**How to disable**: in `config/skills.yml`:
+**How to disable**: not permitted via `disabled:`. Because this hook is the *only* code-level substitute for paid branch protection, allowing it to be silently turned off would leave a fleet with nothing watching `main` for unsanctioned writes — a fail-open. It is in the non-disableable core set (alongside `validator_trailers`, `validator_classifier_publisher`, `classifier_bot_self_repo`, and `hook_break_glass_audit`). If you already enforce bot-only pushes at GitHub's layer (paid branch protection / a ruleset), the hook is simply redundant — its incidents will never fire, at no cost — so there is no need to disable it.
 
-```yaml
-disabled:
-  - hook_unauthorized_push   # I rely on GitHub Pro branch protection instead
-```
-
-Disable it only if you already enforce bot-only pushes to `main` at GitHub's layer (paid branch protection / a ruleset), which makes the code-level check redundant.
+> **Note on identity.** This hook (and the break-glass auditor, § 8) authorizes by the commit's **committer** login, not the author — the author field is trivially forgeable via `git commit --author=...`. Committer metadata is itself an *association* (the GitHub API matches the committer email to an account) rather than the true push actor; the authoritative push actor is only available via the Enterprise-tier audit-log API. Wiring that in is a documented future item.
 
 ## Severity override table
 

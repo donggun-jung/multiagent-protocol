@@ -212,6 +212,51 @@ def test_ci_green_allow_no_checks_passes(pr_factory):
     assert CiGreenValidator(allow_no_checks=True).check(pr).passed
 
 
+def _check(name: str, conclusion: str, *, status: str = "completed") -> CheckRunStatus:
+    return CheckRunStatus(
+        name=name, status=status, conclusion=conclusion,
+        started_at=None, completed_at=None, app_slug=None, output_summary=None,
+    )
+
+
+# -- R1 duplicate check-name masking (fail-open fix) --------------------------
+
+def test_ci_green_required_duplicate_failure_then_success_fails(pr_factory):
+    # R1 fix: two check-runs both named 'build' — one failure, one (later)
+    # success. A name-deduped {name: check} map would collapse to the success
+    # and PASS C2 (fail-OPEN). A required check is green only if NO same-name run
+    # is non-success, so the failing duplicate must FAIL C2 fail-closed.
+    pr = pr_factory(check_runs=(
+        _check("build", "failure"),
+        _check("build", "success"),
+    ))
+    r = CiGreenValidator(required_checks=("build",)).check(pr)
+    assert not r.passed
+    assert "build" in r.failure_reason
+
+
+def test_ci_green_required_single_success_passes(pr_factory):
+    # The non-duplicate baseline: a single green required 'build' still passes.
+    pr = pr_factory(check_runs=(_check("build", "success"),))
+    assert CiGreenValidator(required_checks=("build",)).check(pr).passed
+
+
+def test_ci_green_no_required_checks_unchanged_by_fix(pr_factory):
+    # Backward-compat: with no required_checks list, the strict all-checks path
+    # is unchanged — all-success passes, any failure (incl. a duplicate) fails.
+    all_green = pr_factory(check_runs=(
+        _check("lint", "success"), _check("test", "success"),
+    ))
+    assert CiGreenValidator().check(all_green).passed
+
+    dup_fail = pr_factory(check_runs=(
+        _check("build", "success"), _check("build", "failure"),
+    ))
+    r = CiGreenValidator().check(dup_fail)
+    assert not r.passed
+    assert "build" in r.failure_reason
+
+
 # -- Base up-to-date --
 
 def test_base_up_to_date_matches(pr_factory):

@@ -124,6 +124,52 @@ def test_missing_committed_at_treated_as_past_deadline():
     assert r.incident_label == "decision:break-glass-unaudited"
 
 
+def test_committer_not_allowlisted_flagged_even_if_author_is():
+    # R3 hardening (L5 actor trust): the allowlist check uses COMMITTER, not the
+    # forgeable author. A [break-glass-*] commit whose AUTHOR is allowlisted
+    # ('owner') but whose COMMITTER is not ('mallory') must STILL be flagged —
+    # otherwise an attacker forges an allowlisted author to skip the gate.
+    hook = BreakGlassAuditHook(
+        allowlisted_actors=("owner",),
+        adr_finder=lambda sha: True,
+        clock=lambda: NOW,
+    )
+    commit = CommitContext(
+        sha="b" * 40,
+        subject="[break-glass-x] forged-author hotfix",
+        body="",
+        author_login="owner",        # forgeable, allowlisted
+        committer_login="mallory",   # the real committer, NOT allowlisted
+        parents=(),
+        trailers=TrailerSet(),
+        committed_at="2026-05-26T11:30:00Z",
+    )
+    r = hook.on_commit(commit)
+    assert r.incident_label == "decision:break-glass-unauthorized"
+    assert "mallory" in r.incident_body  # the committer, not the author, is named
+
+
+def test_allowlisted_committer_with_forged_low_author_passes():
+    # Symmetric baseline: when the COMMITTER is allowlisted, the commit passes
+    # the actor check regardless of the author field.
+    hook = BreakGlassAuditHook(
+        allowlisted_actors=("owner",),
+        adr_finder=lambda sha: True,
+        clock=lambda: NOW,
+    )
+    commit = CommitContext(
+        sha="c" * 40,
+        subject="[break-glass-x] legit hotfix",
+        body="",
+        author_login="anyone",       # author is irrelevant to the gate
+        committer_login="owner",     # allowlisted committer
+        parents=(),
+        trailers=TrailerSet(),
+        committed_at="2026-05-26T11:30:00Z",
+    )
+    assert hook.on_commit(commit).incident_label is None
+
+
 def test_custom_deadline_respected():
     hook = BreakGlassAuditHook(
         allowlisted_actors=("owner",),

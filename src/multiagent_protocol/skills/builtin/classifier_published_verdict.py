@@ -29,20 +29,30 @@ optionally followed by more text). Example summary::
     Quadrant: D
     Reason: deletes src/multiagent_protocol/classifier.py
 
-**Abstain (never raise an exception).** If the check-run is absent, published by
-a non-canonical slug, present more than once ambiguously, or its summary cannot
-be parsed into a valid quadrant, this rule votes the LOWEST quadrant (``A``) —
-i.e. it abstains, contributing nothing to the max. It never crashes the tick.
+**Duplicate canonical judgments → MAXIMUM, never neutralize.** If more than one
+``classifier-judgment`` run is published *by the canonical slug*, we take the
+MAXIMUM quadrant across them (fail-safe toward owner control, QUADRANT_ORDER
+A<C<B<D), never abstain-to-A. Abstaining on canonical duplicates would let a
+second canonical judgment NEUTRALIZE a real ``Quadrant: D`` — a fail-OPEN bypass.
+Non-canonical duplicates remain ignored (provenance is filtered first).
+
+**Abstain (never raise an exception).** If no canonical ``classifier-judgment``
+run is present, or every canonical run's summary is unparseable, this rule votes
+the LOWEST quadrant (``A``) — i.e. it abstains, contributing nothing to the max.
+It never crashes the tick.
 """
 
 from __future__ import annotations
 
 import re
+from typing import cast
 
+from multiagent_protocol.classifier import QUADRANT_ORDER
 from multiagent_protocol.skills.base import (
     ClassifierVote,
     PRContext,
 )
+from multiagent_protocol.types import Quadrant
 
 CLASSIFIER_JUDGMENT_CHECK = "classifier-judgment"
 
@@ -65,49 +75,54 @@ class PublishedVerdictClassifier:
         if not self.publisher_slug:
             return self._abstain("no canonical publisher configured")
 
-        # There should be at most one classifier-judgment check-run on a head;
-        # if more than one is present we cannot disambiguate the authoritative
-        # verdict, so we abstain (fail-safe: contribute nothing to the max).
-        matches = [
+        # Provenance first: keep only ``classifier-judgment`` runs published by
+        # the canonical slug (same identity gate as validator_classifier_publisher).
+        # Non-canonical judgments are ignored entirely — a forged publisher must
+        # not influence the verdict in either direction.
+        canonical = [
             c for c in pr_context.check_runs
             if c.name == CLASSIFIER_JUDGMENT_CHECK
+            and c.app_slug and c.app_slug == self.publisher_slug
         ]
-        if not matches:
-            return self._abstain("no classifier-judgment check-run on head")
-        if len(matches) > 1:
-            return self._abstain("multiple classifier-judgment check-runs (ambiguous)")
-
-        check = matches[0]
-
-        # Provenance: same identity gate as validator_classifier_publisher.
-        if not check.app_slug or check.app_slug != self.publisher_slug:
+        if not canonical:
             return self._abstain(
-                f"classifier-judgment published by '{check.app_slug or '(none)'}', "
-                f"expected '{self.publisher_slug}' — ignored"
+                "no canonical classifier-judgment check-run on head"
             )
 
-        quadrant = self._parse_quadrant(check.output_summary)
-        if quadrant is None:
+        # >1 canonical judgment is NOT abstain-to-A: that would let a second
+        # canonical judgment NEUTRALIZE a real ``Quadrant: D`` (fail-OPEN). Take
+        # the MAXIMUM quadrant across all canonical, parseable judgments —
+        # fail-safe toward owner control, since the max-vote engine only raises.
+        quadrants = [
+            q for q in (self._parse_quadrant(c.output_summary) for c in canonical)
+            if q is not None
+        ]
+        if not quadrants:
             return self._abstain(
-                "classifier-judgment summary has no parseable 'Quadrant: X' marker"
+                "canonical classifier-judgment summary has no parseable "
+                "'Quadrant: X' marker"
             )
 
+        quadrant = max(quadrants, key=lambda q: QUADRANT_ORDER[q])
+        suffix = "" if len(canonical) == 1 else f" (max of {len(quadrants)} canonical)"
         return ClassifierVote(
             quadrant=quadrant,
             reasoning=(
                 f"published classifier-judgment verdict (Quadrant {quadrant}) "
-                f"by canonical publisher '{self.publisher_slug}'"
+                f"by canonical publisher '{self.publisher_slug}'{suffix}"
             ),
         )
 
     @staticmethod
-    def _parse_quadrant(summary: str | None) -> str | None:
+    def _parse_quadrant(summary: str | None) -> Quadrant | None:
         if not summary:
             return None
         m = _QUADRANT_LINE_RE.search(summary)
         if m is None:
             return None
-        return m.group(1).upper()
+        # The regex only ever captures one of A/B/C/D, so the upper-cased group
+        # is a valid Quadrant.
+        return cast(Quadrant, m.group(1).upper())
 
     @staticmethod
     def _abstain(reason: str) -> ClassifierVote:

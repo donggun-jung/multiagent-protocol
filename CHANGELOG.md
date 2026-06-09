@@ -43,6 +43,47 @@ optional inputs.
   break-glass + the new R3 detector). Lets the governance repo be audited
   without the self-gating paradox. Default: no repo is audit-only.
 
+### Hardened (cross-vendor GPT-5.5 adversarial review)
+
+Five **fail-open** bypasses found in the v1.1 gate additions, each closed
+fail-closed and additively (v1.0.0 defaults unchanged; no existing gate weakened):
+
+- **R1 — duplicate check-name masking (C2).** `validator_ci_green` built a
+  `{name: check}` map, so two runs named `build` (`failure` then `success`)
+  collapsed to the success and **passed C2**. Now a required check is
+  present-and-green only if it has ≥1 run **and no same-name run is non-success**
+  (any failing/incomplete same-name run fails C2 fail-closed); the all-checks
+  path inspects every run, never a name-deduped view, so a duplicate failing
+  check can no longer be masked.
+- **R2 — duplicate canonical verdict neutralization.** `classifier_published_verdict`
+  abstained (voted A) when >1 `classifier-judgment` run was present, letting a
+  real `Quadrant: D` be **neutralized** by a second canonical judgment. Now,
+  among judgments published **by the canonical slug**, it takes the **MAXIMUM**
+  quadrant (A<C<B<D) and never abstains-to-A on canonical duplicates; it still
+  abstains when zero canonical judgments are present or all are unparseable.
+  Non-canonical duplicates remain ignored (provenance is filtered first).
+- **DEC-C — config as critical.** `classifier_path_default` `CRITICAL_PREFIXES`
+  omitted `config/`, so a PR editing the gate's **own** config (adding a repo to
+  `audit_only_repos`, changing `required_checks`, editing the agent registry)
+  was not routed critical and could auto-merge as Quadrant A. `config/` is now a
+  critical prefix → any config change is at least B/D (owner-visible).
+- **R1 in L2.** `branch_supervisor.revalidate_main` returned `passed` under
+  `allow_no_ci=True` even when a named `required_check` was **missing** on the
+  merged commit. L2 now mirrors C2: a specified-and-missing (or non-success)
+  required check is a **real failure** that opens the incident, regardless of
+  `allow_no_ci` (which only relaxes the empty-required-list path).
+- **R3 hardening.** (a) `hook_unauthorized_push` is now in the `NON_DISABLEABLE`
+  core set, so the no-paid-branch-protection substitute cannot be silently
+  turned off via `skills.disabled`. (b) The L5 break-glass actor allowlist check
+  now uses the commit **committer** login, not the forgeable author
+  (`git commit --author=…`), consistent with `hook_unauthorized_push`; a code
+  comment + doctrine note record that commit committer metadata is
+  association-not-push-actor (the true push actor needs the Enterprise audit-log
+  API — a documented future item).
+
+`docs/concepts/general-preferences.md` § 11 updated (the unauthorized-push hook
+is no longer listed as disableable; committer-vs-author identity note added).
+
 ### Config + schema
 
 - `schemas/env.schema.json`: optional `required_checks` (array of non-empty
@@ -56,11 +97,15 @@ optional inputs.
 
 ### Tests
 
-- **45 new tests → 213 total** (config loader + schema acceptance, C2 + L2
+- **59 new tests → 227 total** (config loader + schema acceptance, C2 + L2
   required-checks, the published-verdict rule incl. max-vote-only-raises and
   wrong-publisher abstention, the unauthorized-push hook incl. idempotency, and
-  end-to-end `main()` audit-only gating). ruff clean; the 168 prior tests pass
-  unchanged.
+  end-to-end `main()` audit-only gating) — **+14** from the cross-vendor
+  hardening pass: C2 duplicate-name masking (fail-closed), R2 canonical-duplicate
+  MAX (no neutralize-to-A), `config/` critical classification, L2 missing
+  required check under `allow_no_ci`, `hook_unauthorized_push` stays armed when
+  listed in `disabled`, and L5 committer-not-author actor trust. ruff clean; the
+  168 prior tests pass unchanged.
 
 ## [1.0.0] - 2026-05-30
 

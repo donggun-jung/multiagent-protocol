@@ -82,6 +82,11 @@ NON_DISABLEABLE = frozenset({
     "validator_classifier_publisher",
     "classifier_bot_self_repo",
     "hook_break_glass_audit",
+    # R3: the code-level substitute for paid branch protection. If it could be
+    # silently turned off via skills.disabled, a fleet with no paid branch
+    # protection would have NOTHING watching main for unsanctioned writes — a
+    # fail-open. It stays armed regardless of `disabled`.
+    "hook_unauthorized_push",
 })
 
 # Core L1 validators whose severity must stay blocking (P0/P1). The operator

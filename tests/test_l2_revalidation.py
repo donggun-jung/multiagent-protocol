@@ -103,11 +103,42 @@ def test_l2_required_check_only_inspects_named(fake_api):
     assert wm == "i" * 40
 
 
-def test_l2_required_check_missing_is_unsettled(fake_api):
-    # The required check 'build' is absent on the merged commit (only 'lint'
-    # ran). With required_checks set, the named check is not present → no
-    # relevant checks → fail-closed (infra/unsettled), watermark holds.
+def test_l2_required_check_missing_is_real_failure(fake_api):
+    # R1-in-L2 fix: the required check 'build' is absent on the merged commit
+    # (only 'lint' ran). Mirroring C2 (which FAILS on a missing required check,
+    # not "wait"), a specified-and-missing required check is a REAL failure →
+    # incident opens and the watermark advances past the settled commit.
+    # (Previously this was silently classed infra/unsettled — a latent
+    # fail-open where a never-appearing required check never alarmed.)
     _seed(fake_api, "j" * 40, [make_check("lint", "success")])
     incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
-    assert incidents == []
-    assert wm is None   # did not advance — re-checked next tick
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "j" * 40
+    assert "build" in incidents[0].body
+    assert wm == "j" * 40   # settled (incident raised)
+
+
+def test_l2_required_missing_is_incident_even_with_allow_no_ci(fake_api):
+    # R1-in-L2 fail-closed fix (the cited bypass): a specified-and-missing
+    # required check must open an incident REGARDLESS of allow_no_ci. allow_no_ci
+    # only relaxes the EMPTY-required-list path; it must not silently 'pass' a
+    # missing named required check (which previously returned 'passed' here).
+    _seed(fake_api, "k" * 40, [make_check("lint", "success")])
+    incidents, wm = revalidate_main(
+        fake_api, "o", "r", ("build",), {}, allow_no_ci=True)
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "k" * 40
+    assert "build" in incidents[0].body
+    assert wm == "k" * 40
+
+
+def test_l2_required_duplicate_failure_then_success_is_incident(fake_api):
+    # R1-in-L2 + duplicate masking: 'build' appears twice (failure then
+    # success). A name-deduped view would mask the failure; L2 inspects all
+    # same-named runs, so the failing duplicate opens an incident.
+    _seed(fake_api, "l" * 40,
+          [make_check("build", "failure"), make_check("build", "success")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "l" * 40
+    assert wm == "l" * 40

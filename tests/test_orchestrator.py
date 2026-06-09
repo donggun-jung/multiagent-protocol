@@ -287,6 +287,19 @@ def test_non_disableable_skill_kept(fake_api, solo_config):
     assert "validator_trailers" in _names(rt.validators)
 
 
+def test_unauthorized_push_hook_not_disableable(fake_api, solo_config):
+    # R3 hardening: hook_unauthorized_push is the only code-level substitute for
+    # paid branch protection. It must stay armed even if listed in
+    # skills.disabled, so a fleet cannot silently lose main-write monitoring.
+    cfg = dataclasses.replace(
+        solo_config,
+        skills=dataclasses.replace(
+            solo_config.skills, disabled=("hook_unauthorized_push",)),
+    )
+    rt = build_runtime_skills(cfg, fake_api, config_dir=None)
+    assert "hook_unauthorized_push" in _names(rt.static_branch_hooks)
+
+
 def test_severity_override_applied(fake_api, solo_config):
     cfg = dataclasses.replace(
         solo_config,

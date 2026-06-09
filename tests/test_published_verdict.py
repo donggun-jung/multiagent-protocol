@@ -82,11 +82,58 @@ def test_unconfigured_rule_abstains(pr_factory):
     assert PublishedVerdictClassifier().evaluate(pr).quadrant == "A"
 
 
-def test_multiple_judgment_checks_abstain(pr_factory):
-    pr = pr_factory(check_runs=(_judgment("Quadrant: D"), _judgment("Quadrant: A")))
+def test_multiple_canonical_judgments_take_maximum(pr_factory):
+    # R2 fix: two CANONICAL classifier-judgment runs [A, D]. Abstaining (old
+    # behavior) would let the second canonical judgment NEUTRALIZE a real
+    # Quadrant: D — a fail-OPEN bypass. Take the MAXIMUM quadrant (A<C<B<D) →
+    # votes D, fail-safe toward owner control.
+    pr = pr_factory(check_runs=(_judgment("Quadrant: A"), _judgment("Quadrant: D")))
+    v = PublishedVerdictClassifier(publisher_slug=SLUG).evaluate(pr)
+    assert v.quadrant == "D"
+
+
+def test_multiple_canonical_judgments_d_plus_garbled_takes_d(pr_factory):
+    # [D, garbled]: the garbled run contributes no parseable quadrant, but the
+    # real D is still honoured (max over the parseable canonical judgments).
+    pr = pr_factory(check_runs=(
+        _judgment("Quadrant: D"),
+        _judgment("no quadrant marker here"),
+    ))
+    assert PublishedVerdictClassifier(publisher_slug=SLUG).evaluate(pr).quadrant == "D"
+
+
+def test_zero_canonical_judgments_abstains(pr_factory):
+    # All classifier-judgment runs are non-canonical (wrong slug) → no canonical
+    # judgment → abstain (votes A), as before.
+    pr = pr_factory(check_runs=(
+        _judgment("Quadrant: D", slug="evil-a"),
+        _judgment("Quadrant: D", slug="evil-b"),
+    ))
     v = PublishedVerdictClassifier(publisher_slug=SLUG).evaluate(pr)
     assert v.quadrant == "A"
-    assert "ambiguous" in v.reasoning
+    assert "abstain" in v.reasoning
+
+
+def test_all_canonical_judgments_unparseable_abstains(pr_factory):
+    # Two canonical runs, neither with a parseable Quadrant marker → abstain.
+    pr = pr_factory(check_runs=(
+        _judgment("garbage one"),
+        _judgment("garbage two"),
+    ))
+    v = PublishedVerdictClassifier(publisher_slug=SLUG).evaluate(pr)
+    assert v.quadrant == "A"
+    assert "abstain" in v.reasoning
+
+
+def test_non_canonical_duplicate_does_not_lower_canonical(pr_factory):
+    # A canonical D plus a NON-canonical (wrong-slug) A: the non-canonical run is
+    # ignored entirely, so the canonical D stands (a forged publisher cannot
+    # neutralize a real verdict).
+    pr = pr_factory(check_runs=(
+        _judgment("Quadrant: D"),
+        _judgment("Quadrant: A", slug="forged"),
+    ))
+    assert PublishedVerdictClassifier(publisher_slug=SLUG).evaluate(pr).quadrant == "D"
 
 
 def test_quadrant_marker_case_insensitive_key(pr_factory):

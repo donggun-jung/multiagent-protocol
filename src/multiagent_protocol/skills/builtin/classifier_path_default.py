@@ -4,9 +4,14 @@ Reads ``config/classifier_rules.yml`` if present; otherwise applies a
 conservative built-in heuristic:
 
 - Any change touching ``src/`` or ``schemas/`` or ``docs/concepts/`` or
-  ``.github/workflows/`` is **critical**.
+  ``.github/workflows/`` or ``config/`` is **critical**.
 - Any change deleting files is **irreversible**.
 - The cross-product yields A/B/C/D as in ``docs/concepts/four-quadrants.md``.
+
+``config/`` is critical because a PR editing the gate's OWN config (adding a
+repo to ``audit_only_repos``, changing ``required_checks``, or editing the agent
+registry) reconfigures enforcement itself — such a change must be at least
+critical (→ B/D, owner-visible), never auto-merged as Quadrant A.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ CRITICAL_PREFIXES = (
     "schemas/",
     "docs/concepts/",
     ".github/workflows/",
+    "config/",   # the gate's own config: changing it reconfigures enforcement.
 )
 
 
@@ -43,7 +49,7 @@ class PathDefaultClassifier:
                 quadrant="D",
                 reasoning=(
                     "irreversible + critical (deletes a file in src/, schemas/, "
-                    "docs/concepts/, or .github/workflows/)"
+                    "docs/concepts/, .github/workflows/, or config/)"
                 ),
             )
         if is_critical:
