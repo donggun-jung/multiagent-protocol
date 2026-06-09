@@ -184,9 +184,15 @@ def _classify_commit_checks(
             if not runs:
                 real.append(name)  # specified-and-missing → real failure
                 continue
-            for c in runs:
-                if c.get("status") != "completed":
-                    continue
+            completed = [c for c in runs if c.get("status") == "completed"]
+            if not completed:
+                # Present but still running (queued/in_progress) → UNSETTLED.
+                # Do NOT pass + advance the watermark, or a required check that
+                # later fails would be missed (it landed before CI finished).
+                # Mark infra so the tick retries this commit next time.
+                infra = True
+                continue
+            for c in completed:
                 if c.get("conclusion") in _PASSING_CONCLUSIONS:
                     continue
                 if _is_infra_failure(c):

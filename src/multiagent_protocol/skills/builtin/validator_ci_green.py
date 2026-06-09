@@ -66,8 +66,15 @@ class CiGreenValidator:
         """Return a failing ValidationResult for the first non-success run, else None.
 
         A run is acceptable iff it is ``completed`` with conclusion ``success``
-        (or ``neutral`` when ``allow_neutral``, which is informational-only).
-        Any other run — incomplete, failed, cancelled, timed out — fails C2.
+        — or ``neutral`` when ``allow_neutral``. ``neutral`` is allowed only in
+        the unnamed all-checks path because SIGNAL check-runs (e.g. the
+        ``classifier-judgment`` the engine itself publishes with conclusion
+        ``neutral``/``action_required``) are advisory, not pass/fail CI; treating
+        them as failures would block every PR. A NAMED ``required_check`` does
+        NOT pass on ``neutral`` (the required path calls this without
+        ``allow_neutral``), so an operator who names a check still gets strict
+        success-only. Any other run — incomplete, failed, cancelled, timed out,
+        skipped — fails C2.
         """
         for check in checks:
             if check.status != "completed":

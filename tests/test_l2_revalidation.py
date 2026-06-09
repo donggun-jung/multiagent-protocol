@@ -59,6 +59,17 @@ def test_success_passes(fake_api):
     assert wm == "d" * 40
 
 
+def test_l2_required_in_progress_is_unsettled_not_passed(fake_api):
+    # Cross-vendor re-review residual: a REQUIRED check still running
+    # (queued/in_progress) on a merged commit must NOT pass + advance the
+    # watermark — a required check that later fails would otherwise be missed
+    # (it landed before CI finished). It is unsettled → retry next tick.
+    _seed(fake_api, "f" * 40, [make_check("build", "", status="in_progress")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert incidents == []
+    assert wm is None  # watermark does NOT advance past the unsettled commit
+
+
 def test_no_new_commits_returns_watermark(fake_api):
     fake_api.seed_main_commits("o", "r", [])
     incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": "x" * 40})
