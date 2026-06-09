@@ -81,6 +81,32 @@
           "description": "Hours after a break-glass commit during which an ADR referencing the commit SHA must land in docs/decisions/. Past this window the L5 auditor surfaces an 'unaudited' Issue."
         }
       }
+    },
+    "audit_only_repos": {
+      "type": "array",
+      "description": "Optional (DEC-C). Repos that are AUDITED on main (L2 post-merge re-validation + L5 break-glass + the unauthorized-push detector) but whose open PRs are NOT gated (L1-L4 skipped). Use for the governance repo so it can be supervised without the self-gating paradox. Each entry should also appear in supervised_repos. Default [] = every supervised repo is fully gated (v1.0.0 behavior).",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "repo_overrides": {
+      "type": "object",
+      "description": "Optional (R1). Per-repo configuration overrides keyed by 'owner/name'. A key present here overrides the corresponding global default for that repo only.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "required_checks": {
+            "type": "array",
+            "description": "Named CI check-runs that MUST each be present + green on a PR head for C2 (and L2) to pass in THIS repo. Overrides the global env.yml required_checks. An explicit empty list [] forces 'no named checks' for this repo (back to the all-completed-checks-succeed behavior) even when a global default is set.",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          }
+        }
+      }
     }
   }
 }

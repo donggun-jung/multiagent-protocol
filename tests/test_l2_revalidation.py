@@ -59,6 +59,17 @@ def test_success_passes(fake_api):
     assert wm == "d" * 40
 
 
+def test_l2_required_in_progress_is_unsettled_not_passed(fake_api):
+    # Cross-vendor re-review residual: a REQUIRED check still running
+    # (queued/in_progress) on a merged commit must NOT pass + advance the
+    # watermark — a required check that later fails would otherwise be missed
+    # (it landed before CI finished). It is unsettled → retry next tick.
+    _seed(fake_api, "f" * 40, [make_check("build", "", status="in_progress")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert incidents == []
+    assert wm is None  # watermark does NOT advance past the unsettled commit
+
+
 def test_no_new_commits_returns_watermark(fake_api):
     fake_api.seed_main_commits("o", "r", [])
     incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": "x" * 40})
@@ -80,3 +91,65 @@ def test_no_checks_passes_with_allow_no_ci(fake_api):
     incidents, wm = revalidate_main(fake_api, "o", "r", (), {}, allow_no_ci=True)
     assert incidents == []
     assert wm == "g" * 40   # opted-in → settled
+
+
+# -- R1: L2 honours required_checks --------------------------------------------
+
+def test_l2_required_check_failure_opens_incident(fake_api):
+    # The named required check 'build' is present + failing → real failure.
+    _seed(fake_api, "h" * 40, [make_check("build", "failure")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "h" * 40
+    assert wm == "h" * 40
+
+
+def test_l2_required_check_only_inspects_named(fake_api):
+    # 'build' (required) is green; an unrelated 'flaky' check is red. Because L2
+    # filters to required checks, the unrelated red does not open an incident.
+    _seed(fake_api, "i" * 40,
+          [make_check("build", "success"), make_check("flaky", "failure")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert incidents == []
+    assert wm == "i" * 40
+
+
+def test_l2_required_check_missing_is_real_failure(fake_api):
+    # R1-in-L2 fix: the required check 'build' is absent on the merged commit
+    # (only 'lint' ran). Mirroring C2 (which FAILS on a missing required check,
+    # not "wait"), a specified-and-missing required check is a REAL failure →
+    # incident opens and the watermark advances past the settled commit.
+    # (Previously this was silently classed infra/unsettled — a latent
+    # fail-open where a never-appearing required check never alarmed.)
+    _seed(fake_api, "j" * 40, [make_check("lint", "success")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "j" * 40
+    assert "build" in incidents[0].body
+    assert wm == "j" * 40   # settled (incident raised)
+
+
+def test_l2_required_missing_is_incident_even_with_allow_no_ci(fake_api):
+    # R1-in-L2 fail-closed fix (the cited bypass): a specified-and-missing
+    # required check must open an incident REGARDLESS of allow_no_ci. allow_no_ci
+    # only relaxes the EMPTY-required-list path; it must not silently 'pass' a
+    # missing named required check (which previously returned 'passed' here).
+    _seed(fake_api, "k" * 40, [make_check("lint", "success")])
+    incidents, wm = revalidate_main(
+        fake_api, "o", "r", ("build",), {}, allow_no_ci=True)
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "k" * 40
+    assert "build" in incidents[0].body
+    assert wm == "k" * 40
+
+
+def test_l2_required_duplicate_failure_then_success_is_incident(fake_api):
+    # R1-in-L2 + duplicate masking: 'build' appears twice (failure then
+    # success). A name-deduped view would mask the failure; L2 inspects all
+    # same-named runs, so the failing duplicate opens an incident.
+    _seed(fake_api, "l" * 40,
+          [make_check("build", "failure"), make_check("build", "success")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "l" * 40
+    assert wm == "l" * 40

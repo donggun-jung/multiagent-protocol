@@ -69,6 +69,27 @@ def test_path_default_concept_doc_change_is_b(pr_factory):
     assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
 
 
+def test_path_default_config_change_is_critical_not_a(pr_factory):
+    # DEC-C fix: a PR editing the gate's OWN config (e.g. config/projects.yml —
+    # adding a repo to audit_only_repos, changing required_checks, the agent
+    # registry) reconfigures enforcement and must be at least CRITICAL (B/D,
+    # owner-visible), never auto-merged as Quadrant A.
+    pr = pr_factory(files_changed=(
+        FileChange(path="config/projects.yml",
+                   status="modified", additions=2, deletions=0),
+    ))
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+
+
+def test_path_default_config_deletion_is_d(pr_factory):
+    # Deleting a config file is irreversible + critical → Quadrant D.
+    pr = pr_factory(files_changed=(
+        FileChange(path="config/skills.yml", status="removed",
+                   additions=0, deletions=10),
+    ))
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
+
+
 # -- Empty PR --
 
 def test_empty_pr_classifier_d(pr_factory):

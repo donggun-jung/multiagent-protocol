@@ -82,13 +82,16 @@ A PR whose target repository equals the bot's own repository votes Quadrant D.
 
 ## 6. classifier-judgment must be published by a canonical actor
 
-**Built-in**: `validator_classifier_publisher.py` (Validator, P0)
+**Built-in**: `validator_classifier_publisher.py` (Validator, P0) +
+`classifier_published_verdict.py` (ClassifierRule)
 
 When the bot reads a `classifier-judgment` check-run from a PR, it verifies `app.slug == config/env.yml` `classifier_publisher_slug` (default: `github-actions`). Mismatched slug → fail-closed (treated as classifier missing → Quadrant D default).
 
-**Why**: Without this, **anyone** who can run a GitHub Actions workflow in **any repo** could publish a check-run named `classifier-judgment` with summary `Quadrant: A`. The bot's auto-approval path would honor it. The publisher-identity gate closes this attack.
+As of v1.1, the bot also **reads the published quadrant** from a canonical `classifier-judgment` check-run and votes it (rule `classifier_published_verdict`): the check-run's output/summary should contain a line `Quadrant: X` (one of A/B/C/D). Because the classifier takes the **maximum** quadrant, the published verdict can only **raise** a PR's quadrant toward owner control — never lower it. A check-run that is absent, by a non-canonical publisher, or unparseable is ignored (the rule abstains).
 
-**How to disable**: not permitted. Change `config/env.yml` `classifier_publisher_slug` if you publish classifier-judgment from a different App (advanced); the gate itself stays on.
+**Why**: Without the publisher gate, **anyone** who can run a GitHub Actions workflow in **any repo** could publish a check-run named `classifier-judgment` with summary `Quadrant: A`. The bot's auto-approval path would honor it. The publisher-identity gate closes this attack — and because the published-verdict rule honours only the canonical slug *and* can only raise, a forged verdict can neither unlock a flagged PR nor (since a raise is at worst a denial-of-service) silently auto-merge.
+
+**How to disable**: the publisher *validator* is not permitted to be disabled. Change `config/env.yml` `classifier_publisher_slug` if you publish classifier-judgment from a different App (advanced); the gate itself stays on. The published-verdict *rule* abstains automatically when no canonical judgment is present, so a fleet that does not publish `classifier-judgment` is unaffected.
 
 ## 7. Mirror cascade is detection, not auto-fix
 
@@ -125,6 +128,18 @@ A commit on `main` whose subject starts with `[break-glass-*]` triggers L5 audit
 **Why**: Skills run with full bot privileges. A skill making an external API call is a data exfiltration vector — the operator's GitHub token, PR content, and bot state are all in-process. By making the rule "no network from user skills," skills become pure functions of context.
 
 **How to extend with network**: see [`docs/guide/skills.md`](../guide/skills.md) § "When you cannot do it with a skill". The right answer is to extend `PRContext` (a core change with ADR) rather than punch network through a skill.
+
+## 11. Unauthorized pushes to `main` are flagged (code-level branch protection)
+
+**Built-in**: `hook_unauthorized_push.py` (BranchHook) — added v1.1
+
+GitHub's "only the App may push to `main`" branch protection is a paid feature on private repos. This hook is the code-level substitute: scanning `main`, it opens a `decision:unauthorized-push` incident for any commit that is **not** a sanctioned write — i.e. its committer is not the bot, its subject is not a `[break-glass-*]` commit (those belong to the break-glass auditor, § 8), **and** its committer login is not in `config/owner.yml` `allowlisted_actors`.
+
+**Why**: Without paid branch protection, nothing at GitHub's layer stops a stray push or a leaked token from writing to `main` around the merge gate. This hook turns such a write into a visible incident on the next tick.
+
+**How to disable**: not permitted via `disabled:`. Because this hook is the *only* code-level substitute for paid branch protection, allowing it to be silently turned off would leave a fleet with nothing watching `main` for unsanctioned writes — a fail-open. It is in the non-disableable core set (alongside `validator_trailers`, `validator_classifier_publisher`, `classifier_bot_self_repo`, and `hook_break_glass_audit`). If you already enforce bot-only pushes at GitHub's layer (paid branch protection / a ruleset), the hook is simply redundant — its incidents will never fire, at no cost — so there is no need to disable it.
+
+> **Note on identity.** This hook (and the break-glass auditor, § 8) authorizes by the commit's **committer** login, not the author — the author field is trivially forgeable via `git commit --author=...`. Committer metadata is itself an *association* (the GitHub API matches the committer email to an account) rather than the true push actor; the authoritative push actor is only available via the Enterprise-tier audit-log API. Wiring that in is a documented future item.
 
 ## Severity override table
 

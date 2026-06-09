@@ -122,6 +122,7 @@ This avoids the "every new agent vendor breaks every PR" problem when adding `Ai
 | Rule                           | Quadrant on match | What it catches                          |
 |--------------------------------|-------------------|------------------------------------------|
 | `path_classifier_default`      | per axes above    | File-path heuristic                      |
+| `published_verdict`            | A/B/C/D           | `classifier-judgment` check-run's `Quadrant: X`, published by the canonical App (`classifier_published_verdict`). Votes the published quadrant; max-vote means it can only **raise**. Absent / non-canonical / unparseable → abstains. |
 | `bot_self_repo`                | D                 | PR to the bot's own repo                 |
 | `empty_pr`                     | D                 | PR with no file diff                     |
 | `auto_revert_marker`           | C                 | Label `decision:auto-revert` present     |

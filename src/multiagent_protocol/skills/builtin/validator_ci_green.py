@@ -28,25 +28,22 @@ class CiGreenValidator:
         self.allow_no_checks = allow_no_checks
 
     def check(self, pr_context: PRContext) -> ValidationResult:
-        by_name = {c.name: c for c in pr_context.check_runs}
-
         if self.required_checks:
+            # R1 fail-closed: a required check is PRESENT-AND-GREEN only if it
+            # has >=1 run AND NO run of that name is non-success. We must inspect
+            # ALL same-named runs (not a ``{name: check}`` map, which would
+            # collapse a [failure, success] pair to the success and mask the
+            # failure — a fail-OPEN bypass). Any failing/incomplete same-name run
+            # fails C2.
             for required in self.required_checks:
-                check = by_name.get(required)
-                if check is None:
+                runs = [c for c in pr_context.check_runs if c.name == required]
+                if not runs:
                     return ValidationResult.fail(
                         f"C2: required check '{required}' is missing"
                     )
-                if check.status != "completed":
-                    return ValidationResult.fail(
-                        f"C2: required check '{required}' not yet completed "
-                        f"(status={check.status})"
-                    )
-                if check.conclusion != "success":
-                    return ValidationResult.fail(
-                        f"C2: required check '{required}' did not succeed "
-                        f"(conclusion={check.conclusion})"
-                    )
+                bad = self._first_non_success(runs)
+                if bad is not None:
+                    return bad
             return ValidationResult.ok()
 
         # No explicit list: every completed check must be success.
@@ -57,16 +54,40 @@ class CiGreenValidator:
                 "C2: no check-runs found on PR head (CI may not have started). "
                 "If this repo has no CI by design, set env.yml `allow_no_ci: true`."
             )
-        for check in pr_context.check_runs:
+        # Iterate EVERY run (never a name-deduped map): a duplicate failing check
+        # must not be masked by a same-named success.
+        bad = self._first_non_success(pr_context.check_runs, allow_neutral=True)
+        if bad is not None:
+            return bad
+        return ValidationResult.ok()
+
+    @staticmethod
+    def _first_non_success(checks, *, allow_neutral: bool = False):
+        """Return a failing ValidationResult for the first non-success run, else None.
+
+        A run is acceptable iff it is ``completed`` with conclusion ``success``
+        — or ``neutral`` when ``allow_neutral``. ``neutral`` is allowed only in
+        the unnamed all-checks path because SIGNAL check-runs (e.g. the
+        ``classifier-judgment`` the engine itself publishes with conclusion
+        ``neutral``/``action_required``) are advisory, not pass/fail CI; treating
+        them as failures would block every PR. A NAMED ``required_check`` does
+        NOT pass on ``neutral`` (the required path calls this without
+        ``allow_neutral``), so an operator who names a check still gets strict
+        success-only. Any other run — incomplete, failed, cancelled, timed out,
+        skipped — fails C2.
+        """
+        for check in checks:
             if check.status != "completed":
                 return ValidationResult.fail(
                     f"C2: check '{check.name}' not yet completed "
                     f"(status={check.status})"
                 )
-            if check.conclusion != "success" and check.conclusion not in ("neutral",):
-                # 'neutral' is treated as informational-only and passes.
-                return ValidationResult.fail(
-                    f"C2: check '{check.name}' did not succeed "
-                    f"(conclusion={check.conclusion})"
-                )
-        return ValidationResult.ok()
+            if check.conclusion == "success":
+                continue
+            if allow_neutral and check.conclusion == "neutral":
+                continue
+            return ValidationResult.fail(
+                f"C2: check '{check.name}' did not succeed "
+                f"(conclusion={check.conclusion})"
+            )
+        return None

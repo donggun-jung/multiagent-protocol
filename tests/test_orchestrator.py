@@ -89,6 +89,59 @@ def test_no_ci_repo_merges_when_allow_no_ci(fake_api, solo_config):
     assert d.action == "merged"
 
 
+# -- R1: required_checks threaded through process_pr (C2) ----------------------
+
+def test_global_required_check_missing_blocks(fake_api, solo_config):
+    # env.required_checks=("build",); the PR head only has the default 'ci'
+    # check (green) but not 'build' → C2 fails closed → blocked.
+    cfg = dataclasses.replace(
+        solo_config, env=dataclasses.replace(solo_config.env, required_checks=("build",)))
+    pr = fake_api.register_pr(number=50, labels=("ready-to-merge",),
+                              files=[changed_file("README.md")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "blocked"
+    assert fake_api.merged == []
+
+
+def test_per_repo_required_check_present_merges(fake_api, solo_config):
+    # Per-repo override on example/repo requires 'build'; the head has it green
+    # plus an unrelated check → C2 passes → A merges.
+    from multiagent_protocol.config.loader import RepoOverride
+    cfg = dataclasses.replace(
+        solo_config,
+        projects=dataclasses.replace(
+            solo_config.projects,
+            repo_overrides={"example/repo": RepoOverride(required_checks=("build",))},
+        ),
+    )
+    pr = fake_api.register_pr(
+        number=51, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("build", "success"), make_check("ci", "success")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "merged"
+    assert d.quadrant == "A"
+
+
+def test_per_repo_required_overrides_global(fake_api, solo_config):
+    # Global default requires 'lint'; per-repo override for example/repo requires
+    # 'build' instead. A head with 'build' (green) but NO 'lint' must still merge
+    # — the per-repo override wins, so 'lint' is not required here.
+    from multiagent_protocol.config.loader import RepoOverride
+    cfg = dataclasses.replace(
+        solo_config,
+        env=dataclasses.replace(solo_config.env, required_checks=("lint",)),
+        projects=dataclasses.replace(
+            solo_config.projects,
+            repo_overrides={"example/repo": RepoOverride(required_checks=("build",))},
+        ),
+    )
+    pr = fake_api.register_pr(
+        number=52, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("build", "success")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "merged"
+
+
 def test_quadrant_d_inbox_is_idempotent(fake_api, solo_config):
     pr = fake_api.register_pr(
         number=6, labels=("ready-to-merge",),
@@ -170,6 +223,50 @@ def test_self_applied_auto_revert_label_does_not_merge_quadrant_d(fake_api, solo
     assert fake_api.merged == []
 
 
+# -- R2: published classifier verdict wired into the runtime ------------------
+
+def test_published_verdict_d_routes_to_inbox(fake_api, solo_config):
+    # Path heuristic says A (README), but a canonical-slug classifier-judgment
+    # publishes Quadrant: D → max-vote raises to D → routed to the owner inbox,
+    # not merged. Proves PublishedVerdictClassifier is in the runtime rule set.
+    pr = fake_api.register_pr(
+        number=60, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[
+            make_check("ci", "success"),
+            make_check("classifier-judgment", "neutral", summary="Quadrant: D"),
+        ])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.quadrant == "D"
+    assert d.action == "inbox"
+    assert fake_api.merged == []
+
+
+def test_published_verdict_c_raises_path_a_and_audits(fake_api, solo_config):
+    # Path heuristic says A; canonical judgment publishes Quadrant: C → raised to
+    # C, which still auto-approves (C merges) and opens the C audit issue.
+    pr = fake_api.register_pr(
+        number=61, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[
+            make_check("ci", "success"),
+            make_check("classifier-judgment", "neutral", summary="Quadrant: C"),
+        ])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.quadrant == "C"
+    assert d.action == "merged"
+    assert any("decision:auto-approved-irreversible-non-critical" in i["_labels"]
+               for i in fake_api.issues_opened)
+
+
+def test_absent_judgment_is_v1_0_behavior(fake_api, solo_config):
+    # No classifier-judgment check present → R2 abstains → a path-A PR merges
+    # exactly as in v1.0.0 (backward-compat at the orchestrator level).
+    pr = fake_api.register_pr(
+        number=62, labels=("ready-to-merge",), files=[changed_file("README.md")])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.quadrant == "A"
+    assert d.action == "merged"
+
+
 # -- runtime builder: disabled + severity_overrides ---------------------------
 
 def test_disabled_skill_removed(fake_api, solo_config):
@@ -188,6 +285,19 @@ def test_non_disableable_skill_kept(fake_api, solo_config):
     )
     rt = build_runtime_skills(cfg, fake_api, config_dir=None)
     assert "validator_trailers" in _names(rt.validators)
+
+
+def test_unauthorized_push_hook_not_disableable(fake_api, solo_config):
+    # R3 hardening: hook_unauthorized_push is the only code-level substitute for
+    # paid branch protection. It must stay armed even if listed in
+    # skills.disabled, so a fleet cannot silently lose main-write monitoring.
+    cfg = dataclasses.replace(
+        solo_config,
+        skills=dataclasses.replace(
+            solo_config.skills, disabled=("hook_unauthorized_push",)),
+    )
+    rt = build_runtime_skills(cfg, fake_api, config_dir=None)
+    assert "hook_unauthorized_push" in _names(rt.static_branch_hooks)
 
 
 def test_severity_override_applied(fake_api, solo_config):

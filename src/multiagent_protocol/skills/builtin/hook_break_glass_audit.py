@@ -2,7 +2,9 @@
 
 Detects ``[break-glass-*]``-prefixed commits on ``main`` and verifies:
 
-1. The commit author is in ``config.owner.allowlisted_actors``.
+1. The commit **committer** is in ``config.owner.allowlisted_actors`` (the
+   committer field is used, not the author — the author is trivially forgeable
+   via ``git commit --author=...``, consistent with ``hook_unauthorized_push``).
 2. An ADR exists under ``docs/decisions/`` within 24h of the commit's
    timestamp, referencing the commit's SHA.
 
@@ -50,14 +52,26 @@ class BreakGlassAuditHook:
         if not BREAK_GLASS_PREFIX_RE.match(commit.subject):
             return BranchHookResult.none()
 
-        # Check 1: actor allowlist.
-        actor = commit.author_login or commit.committer_login
+        # Check 1: actor allowlist. Use the COMMITTER login, not the author —
+        # the author field is trivially forgeable (`git commit --author=...`),
+        # so trusting it would let an attacker forge an allowlisted author onto
+        # a break-glass commit and skip this gate. This matches the committer-
+        # based check in hook_unauthorized_push.
+        #
+        # KNOWN LIMITATION: even commit *committer* metadata is association,
+        # not the true push actor — the GitHub API derives the `committer`
+        # login by matching the commit's committer email to an account, which a
+        # local `git config user.email` can still spoof. The authoritative
+        # push-actor is only available via the GitHub audit-log API
+        # (`actor` on the `git.push` event), an Enterprise-tier feature.
+        # Wiring that in is a future item; we do NOT implement it here.
+        actor = commit.committer_login
         if self.allowlisted_actors and actor not in self.allowlisted_actors:
             return BranchHookResult(
                 incident_label="decision:break-glass-unauthorized",
                 incident_body=(
                     f"Commit {commit.short_sha} has break-glass subject "
-                    f"({commit.subject[:80]!r}) but author '{actor}' is not "
+                    f"({commit.subject[:80]!r}) but committer '{actor}' is not "
                     f"in the allowlisted actors set. This is either an "
                     f"unauthorized push or a misconfigured allowlist.\n\n"
                     f"Allowlisted: {', '.join(self.allowlisted_actors) or '(empty)'}"

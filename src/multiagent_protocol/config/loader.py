@@ -54,12 +54,29 @@ class BreakGlassConfig:
 
 
 @dataclass(frozen=True)
+class RepoOverride:
+    """Per-repo overrides keyed by ``owner/name`` in ``projects.repo_overrides``.
+
+    Currently only ``required_checks`` (R1): the named CI checks that MUST be
+    present + green on a PR head for C2/L2 to pass in this repo. ``None`` means
+    "no per-repo override" → fall back to the global ``env.required_checks``.
+    """
+
+    required_checks: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True)
 class ProjectsConfig:
     governance_repo: str            # "<owner>/<repo>"
     supervised_repos: tuple[str, ...]
     bot_repo: str | None = None     # if separate from governance
     decision_inbox: DecisionInboxConfig = field(default_factory=DecisionInboxConfig)
     break_glass: BreakGlassConfig = field(default_factory=BreakGlassConfig)
+    # DEC-C: repos audited (L2/L5) but NOT PR-gated (L1–L4). Empty = every
+    # supervised repo is gated (v1.0.0 behavior).
+    audit_only_repos: tuple[str, ...] = ()
+    # R1: per-repo ``required_checks`` override, keyed by ``owner/name``.
+    repo_overrides: dict[str, RepoOverride] = field(default_factory=dict)
 
     @property
     def effective_inbox_repository(self) -> str:
@@ -70,6 +87,19 @@ class ProjectsConfig:
     def effective_bot_repo(self) -> str:
         return self.bot_repo or self.governance_repo
 
+    def is_audit_only(self, full_name: str) -> bool:
+        """True iff this repo is audit-only (DEC-C): scanned but not PR-gated."""
+        return full_name in self.audit_only_repos
+
+    def effective_required_checks(
+        self, full_name: str, global_default: tuple[str, ...] = ()
+    ) -> tuple[str, ...]:
+        """R1: per-repo override wins; else the global default; else ()."""
+        override = self.repo_overrides.get(full_name)
+        if override is not None and override.required_checks is not None:
+            return override.required_checks
+        return global_default
+
 
 @dataclass(frozen=True)
 class EnvConfig:
@@ -77,6 +107,10 @@ class EnvConfig:
     classifier_publisher_slug: str  # default "github-actions"
     bot_app_slug: str               # GitHub App slug, e.g. "my-bot"
     allow_no_ci: bool = False       # if True, a head with zero checks passes C2
+    # R1: global default named CI checks that MUST be present + green for C2/L2.
+    # Empty = today's behavior (all completed checks must succeed). A per-repo
+    # ``projects.repo_overrides[<repo>].required_checks`` overrides this.
+    required_checks: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -163,6 +197,26 @@ def _build_break_glass(raw: dict) -> BreakGlassConfig:
     )
 
 
+def _build_repo_overrides(raw: dict) -> dict[str, RepoOverride]:
+    """Parse ``projects.repo_overrides`` into a ``{full_name: RepoOverride}`` map.
+
+    Absent / empty → ``{}`` (no per-repo overrides; R1 falls back to the global
+    ``env.required_checks``). A ``required_checks`` key absent in an entry stays
+    ``None`` (distinct from an explicit empty list, which forces "no named
+    checks" for that repo).
+    """
+    if not raw:
+        return {}
+    out: dict[str, RepoOverride] = {}
+    for full_name, entry in raw.items():
+        entry = entry or {}
+        rc = entry.get("required_checks")
+        out[full_name] = RepoOverride(
+            required_checks=tuple(rc) if rc is not None else None,
+        )
+    return out
+
+
 def _build_agent_registry(raw: dict) -> AgentRegistry | None:
     if not raw:
         return None
@@ -211,6 +265,8 @@ def load_config(
             bot_repo=projects_data.get("bot_repo"),
             decision_inbox=_build_decision_inbox(projects_data.get("decision_inbox") or {}),
             break_glass=_build_break_glass(projects_data.get("break_glass") or {}),
+            audit_only_repos=tuple(projects_data.get("audit_only_repos", [])),
+            repo_overrides=_build_repo_overrides(projects_data.get("repo_overrides") or {}),
         ),
         env=EnvConfig(
             runner_tier=env_data.get("runner_tier", "actions-free"),
@@ -219,6 +275,7 @@ def load_config(
             ),
             bot_app_slug=env_data["bot_app_slug"],
             allow_no_ci=bool(env_data.get("allow_no_ci", False)),
+            required_checks=tuple(env_data.get("required_checks", [])),
         ),
         skills=SkillsConfig(
             enabled=tuple(skills_data.get("enabled", [])),

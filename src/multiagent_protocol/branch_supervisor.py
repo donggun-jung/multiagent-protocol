@@ -170,17 +170,50 @@ def _classify_commit_checks(
     ``status`` is ``"passed"``, ``"real_failure"``, or ``"infra"``.
     """
     checks = api.check_runs(owner, repo, sha)
-    relevant = [
-        c for c in checks
-        if not required_checks or c.get("name") in required_checks
-    ]
+
+    if required_checks:
+        # R1 in L2: mirror C2's fail-closed semantics. A named required check
+        # that is MISSING on the merged commit is a REAL failure (open the
+        # incident), regardless of allow_no_ci — allow_no_ci only relaxes the
+        # NO-required-list path below. Inspect ALL same-named runs so a
+        # duplicate failing check is not masked by a same-named success.
+        real: list[str] = []
+        infra = False
+        for name in required_checks:
+            runs = [c for c in checks if c.get("name") == name]
+            if not runs:
+                real.append(name)  # specified-and-missing → real failure
+                continue
+            completed = [c for c in runs if c.get("status") == "completed"]
+            if not completed:
+                # Present but still running (queued/in_progress) → UNSETTLED.
+                # Do NOT pass + advance the watermark, or a required check that
+                # later fails would be missed (it landed before CI finished).
+                # Mark infra so the tick retries this commit next time.
+                infra = True
+                continue
+            for c in completed:
+                if c.get("conclusion") in _PASSING_CONCLUSIONS:
+                    continue
+                if _is_infra_failure(c):
+                    infra = True
+                else:
+                    real.append(c.get("name", "?"))
+        if real:
+            return "real_failure", real
+        if infra:
+            return "infra", []
+        return "passed", []
+
+    # No explicit required list: every check on the commit is relevant.
+    relevant = list(checks)
     if not relevant:
         # No checks on this commit. Mirror C2's fail-closed stance: settle it
         # only if the operator opted into allow_no_ci; otherwise leave it
         # unsettled (retry) so a regression that landed before CI started — or
         # in a repo that silently dropped CI — is not quietly passed.
         return ("passed" if allow_no_ci else "infra"), []
-    real: list[str] = []
+    real = []
     infra = False
     for c in relevant:
         if c.get("status") != "completed":

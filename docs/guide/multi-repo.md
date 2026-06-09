@@ -123,6 +123,66 @@ GitHub Actions Free tier gives **2,000 minutes/month** on private repos. A singl
 - **Cron tick duration.** The default 5-minute interval assumes each tick takes < 2 minutes. With 6+ repos and ~10 open PRs per repo, ticks may run long. Use the workflow's `metrics_summary.json` artifact to track tick duration; if it exceeds 4 minutes consistently, either prune empty/abandoned PRs or move to self-hosted.
 - **Cross-repo drift incidents.** A drift incident in repo A does not stop the bot from gating PRs in repo B. The incidents are independent.
 
+## Per-repo configuration (v1.1)
+
+Three optional knobs let one installation treat its supervised repos differently.
+All default to "off", so omitting them keeps the v1.0.0 behavior.
+
+### Named required CI checks (`required_checks`)
+
+By default C2 (CI-green) passes only when **every** completed check-run on the
+PR head is `success`. To instead require **specific named** checks — and fail
+**closed** if one of them is missing — set `required_checks`. A global default
+goes in `env.yml`; a per-repo override goes in `projects.yml` under
+`repo_overrides` (per-repo wins; else global; else the v1.0.0 behavior):
+
+```yaml
+# env.yml — applies to every supervised repo unless overridden
+required_checks:
+  - lint
+  - test
+```
+
+```yaml
+# projects.yml — override just one repo
+repo_overrides:
+  <your-github-login>/repo-b:
+    required_checks: [build, e2e]      # repo-b requires these instead
+  <your-github-login>/repo-c:
+    required_checks: []                # repo-c: back to "all checks succeed"
+```
+
+When `required_checks` is non-empty, each named check must be **present** on the
+head SHA **and** conclude `success`; a missing one fails C2 regardless of
+`allow_no_ci` (which only relaxes the empty-list case). The same effective list
+is re-checked by L2 post-merge re-validation on `main`.
+
+### Audit-only repos (`audit_only_repos`)
+
+Mark a repo audit-only to **scan its `main`** (L2 post-merge + L5 break-glass +
+the unauthorized-push detector) while **skipping L1–L4 PR gating** for it. This
+is how you supervise the governance repo itself without the self-gating paradox
+(the bot cannot gate the repo that holds its own doctrine):
+
+```yaml
+# projects.yml
+supervised_repos:
+  - <your-github-login>/multiagent-protocol   # governance repo
+  - <your-github-login>/repo-a
+audit_only_repos:
+  - <your-github-login>/multiagent-protocol   # audited, but its PRs are not gated
+```
+
+### Published classifier verdict
+
+If your fleet publishes a `classifier-judgment` check-run (from your own script)
+carrying the authoritative quadrant as a `Quadrant: X` line in its summary, the
+bot reads it and votes that quadrant — but only from the canonical publisher
+(`env.yml` `classifier_publisher_slug`). Because the classifier takes the
+maximum quadrant, a published verdict can only **raise** a PR toward owner
+review, never lower it. No config beyond the publisher slug is required; repos
+that publish no judgment are unaffected.
+
 ## Next steps
 
 - [`self-hosted-runner.md`](self-hosted-runner.md) — when GitHub Actions Free is not enough.

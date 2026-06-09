@@ -42,11 +42,17 @@ from multiagent_protocol.skills.builtin.classifier_empty_pr import EmptyPrClassi
 from multiagent_protocol.skills.builtin.classifier_path_default import (
     PathDefaultClassifier,
 )
+from multiagent_protocol.skills.builtin.classifier_published_verdict import (
+    PublishedVerdictClassifier,
+)
 from multiagent_protocol.skills.builtin.hook_break_glass_audit import (
     BreakGlassAuditHook,
 )
 from multiagent_protocol.skills.builtin.hook_hallucination_guard import (
     HallucinationGuardHook,
+)
+from multiagent_protocol.skills.builtin.hook_unauthorized_push import (
+    UnauthorizedPushHook,
 )
 from multiagent_protocol.skills.builtin.validator_agent_registry import (
     AgentRegistryValidator,
@@ -76,6 +82,11 @@ NON_DISABLEABLE = frozenset({
     "validator_classifier_publisher",
     "classifier_bot_self_repo",
     "hook_break_glass_audit",
+    # R3: the code-level substitute for paid branch protection. If it could be
+    # silently turned off via skills.disabled, a fleet with no paid branch
+    # protection would have NOTHING watching main for unsanctioned writes — a
+    # fail-open. It stays armed regardless of `disabled`.
+    "hook_unauthorized_push",
 })
 
 # Core L1 validators whose severity must stay blocking (P0/P1). The operator
@@ -210,7 +221,13 @@ def build_runtime_skills(
     # verdict) in process_pr — it is intentionally absent here.
     builtin_validators = [
         ReadyToMergeValidator(allowlisted_actors=config.owner.allowlisted_actors),
-        CiGreenValidator(allow_no_checks=config.env.allow_no_ci),
+        # R1: seed with the GLOBAL default required_checks. process_pr resolves
+        # the per-repo effective value (override > global > ()) just before it
+        # evaluates each PR, since one runtime serves every supervised repo.
+        CiGreenValidator(
+            required_checks=config.env.required_checks,
+            allow_no_checks=config.env.allow_no_ci,
+        ),
         TrailersValidator(),
         ClassifierPublisherValidator(
             publisher_slug=config.env.classifier_publisher_slug
@@ -226,6 +243,11 @@ def build_runtime_skills(
         AutoRevertClassifier(
             allowlisted_actors=config.owner.allowlisted_actors, bot_user=bot_user
         ),
+        # R2: vote the published classifier-judgment quadrant (canonical
+        # publisher only). Max-vote means this can only RAISE, never lower.
+        PublishedVerdictClassifier(
+            publisher_slug=config.env.classifier_publisher_slug
+        ),
     ]
 
     # Repo-agnostic hooks (the ADR finder is governance-bound, not per-repo).
@@ -235,6 +257,12 @@ def build_runtime_skills(
             adr_finder=_adr_finder(api, gov_owner, gov_repo),
             adr_deadline_hours=config.projects.break_glass.adr_deadline_hours,
             clock=clock,
+        ),
+        # R3: code-level branch protection — flag non-bot, non-break-glass,
+        # non-allowlisted writes to main.
+        UnauthorizedPushHook(
+            bot_user=bot_user,
+            allowlisted_actors=config.owner.allowlisted_actors,
         ),
     ]
 
@@ -328,6 +356,17 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     gov_owner, _, gov_repo = config.projects.effective_inbox_repository.partition("/")
 
     verdict = classify(ctx, runtime.classifier_rules, audit_log_path)
+
+    # R1: resolve this repo's effective required_checks (per-repo override >
+    # global env default > ()) and apply it to the CiGreen validator before L1.
+    # The runtime's CiGreen carries the global default; only the per-repo
+    # override differs, so we patch the one instance for this PR's repo.
+    eff_required = config.projects.effective_required_checks(
+        full, config.env.required_checks
+    )
+    for v in runtime.validators:
+        if v.name == "validator_ci_green":
+            v.required_checks = eff_required
 
     # Evaluate the L1 conditions *other than* C3 (owner approval). C3 is the
     # owner gate and is handled separately below: a Quadrant-D PR fails C3 by
