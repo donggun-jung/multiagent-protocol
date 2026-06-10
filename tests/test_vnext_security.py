@@ -239,7 +239,8 @@ class _MergeRecordingAPI(FakeAPI):
 
 def test_squash_merge_passes_agent_trailers_in_commit_message(solo_config):
     # The default conftest commit carries the WELL_FORMED_TRAILERS block; the
-    # merge call must forward those Agent-* trailers as the squash body.
+    # merge call must forward the FULL identity trailer set — every Agent-*
+    # trailer and Task-Ref — as the squash body.
     api = _MergeRecordingAPI()
     pr = api.register_pr(number=110, labels=("ready-to-merge",),
                          files=[changed_file("README.md")])
@@ -252,6 +253,7 @@ def test_squash_merge_passes_agent_trailers_in_commit_message(solo_config):
     assert "Agent-Model: claude-opus-4.7" in msg
     assert "Agent-Session: s_test123" in msg
     assert "Agent-Machine: ci" in msg
+    assert "Task-Ref: PR#1" in msg
 
 
 def test_agent_trailer_block_dedupes_and_keeps_distinct(pr_factory, commit_factory):
@@ -265,7 +267,30 @@ def test_agent_trailer_block_dedupes_and_keeps_distinct(pr_factory, commit_facto
     assert block.count("Agent-Tool: claude-code") == 1          # deduplicated
     assert "Agent-Session: s_a" in block                        # distinct values
     assert "Agent-Session: s_b" in block                        # both kept
-    assert "Task-Ref" not in block                              # Agent-* only
+    assert block.count("Task-Ref: PR#1") == 1                   # kept + deduplicated
+
+
+def test_agent_trailer_block_keeps_distinct_task_refs(pr_factory, commit_factory):
+    # Two commits referencing different tasks → both Task-Ref lines survive.
+    c1 = commit_factory(sha="a" * 40, full_message=(
+        "feat: x\n\nAgent-Tool: claude-code\nTask-Ref: ISSUE#7"))
+    c2 = commit_factory(sha="b" * 40, full_message=(
+        "feat: y\n\nAgent-Tool: claude-code\nTask-Ref: PR#9"))
+    block = _agent_trailer_block(pr_factory(commits=(c1, c2)))
+    assert "Task-Ref: ISSUE#7" in block
+    assert "Task-Ref: PR#9" in block
+
+
+def test_agent_trailer_block_ignores_non_identity_trailers(pr_factory, commit_factory):
+    # Only Agent-* and Task-Ref are identity trailers; e.g. Co-Authored-By
+    # stays out of the squash block.
+    c = commit_factory(sha="a" * 40, full_message=(
+        "feat: x\n\nAgent-Tool: claude-code\nTask-Ref: PR#1\n"
+        "Co-Authored-By: Someone <s@example.com>"))
+    block = _agent_trailer_block(pr_factory(commits=(c,)))
+    assert "Agent-Tool: claude-code" in block
+    assert "Task-Ref: PR#1" in block
+    assert "Co-Authored-By" not in block
 
 
 def test_agent_trailer_block_none_without_trailers(pr_factory, commit_factory):

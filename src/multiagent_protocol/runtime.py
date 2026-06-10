@@ -368,19 +368,21 @@ def _quadrant_reasoning(verdict, quadrant: str) -> str:
 
 
 def _agent_trailer_block(ctx) -> str | None:
-    """The PR commits' ``Agent-*`` trailers as one deduplicated trailer block.
+    """The PR commits' identity trailers as one deduplicated trailer block.
 
     A squash merge produces a single bot-authored commit, dropping the PR
-    commits' agent-identity trailers. Passing this block as the squash
-    ``commit_message`` keeps the audit trail on ``main``. Distinct values are
-    all kept (e.g. two agents on one PR → two ``Agent-Session`` lines), in
-    first-seen order. Returns None when no Agent-* trailers exist (GitHub
-    then composes its default message).
+    commits' identity trailers. Passing this block as the squash
+    ``commit_message`` keeps the audit trail on ``main``. The full L4
+    identity set is preserved — every ``Agent-*`` trailer AND ``Task-Ref``
+    (the task linkage is part of the audit trail, not an optional extra).
+    Distinct values are all kept (e.g. two agents on one PR → two
+    ``Agent-Session`` lines), in first-seen order. Returns None when no such
+    trailers exist (GitHub then composes its default message).
     """
     lines: list[str] = []
     for commit in ctx.commits:
         for key, value in commit.trailers.raw.items():
-            if not key.startswith("Agent-"):
+            if not (key.startswith("Agent-") or key == "Task-Ref"):
                 continue
             line = f"{key}: {value}"
             if line not in lines:
