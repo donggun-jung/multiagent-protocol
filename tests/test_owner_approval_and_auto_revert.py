@@ -281,6 +281,41 @@ def test_receipt_binding_is_date_independent(pr_factory):
     )
 
 
+# -- Timestamp parsing (vNext hardening): strict ISO-8601, fail closed --
+
+def test_plausible_head_date_accepts_iso8601_variants():
+    from multiagent_protocol.label_provenance import plausible_head_date
+    now = datetime(2026, 5, 25, 12, 0, tzinfo=timezone.utc)
+    assert plausible_head_date("2026-05-25T00:00:00Z", now)          # trailing Z
+    assert plausible_head_date("2026-05-25T00:00:00+00:00", now)     # numeric offset
+    assert plausible_head_date("2026-05-25T00:00:00.123Z", now)      # fractional seconds
+    assert plausible_head_date("2026-05-25T09:00:00+09:00", now)     # non-UTC offset
+    assert plausible_head_date("2026-05-25T00:00:00", now)           # naive → UTC
+
+
+def test_plausible_head_date_unparseable_fails_closed():
+    from multiagent_protocol.label_provenance import plausible_head_date
+    now = datetime(2026, 5, 25, 12, 0, tzinfo=timezone.utc)
+    assert not plausible_head_date("not-a-date", now)
+    assert not plausible_head_date("", now)
+    assert not plausible_head_date("2026-13-45T99:99:99Z", now)      # invalid fields
+    assert not plausible_head_date("1748131200", now)                # epoch seconds, not ISO
+
+
+def test_time_path_fails_closed_on_unparseable_event_timestamp(pr_factory):
+    # The label-event timestamp (not just the head date) is parsed; a garbage
+    # event time can never satisfy the at-or-after-head comparison. Uses the
+    # auto-revert label — the one label door still served by the time path.
+    pr = pr_factory(
+        labels=("decision:auto-revert",), head_sha="h" * 40,
+        commits=(_commit(date="2026-05-25T00:00:00Z"),),
+        label_events=(
+            _approval_event("decision:auto-revert", at="garbage-timestamp"),
+        ),
+    )
+    assert not has_verified_label(pr, ("decision:auto-revert",), OWNER, BOT)
+
+
 # -- Auto-revert classifier (provenance-checked, like C3) --
 
 def test_auto_revert_votes_c_when_owner_applied_fresh(pr_factory):

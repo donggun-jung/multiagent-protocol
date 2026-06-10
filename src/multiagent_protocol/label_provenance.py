@@ -39,9 +39,6 @@ from datetime import datetime, timedelta, timezone
 
 from multiagent_protocol.types import PRContext
 
-# GitHub commit/event timestamps are ISO-8601 UTC ("2026-05-25T00:00:00Z").
-_DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-
 # Sanity window for the head commit's committer date (the time-based fallback
 # only). Committer dates are attacker-controlled; a date in the future (beyond
 # clock skew) or implausibly far in the past is garbage → treat the head date
@@ -70,11 +67,27 @@ def head_commit_date(pr_context: PRContext) -> str | None:
     return None
 
 
-def _parse_date(value: str) -> datetime | None:
+def _parse_date(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 timestamp into an aware UTC datetime, else None.
+
+    GitHub emits ``2026-05-25T00:00:00Z``; a trailing ``Z`` (or a numeric
+    UTC offset, or fractional seconds) is handled, and a naive timestamp is
+    taken as UTC. Anything unparseable returns None — every caller treats
+    that as **fail closed** (not fresh / not plausible / event ignored), so
+    garbage in a freshness-relevant field can never widen the gate.
+    """
+    if not value:
+        return None
+    text = value.strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
     try:
-        return datetime.strptime(value, _DATE_FORMAT).replace(tzinfo=timezone.utc)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def plausible_head_date(hdate: str, now: datetime | None = None) -> bool:
@@ -166,8 +179,9 @@ def has_verified_label(
     """
     label_set = set(labels)
     hdate = head_commit_date(pr_context)
-    if hdate is not None and not plausible_head_date(hdate, now):
-        hdate = None  # implausible committer date → time path fails closed
+    head_dt = _parse_date(hdate)
+    if head_dt is not None and not plausible_head_date(hdate, now):
+        head_dt = None  # implausible committer date → time path fails closed
     for event in pr_context.label_events:
         if event.label not in label_set:
             continue
@@ -181,9 +195,10 @@ def has_verified_label(
             if bound == pr_context.head_sha:
                 return True
             continue  # recorded against a different head → void until re-approved
-        if not hdate or not event.created_at:
-            continue  # freshness unverifiable → fail closed
-        if event.created_at < hdate:
+        event_dt = _parse_date(event.created_at)
+        if head_dt is None or event_dt is None:
+            continue  # freshness unverifiable (absent/garbage timestamp) → fail closed
+        if event_dt < head_dt:
             continue  # applied before the current head → force-push voided it
         return True
     return False
