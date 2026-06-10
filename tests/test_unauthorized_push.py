@@ -105,12 +105,17 @@ def _raw(sha: str, subject: str, committer: str | None) -> dict:
 
 
 def test_scan_repo_flags_then_idempotent_on_second_scan(fake_api):
-    # First scan over a fresh main with one unauthorized commit → one incident.
+    # First scan over main with one unauthorized commit → one incident. The scan
+    # starts from a valid watermark anchor (scan_repo refuses a since=None
+    # full-history walk — the cold-start flood guard), so the unauthorized commit
+    # is the bounded delta.
+    anchor = "0" * 40
     fake_api.seed_main_commits(
-        "o", "r", [_raw("u" * 40, "feat: unauthorized", "mallory")])
+        "o", "r", [_raw("u" * 40, "feat: unauthorized", "mallory"),
+                   _raw(anchor, "chore: anchor", BOT)])
     hooks = [_hook()]
 
-    incidents1, wm1 = scan_repo(fake_api, "o", "r", hooks, {})
+    incidents1, wm1 = scan_repo(fake_api, "o", "r", hooks, {"o/r": anchor})
     assert len(incidents1) == 1
     assert incidents1[0].label == INCIDENT_LABEL
     assert wm1 == "u" * 40
@@ -123,11 +128,13 @@ def test_scan_repo_flags_then_idempotent_on_second_scan(fake_api):
 
 def test_scan_repo_mixed_commits_only_flags_unsanctioned(fake_api):
     # A bot merge, a break-glass commit, and one unauthorized push on main.
+    anchor = "0" * 40
     fake_api.seed_main_commits("o", "r", [
         _raw("c" * 40, "feat: unauthorized", "mallory"),     # newest
         _raw("b" * 40, "[break-glass-x] hotfix", OWNER),
-        _raw("a" * 40, "feat: merged (#1)", BOT),            # oldest
+        _raw("a" * 40, "feat: merged (#1)", BOT),            # oldest real
+        _raw(anchor, "chore: anchor", BOT),                  # watermark anchor
     ])
-    incidents, _ = scan_repo(fake_api, "o", "r", [_hook()], {})
+    incidents, _ = scan_repo(fake_api, "o", "r", [_hook()], {"o/r": anchor})
     labels = [(i.commit_sha, i.label) for i in incidents]
     assert labels == [("c" * 40, INCIDENT_LABEL)]

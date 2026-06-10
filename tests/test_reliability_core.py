@@ -30,6 +30,7 @@ import multiagent_protocol.main as main_mod
 from multiagent_protocol.branch_supervisor import (
     BOT_STATE_PATH,
     BotStateStore,
+    bootstrap_watermark_if_absent,
     count_l2_unsettled,
     load_watermarks,
     revalidate_main,
@@ -190,11 +191,14 @@ def test_bot_state_save_refreshes_lost_blob_sha(tmp_path):
 
 
 def test_scan_repo_bounded_per_tick_and_monotonic(fake_api):
+    anchor = "0" * 40
     shas = [f"{i:03d}" + "a" * 37 for i in range(150)]      # 000.. oldest
     fake_api.seed_main_commits(
-        "o", "r", [raw_commit(sha=s) for s in reversed(shas)])  # newest first
+        "o", "r",
+        [raw_commit(sha=s) for s in reversed(shas)]         # newest first
+        + [raw_commit(sha=anchor)])                         # anchor, oldest
 
-    watermarks: dict = {}
+    watermarks: dict = {"o/r": anchor}     # valid anchor (NOT a since=None walk)
     _, wm1 = scan_repo(fake_api, "o", "r", [], watermarks)
     assert wm1 == shas[99]      # exactly the per-tick cap, oldest first
     watermarks["o/r"] = wm1
@@ -210,15 +214,17 @@ def test_scan_repo_bounded_per_tick_and_monotonic(fake_api):
 
 def test_l2_cancelled_stuck_past_deadline_escalates_exactly_once(fake_api):
     sha = "b" * 40
-    fake_api.seed_main_commits("o", "r", [raw_commit(sha=sha)])
+    anchor = "0" * 40
+    fake_api.seed_main_commits(
+        "o", "r", [raw_commit(sha=sha), raw_commit(sha=anchor)])
     fake_api._checks[sha] = [make_check("test", "cancelled")]
     t0 = datetime(2026, 6, 1, tzinfo=timezone.utc)
-    watermarks: dict = {}
+    watermarks: dict = {"o/r:l2": anchor}   # valid anchor (NOT a since=None walk)
 
-    # Tick 1 (T0): within grace → unsettled, no incident, watermark held.
+    # Tick 1 (T0): within grace → unsettled, no incident, watermark held at anchor.
     inc1, wm1 = revalidate_main(fake_api, "o", "r", (), watermarks,
                                 clock=lambda: t0)
-    assert inc1 == [] and wm1 is None
+    assert inc1 == [] and wm1 == anchor
     assert count_l2_unsettled(watermarks) == 1
 
     # Tick 2 (T0+25h): past the 24h deadline → exactly ONE stall diagnostic,
@@ -242,12 +248,14 @@ def test_l2_skipped_required_check_is_not_success(fake_api):
     # A REQUIRED check that resolves ``skipped`` never ran: it must not settle
     # the commit as passed (it rides the stall deadline instead).
     sha = "c" * 40
-    fake_api.seed_main_commits("o", "r", [raw_commit(sha=sha)])
+    anchor = "0" * 40
+    fake_api.seed_main_commits(
+        "o", "r", [raw_commit(sha=sha), raw_commit(sha=anchor)])
     fake_api._checks[sha] = [make_check("build", "skipped")]
-    watermarks: dict = {}
+    watermarks: dict = {"o/r:l2": anchor}      # valid anchor (NOT a since=None walk)
     incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), watermarks)
     assert incidents == []
-    assert wm is None                          # NOT advanced — not a pass
+    assert wm == anchor                        # NOT advanced past the skipped-required commit
     assert count_l2_unsettled(watermarks) == 1  # tracked toward the deadline
 
 
@@ -346,16 +354,26 @@ def test_genuine_first_run_no_branch_starts_empty(tmp_path):
 
 
 class _Resp:
-    def __init__(self, status_code: int) -> None:
+    def __init__(self, status_code: int, body: dict | None = None) -> None:
         self.status_code = status_code
+        self._body = body if body is not None else {}
+
+    def json(self) -> dict:
+        return self._body
 
 
 class _PushError(Exception):
-    """An HTTPError-shaped push failure (carries .response.status_code)."""
+    """An HTTPError-shaped push failure (carries .response.status_code + .json())."""
 
-    def __init__(self, status_code: int) -> None:
+    def __init__(self, status_code: int, body: dict | None = None) -> None:
         super().__init__(f"HTTP {status_code}")
-        self.response = _Resp(status_code)
+        self.response = _Resp(status_code, body)
+
+
+# A stale-precondition 409/422 body references the SHA mismatch (survivable); a
+# generic 422 body does not (hard — would recur).
+_STALE_SHA_BODY = {"message": "branch_supervisor_watermarks.json does not match "
+                   "the expected sha; it was updated by another request"}
 
 
 def test_hard_save_permission_error_raises(tmp_path):
@@ -388,7 +406,7 @@ def test_transient_save_422_is_swallowed_and_retries(tmp_path):
                             blob_sha=None):
             if self.fail_next:
                 self.fail_next = False
-                raise _PushError(422)
+                raise _PushError(422, _STALE_SHA_BODY)
             return super().put_file_on_ref(
                 owner, repo, path, ref=ref, content=content,
                 message=message, blob_sha=blob_sha)
@@ -401,6 +419,23 @@ def test_transient_save_422_is_swallowed_and_retries(tmp_path):
     assert store._remote_blob_sha is None        # dropped for a clean re-read
     store.save({"acme/app": "g" * 40})           # next save succeeds
     assert api.bot_state_writes                   # the retry persisted
+
+
+def test_non_stale_422_is_hard_not_swallowed(tmp_path):
+    # GPT Q7: a 422 whose body is NOT a SHA stale-precondition (e.g. a content
+    # validation error) would recur on every retry. Swallowing it would silently
+    # skip persistence forever, so save() must treat it as HARD and RAISE.
+    class _BadRequestAPI(FakeAPI):
+        def put_file_on_ref(self, *a, **k):
+            raise _PushError(422, {"message": "Invalid request: content too large",
+                                   "errors": [{"resource": "Content"}]})
+
+    api = _BadRequestAPI(main_head=HEAD)
+    api.seed_bot_state("acme", "governance", {"acme/app": "f" * 40})
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    store.load()
+    with pytest.raises(_PushError):
+        store.save({"acme/app": "g" * 40})
 
 
 def test_hard_save_error_fails_whole_tick(tmp_path, monkeypatch):
@@ -748,3 +783,177 @@ def test_drift_dedupe_key_is_content_derived():
     assert _drift_dedupe_key([b, a]) == same          # order-insensitive
     c = DriftIncident("o/r2", "a.md", "differs", "c1", "x9")
     assert _drift_dedupe_key([a, c]) != same          # new state → new issue
+
+
+# ---------------------------------------------------------------------------
+# 9. The OBSERVE-tick flood regression (run 27265097801): a present-but-NULL
+#    watermark entry must NEVER cause a full-history walk. Four independent
+#    layers — bootstrap null-safety, scan/revalidate full-walk refusal, no
+#    stale-local-cache seeding, and fail-loud branch creation — each verified
+#    in isolation, then end-to-end.
+# ---------------------------------------------------------------------------
+
+
+def test_bootstrap_treats_present_but_null_watermark_as_absent(fake_api):
+    # THE production trigger. A stale local cache (reused self-hosted workspace)
+    # or a corrupt persisted entry leaves the repo key PRESENT but null/empty.
+    # ``key in watermarks`` alone mistakes it for a real watermark → the caller
+    # scans with since=None → full-history walk + incident flood. bootstrap must
+    # treat present-but-(null|empty|non-str) as ABSENT and re-bootstrap to HEAD.
+    for bad in (None, "", 0, [], {}):
+        watermarks = {"o/r": bad}
+        out = bootstrap_watermark_if_absent(fake_api, "o", "r", watermarks)
+        assert out == HEAD, f"present-but-{bad!r} should bootstrap, not skip"
+        assert watermarks["o/r"] == HEAD
+    # A real SHA watermark is still honoured (returns None → caller scans delta).
+    good = {"o/r": "a" * 40}
+    assert bootstrap_watermark_if_absent(fake_api, "o", "r", good) is None
+    assert good["o/r"] == "a" * 40
+
+
+class _TripwireAPI(FakeAPI):
+    """Fails the test if ``list_commits_on_main`` is reached with since=None —
+    i.e. if the caller would full-walk the entire history."""
+
+    def list_commits_on_main(self, owner, repo, since_sha=None):
+        assert since_sha is not None, (
+            "full-history walk on a null watermark — the flood regression!"
+        )
+        return super().list_commits_on_main(owner, repo, since_sha=since_sha)
+
+
+def test_scan_repo_null_watermark_bootstraps_instead_of_full_walking():
+    # Second line of defence: even if a null watermark slips past the caller's
+    # bootstrap, scan_repo must NOT call list_commits_on_main(since=None). It
+    # bootstraps to HEAD and scans nothing this tick.
+    api = _TripwireAPI(main_head=HEAD)
+    api.seed_main_commits("o", "r", [
+        raw_commit(sha=f"{i:02d}" + "a" * 38, author="mallory") for i in range(50)
+    ])
+    for wm in ({"o/r": None}, {}, {"o/r": ""}):
+        incidents, new_wm = scan_repo(api, "o", "r", [], wm)
+        assert incidents == []          # no flood
+        assert new_wm == HEAD           # bootstrapped to HEAD
+        assert wm["o/r"] == HEAD
+
+
+def test_revalidate_main_null_watermark_bootstraps_instead_of_full_walking():
+    # Same safety net on the L2 path.
+    api = _TripwireAPI(main_head=HEAD)
+    api.seed_main_commits("o", "r", [
+        raw_commit(sha=f"{i:02d}" + "b" * 38) for i in range(50)
+    ])
+    for wm in ({"o/r:l2": None}, {}, {"o/r:l2": ""}):
+        incidents, new_wm = revalidate_main(api, "o", "r", (), wm)
+        assert incidents == []
+        assert new_wm == HEAD
+        assert wm["o/r:l2"] == HEAD
+
+
+def test_create_ref_permission_failure_fails_closed(tmp_path):
+    # Root cause of broken persistence: the bot-state branch is absent and
+    # create_ref fails (403, no contents:write) so the branch can NEVER be
+    # created → durable persistence is impossible → every tick cold-starts. load()
+    # must fail LOUDLY (raise, actionable message) instead of swallowing it as a
+    # "race" and limping on with a broken store.
+    class _NoContentsWriteAPI(FakeAPI):
+        def create_ref(self, owner, repo, ref, sha):
+            raise _PushError(403)
+
+    api = _NoContentsWriteAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    with pytest.raises(RuntimeError, match="contents: write"):
+        store.load()
+    assert api.bot_state_writes == []
+    assert api.refs_created == []
+
+
+def test_create_ref_transient_failure_fails_closed_without_blaming_permission(tmp_path):
+    # A TRANSIENT create_ref failure (e.g. 5xx) must also fail the tick closed
+    # (it retries next cron) — but NOT mis-blame permissions. The message says
+    # "retries next cron", not "lacks contents: write".
+    class _FlakyCreateAPI(FakeAPI):
+        def create_ref(self, owner, repo, ref, sha):
+            raise _PushError(503)
+
+    api = _FlakyCreateAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    with pytest.raises(RuntimeError, match="retries next cron"):
+        store.load()
+    assert api.bot_state_writes == []
+
+
+def test_create_ref_rate_limited_propagates_typed_error(tmp_path):
+    # A secondary-rate-limit on create_ref is transient and already typed — it
+    # propagates as SecondaryRateLimitError (the tick fails + retries), never
+    # wrapped into a misleading permission error.
+    class _ThrottledCreateAPI(FakeAPI):
+        def create_ref(self, owner, repo, ref, sha):
+            raise SecondaryRateLimitError("create_ref throttled")
+
+    api = _ThrottledCreateAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    with pytest.raises(SecondaryRateLimitError):
+        store.load()
+
+
+def test_create_ref_race_is_tolerated_even_if_recheck_flaky(tmp_path):
+    # The genuine-race path: create_ref raised because a concurrent tick already
+    # created the branch. Even if the re-check is momentarily flaky, a present
+    # ref must be tolerated (start empty, write the file this tick) — never a
+    # spurious fail-closed.
+    class _RacedCreateAPI(FakeAPI):
+        def create_ref(self, owner, repo, ref, sha):
+            # Simulate the concurrent tick: the ref now exists, then raise the
+            # "already exists" error our create observed.
+            self._refs[(owner, repo, ref)] = "race" + "0" * 36
+            raise _PushError(422)
+
+    api = _RacedCreateAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    assert store.load() == {}            # tolerated → empty first run
+    assert api.bot_state_writes == []    # nothing written during load itself
+
+
+def test_branch_absent_with_local_cache_fails_closed(tmp_path):
+    # On a reused (self-hosted) workspace the local cache can hold stale state
+    # from a prior run whose durable push failed (or the bot-state branch was
+    # lost). With NO durable branch but a local cache present, load() must NOT
+    # silently bootstrap-to-HEAD (skip the gap) NOR trust the possibly-stale
+    # cache (which fed the production flood): it FAILS CLOSED, before creating a
+    # branch, for a human to resolve. (The cron clears this cache before each
+    # tick, so this is an uncleaned-workspace safety net.)
+    local = tmp_path / "wm.json"
+    local.write_text(json.dumps({"acme/app": "stale" + "0" * 35}), encoding="utf-8")
+    api = FakeAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=local)
+    with pytest.raises(RuntimeError, match="fail-closed"):
+        store.load()
+    # The branch was NOT created (we fail before create_ref), so a later tick
+    # after the operator clears the cache can cleanly bootstrap — no wedge.
+    assert api.refs_created == []
+    assert api.bot_state_writes == []
+
+
+def test_null_watermark_entry_never_floods_end_to_end(tmp_path, monkeypatch):
+    # The full production scenario (run 27265097801), end-to-end. A persisted
+    # bot-state carries a NULL entry for a supervised repo whose ``main`` has a
+    # deep history that would EACH raise an unauthorized-push incident on a cold
+    # full-walk. The engine must re-bootstrap that entry to HEAD and open ZERO
+    # issues — no flood, no timeout.
+    fake_api = FakeAPI(main_head=HEAD)
+    fake_api.seed_main_commits("acme", "governance", [
+        raw_commit(sha=f"{i:02d}" + "f" * 38, author="web-flow", trailers="")
+        for i in range(40)
+    ])
+    fake_api.seed_bot_state("acme", "governance", {
+        "acme/governance": None,        # the poison: present-but-null
+        "acme/governance:l2": None,
+        "acme/app": HEAD, "acme/app:l2": HEAD,
+    })
+
+    assert _run_main(tmp_path, monkeypatch, fake_api) == 0
+    assert fake_api.issues_opened == []                  # NO flood
+    state = _persisted_state(fake_api)
+    assert state["acme/governance"] == HEAD              # re-bootstrapped, not walked
+    assert state["acme/governance:l2"] == HEAD

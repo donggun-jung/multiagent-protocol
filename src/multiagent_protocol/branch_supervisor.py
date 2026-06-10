@@ -153,9 +153,18 @@ def bootstrap_watermark_if_absent(
     it this tick — the caller persists immediately and skips the scan.
 
     Returns the HEAD SHA when a bootstrap happened (caller must persist + skip),
-    or ``None`` when a watermark already existed (caller proceeds to scan)."""
+    or ``None`` when a watermark already existed (caller proceeds to scan).
+
+    A watermark is "present" only when it is a non-empty SHA string. A key that
+    is present but ``None`` / ``""`` / non-string is treated as ABSENT and
+    re-bootstrapped: such an entry is corrupt (a stale local cache from a prior
+    run whose durable push failed, or a hand-edited null) and ``in watermarks``
+    alone would mistake it for a real watermark — then the caller would scan
+    with ``since=None`` and full-walk the entire history (the production
+    cold-start flood this function exists to prevent)."""
     repo_key = f"{owner}/{repo}{key_suffix}"
-    if repo_key in watermarks:
+    existing = watermarks.get(repo_key)
+    if isinstance(existing, str) and existing:
         return None
     head = api.main_head_sha(owner, repo)
     watermarks[repo_key] = head
@@ -208,6 +217,25 @@ def scan_repo(
     """
     repo_key = f"{owner}/{repo}"
     since = watermarks.get(repo_key)
+
+    # SAFETY NET (defense in depth): a missing / invalid watermark must NEVER
+    # trigger a full-history walk. ``list_commits_on_main(since_sha=None)``
+    # returns up to ``LIST_COMMITS_MAX_PAGES`` × 100 commits — on a repo with
+    # deep history that is precisely the multi-minute walk + incident flood +
+    # tick timeout observed in production. The caller bootstraps to HEAD before
+    # scanning, but if a stale local cache or a null persisted entry slips a
+    # ``None`` watermark through, we bootstrap-to-HEAD here too and scan nothing
+    # this tick rather than replay history. (``bootstrap_watermark_if_absent``
+    # is the first line of defence; this is the second.)
+    if not (isinstance(since, str) and since):
+        head = api.main_head_sha(owner, repo)
+        watermarks[repo_key] = head
+        logger.warning(
+            "scan_repo %s: no valid watermark (since=%r) — bootstrapping to HEAD "
+            "%s and scanning nothing this tick (refusing full-history walk)",
+            repo_key, since, head[:7],
+        )
+        return [], head
 
     raw_commits = api.list_commits_on_main(owner, repo, since_sha=since)
     if raw_commits is SINCE_NOT_FOUND:
@@ -512,6 +540,19 @@ def revalidate_main(
     repo_key = f"{owner}/{repo}{l2_key_suffix}"
     since = watermarks.get(repo_key)
 
+    # SAFETY NET: never full-walk on a missing / invalid watermark (identical
+    # reasoning to ``scan_repo`` above — a ``None`` here would re-validate the
+    # entire history and time the tick out). Bootstrap-to-HEAD and settle
+    # nothing this tick.
+    if not (isinstance(since, str) and since):
+        head = api.main_head_sha(owner, repo)
+        watermarks[repo_key] = head
+        logger.warning(
+            "revalidate_main %s: no valid watermark (since=%r) — bootstrapping to "
+            "HEAD %s and re-validating nothing this tick", repo_key, since, head[:7],
+        )
+        return [], head
+
     raw_commits = api.list_commits_on_main(owner, repo, since_sha=since)
     if raw_commits is SINCE_NOT_FOUND:
         return _recover_watermark_lost(api, owner, repo, watermarks, repo_key, since)
@@ -641,9 +682,10 @@ def _is_transient_push_error(e: BaseException) -> bool:
 
     Only two cases are survivable (skip this push, retry next tick):
 
-    * a stale-precondition **422** — a concurrent tick advanced the file
-      between our blob-SHA re-read and our PUT (its newer state already
-      persisted, so losing this push is harmless), and
+    * a stale-precondition conflict (**409** or **422**) — a concurrent tick
+      advanced the file between our blob-SHA re-read and our PUT, so our ``sha``
+      precondition is out of date (its newer state already persisted, so losing
+      this push is harmless), and
     * a secondary-rate-limit — inherently transient, already retried at the
       repo level next tick.
 
@@ -651,11 +693,24 @@ def _is_transient_push_error(e: BaseException) -> bool:
     an exhausted-retry 5xx, or a non-HTTP error — is a hard failure that would
     never succeed on retry, so the caller fails the tick closed rather than
     cold-start L2/L5 forever.
+
+    A 409/422 is treated as the stale-precondition case ONLY when its body
+    references the SHA mismatch. A 409/422 for any OTHER reason (validation /
+    bad request) would recur on every retry, so swallowing it would silently
+    skip persistence forever — that is classed HARD (fail closed). If the body
+    cannot be read, fail closed (do not assume survivable).
     """
     if isinstance(e, SecondaryRateLimitError):
         return True
-    status = getattr(getattr(e, "response", None), "status_code", None)
-    return status == 422
+    resp = getattr(e, "response", None)
+    status = getattr(resp, "status_code", None)
+    if status not in (409, 422):
+        return False
+    try:
+        body = resp.json()
+    except Exception:
+        return False  # unreadable body → fail closed, don't assume survivable
+    return "sha" in json.dumps(body).lower()
 
 
 class BotStateStore:
@@ -687,16 +742,45 @@ class BotStateStore:
         Ensures the branch exists (creates it from ``main`` HEAD if absent).
         Only ONE case is "empty is fine": the bot-state branch did **not** exist
         before this tick (a legitimate first-ever run) — then it is created and
-        the state seeds from the local cache when present, else empty. If the
-        branch ALREADY existed but the state file cannot be read (genuinely
-        absent / unreadable as base64), that is **not** a fresh deployment — it
-        is a misconfiguration that would silently disable L2/L5 by re-bootstrap,
-        so it fails closed (raises). A transient remote error raises (the tick
-        fails non-zero and retries next cron) and a *corrupt* remote payload
-        likewise fails closed — none may degrade into an empty re-bootstrap."""
+        the state starts **empty** (it deliberately does NOT seed from the local
+        cache; see below). If the branch ALREADY existed but the state file
+        cannot be read (genuinely absent / unreadable as base64), that is **not**
+        a fresh deployment — it is a misconfiguration that would silently disable
+        L2/L5 by re-bootstrap, so it fails closed (raises). A transient remote
+        error raises (the tick fails non-zero and retries next cron) and a
+        *corrupt* remote payload likewise fails closed — none may degrade into an
+        empty re-bootstrap. If the branch is absent and **cannot be created**
+        (e.g. the App lacks ``contents: write``), durable persistence is
+        impossible, so this also fails closed with an actionable message rather
+        than limping on with a broken (cold-starting) state store."""
         branch_sha = self.api.get_ref_sha(self.owner, self.repo, self.branch)
         branch_existed = branch_sha is not None
         if branch_sha is None:
+            # The durable source of truth (the branch) is absent. A LOCAL CACHE
+            # present here is anomalous and must be resolved BEFORE we create the
+            # branch (creating it then failing would leave a created-but-empty
+            # branch that wedges every later tick on the "file missing" check).
+            # Two ways this happens, neither safe to guess between from the file
+            # alone:
+            #   * disaster — the bot-state branch was deleted while a GOOD local
+            #     mirror survived; trusting nothing silently skips the interval
+            #     that mirror covered; or
+            #   * a reused (self-hosted) workspace leaked STALE state from a run
+            #     whose durable push failed — trusting it risks re-flooding on a
+            #     stale / null entry (the production incident).
+            # Fail closed and let a human decide. The cron clears this cache
+            # before each tick, so on a healthy deployment this is unreachable;
+            # reaching it means the workspace was NOT cleaned.
+            if self.local_path.exists():
+                raise RuntimeError(
+                    f"bot-state branch {self.owner}/{self.repo}@{self.branch} is "
+                    f"absent but a local watermark cache exists at "
+                    f"{self.local_path} (fail-closed): refusing to silently "
+                    f"bootstrap-to-HEAD (which would skip any interval the cache "
+                    f"covered) or trust a possibly-stale cache (which could "
+                    f"re-flood). Manual recovery: restore the bot-state branch, "
+                    f"or delete {self.local_path} to force a clean re-bootstrap."
+                )
             # First ever run for this deployment: create the dedicated branch
             # off main HEAD so subsequent saves have a ref to write to.
             head = self.api.main_head_sha(self.owner, self.repo)
@@ -707,11 +791,59 @@ class BotStateStore:
                     self.owner, self.repo, self.branch, head[:7],
                 )
             except Exception as e:
-                # A concurrent tick may have created it between our check and
-                # create — tolerate and fall through to the read below. (If that
-                # racing tick has already written the state file, the read finds
-                # it; if not, both ticks legitimately start empty.)
-                logger.warning("bot-state branch create raced/failed: %s", e)
+                # Tolerate ONLY a genuine race: a concurrent tick created the
+                # branch between our check and create, so the ref now resolves.
+                # Anything else means durable persistence did not happen this
+                # tick, so EVERY tick would cold-start and re-flood incidents
+                # (the exact production failure). Swallowing it here as a "race"
+                # is what hid that breakage; fail the tick LOUDLY instead.
+                # The re-check is itself best-effort: a flaky re-check must not
+                # mask the original create failure, so treat its error as "still
+                # absent" and surface the create cause.
+                try:
+                    raced_sha = self.api.get_ref_sha(
+                        self.owner, self.repo, self.branch
+                    )
+                except Exception:
+                    raced_sha = None
+                if raced_sha is not None:
+                    # Genuine race: the branch exists now but was NOT there
+                    # before this tick, so it is still morally a first run
+                    # (branch_existed stays False → start empty below, and this
+                    # tick writes the file).
+                    logger.warning(
+                        "bot-state branch create raced (now exists at %s): %s",
+                        raced_sha[:7], e,
+                    )
+                elif isinstance(e, SecondaryRateLimitError):
+                    # Transient throttle — fail the tick (it retries next cron);
+                    # do NOT mis-blame permissions. Propagate the typed error.
+                    raise
+                elif getattr(getattr(e, "response", None), "status_code", None) == 403:
+                    # A real missing-scope 403 (not a rate-limit 403, which
+                    # ``_request`` would have raised as SecondaryRateLimitError):
+                    # the App lacks ``contents: write`` so persistence can NEVER
+                    # work. This never succeeds on retry — say so precisely.
+                    raise RuntimeError(
+                        f"cannot create the bot-state branch "
+                        f"{self.owner}/{self.repo}@{self.branch}: the App "
+                        f"appears to lack `contents: write`, so durable watermark "
+                        f"persistence is impossible and the engine would "
+                        f"cold-start (and re-flood incidents) every tick. Grant "
+                        f"the App `contents: write` on {self.owner}/{self.repo}. "
+                        f"Failing closed. Cause: {e}"
+                    ) from e
+                else:
+                    # Other failure (transient 5xx/network, or an unexpected
+                    # status). Fail closed; the next cron tick retries. If it
+                    # persists, the App's contents:write / the ref API is the
+                    # first thing to check.
+                    raise RuntimeError(
+                        f"cannot create the bot-state branch "
+                        f"{self.owner}/{self.repo}@{self.branch} (failing closed; "
+                        f"the tick retries next cron). If this persists, verify "
+                        f"the App's `contents: write` permission. Cause: {e}"
+                    ) from e
             self._remote_blob_sha = None
 
         found = self.api.get_file_on_ref(
@@ -729,10 +861,13 @@ class BotStateStore:
                     f"unreadable (fail-closed): refusing to re-bootstrap to "
                     f"HEAD, which would disable L2/L5 post-merge re-validation."
                 )
-            # Branch did not exist before this tick (genuine first run). Seed
-            # from the local cache if present; else empty.
+            # Branch did not exist before this tick (genuine clean first run; the
+            # branch-absent + local-cache anomaly was already fail-closed above).
+            # Start EMPTY — deliberately do NOT seed from any cache. bootstrap-to-
+            # HEAD sets fresh per-repo watermarks this tick, and this tick's
+            # save() writes them to the freshly-created branch.
             self._remote_blob_sha = None
-            return load_watermarks(self.local_path)
+            return {}
 
         text, blob_sha = found
         self._remote_blob_sha = blob_sha
