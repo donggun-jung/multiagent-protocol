@@ -267,18 +267,28 @@ class GitHubAPI:
         return runs
 
     def label_events(self, owner: str, repo: str, number: int) -> list[dict]:
-        """Return ``labeled`` events from the PR/issue timeline.
+        """Return ``labeled`` AND ``unlabeled`` events from the PR/issue timeline.
 
-        Used by C1 to verify ``ready-to-merge`` was applied by an allowlisted
-        actor — not merely present. Each entry is
-        ``{"label", "actor", "created_at"}``. The GitHub timeline API is GA;
-        no preview media type is required.
+        Used by provenance to verify *who* established a label's CURRENT
+        presence — not merely that a trusted actor ever applied it. A label
+        applied by a trusted actor, later removed, and re-added by an UNtrusted
+        actor must not stay authenticated by the stale earlier trusted
+        ``labeled`` event; carrying the ``unlabeled`` events too lets the
+        consumer pick the most recent ``labeled`` after the most recent
+        ``unlabeled`` for that label.
+
+        Each entry is ``{"event", "label", "actor", "created_at"}`` where
+        ``event`` is ``"labeled"`` or ``"unlabeled"`` and ``created_at`` is the
+        GitHub-assigned event timestamp (never a commit date). The GitHub
+        timeline API is GA; no preview media type is required.
         """
         events: list[dict] = []
         for e in self._paginate(f"/repos/{owner}/{repo}/issues/{number}/timeline"):
-            if e.get("event") != "labeled":
+            kind = e.get("event")
+            if kind not in ("labeled", "unlabeled"):
                 continue
             events.append({
+                "event": kind,
                 "label": (e.get("label") or {}).get("name"),
                 "actor": (e.get("actor") or {}).get("login"),
                 "created_at": e.get("created_at", ""),

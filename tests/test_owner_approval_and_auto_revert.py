@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from multiagent_protocol.label_provenance import (
     REBINDABLE_LABELS,
     RECEIPT_ELIGIBLE_LABELS,
+    effective_label_applier,
+    establishing_labeled_event,
     has_verified_label,
     labels_needing_receipt,
 )
@@ -563,3 +565,138 @@ def test_auto_revert_votes_c_when_receipt_matches_head(pr_factory):
         approved_shas={"decision:auto-revert": SHA2},
     ).evaluate(pr)
     assert v.quadrant == "C"
+
+
+# -- ITEM 1: effective applier = most recent labeled AFTER most recent unlabeled
+#
+# Provenance bypass (GPT-5.5 confirmed): a label applied by a TRUSTED actor,
+# REMOVED, then RE-ADDED by an UNTRUSTED actor was still authenticated by the
+# stale earlier trusted ``labeled`` event. The establishing-applier rule (the
+# most recent ``labeled`` after the most recent ``unlabeled``) closes it for
+# both the gate (has_verified_label / auto-revert / C1) and the receipt writer.
+
+def _unlabel_event(label, actor="owner", at="2026-05-25T00:01:00Z"):
+    return LabelEvent(label=label, actor_login=actor, created_at=at)
+
+
+def test_establishing_event_picks_latest_labeled_after_unlabel():
+    # trusted-add(00:00) → unlabeled(00:01) → untrusted re-add(00:02): the
+    # establishing event is the untrusted re-add, not the stale trusted add.
+    labeled = (
+        _approval_event(actor="owner", at="2026-05-25T00:00:00Z"),
+        _approval_event(actor="mallory", at="2026-05-25T00:02:00Z"),
+    )
+    unlabel = (_unlabel_event("decision:approved-A", at="2026-05-25T00:01:00Z"),)
+    ev = establishing_labeled_event("decision:approved-A", labeled, unlabel)
+    assert ev is not None and ev.actor_login == "mallory"
+    assert effective_label_applier("decision:approved-A", labeled, unlabel) == "mallory"
+
+
+def test_establishing_event_no_unlabel_is_latest_labeled():
+    # No removal → the most recent labeled (timeline order) establishes it;
+    # the plain single-add case is unchanged.
+    labeled = (_approval_event(actor="owner", at="2026-05-25T00:00:00Z"),)
+    assert effective_label_applier("decision:approved-A", labeled, ()) == "owner"
+
+
+def test_establishing_event_fails_closed_when_only_stale_labeled_predates_removal():
+    # The only labeled add predates the latest removal and there is no add
+    # after it → no determinable establisher (fail closed → None).
+    labeled = (_approval_event(actor="owner", at="2026-05-25T00:00:00Z"),)
+    unlabel = (_unlabel_event("decision:approved-A", at="2026-05-25T00:05:00Z"),)
+    assert establishing_labeled_event("decision:approved-A", labeled, unlabel) is None
+
+
+def test_has_verified_label_rejects_untrusted_readd_with_matching_receipt(pr_factory):
+    # THE bypass: a bot receipt still SHA-matches the (unchanged) head, the
+    # original add was by the owner, but the CURRENT presence was established
+    # by an untrusted re-add after a removal → C3 must NOT honour it.
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(),),
+        label_events=(
+            _approval_event(actor="owner", at="2026-05-25T00:00:00Z"),
+            _approval_event(actor="mallory", at="2026-05-25T00:02:00Z"),
+        ),
+        unlabel_events=(_unlabel_event("decision:approved-A", at="2026-05-25T00:01:00Z"),),
+    )
+    assert not has_verified_label(
+        pr, ("decision:approved-A",), OWNER, BOT,
+        approved_shas={"decision:approved-A": "h" * 40},
+    )
+
+
+def test_has_verified_label_honours_trusted_readd_with_matching_receipt(pr_factory):
+    # trusted-add → unlabeled → re-add by a TRUSTED actor (here the bot) at the
+    # current head, with a matching receipt → honoured (control for the case
+    # above; only the establishing actor differs).
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(),),
+        label_events=(
+            _approval_event(actor="owner", at="2026-05-25T00:00:00Z"),
+            _approval_event(actor=BOT, at="2026-05-25T00:02:00Z"),
+        ),
+        unlabel_events=(_unlabel_event("decision:approved-A", at="2026-05-25T00:01:00Z"),),
+    )
+    assert has_verified_label(
+        pr, ("decision:approved-A",), OWNER, BOT,
+        approved_shas={"decision:approved-A": "h" * 40},
+    )
+
+
+def test_writer_no_receipt_for_untrusted_readd_after_removal(pr_factory):
+    # Receipt writer: trusted-add → unlabeled → untrusted re-add. The stale
+    # trusted add must NOT mint a receipt for the untrusted re-add → no receipt.
+    pr = pr_factory(
+        labels=("decision:approved-A", "ready-to-merge"), head_sha="h" * 40,
+        commits=(_commit(),),
+        label_events=(
+            _approval_event("decision:approved-A", actor="owner", at="2026-05-25T00:00:00Z"),
+            _approval_event("decision:approved-A", actor="mallory", at="2026-05-25T00:02:00Z"),
+            _approval_event("ready-to-merge", actor="owner", at="2026-05-25T00:00:00Z"),
+            _approval_event("ready-to-merge", actor="mallory", at="2026-05-25T00:02:00Z"),
+        ),
+        unlabel_events=(
+            _unlabel_event("decision:approved-A", at="2026-05-25T00:01:00Z"),
+            _unlabel_event("ready-to-merge", at="2026-05-25T00:01:00Z"),
+        ),
+    )
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
+
+
+def test_writer_binds_trusted_readd_after_removal(pr_factory):
+    # Control: trusted-add → unlabeled → TRUSTED re-add → the writer mints a
+    # first receipt (the establishing applier is trusted).
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(),),
+        label_events=(
+            _approval_event(actor="owner", at="2026-05-25T00:00:00Z"),
+            _approval_event(actor="owner", at="2026-05-25T00:02:00Z"),
+        ),
+        unlabel_events=(_unlabel_event("decision:approved-A", at="2026-05-25T00:01:00Z"),),
+    )
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == (
+        "decision:approved-A",
+    )
+
+
+def test_auto_revert_rejects_untrusted_readd_after_removal(pr_factory):
+    # The auto-revert door uses has_verified_label too: an untrusted re-add
+    # after a removal is not honoured (votes A, not C), even with a matching
+    # receipt.
+    pr = pr_factory(
+        labels=("decision:auto-revert",), head_sha="h" * 40,
+        commits=(_commit(),),
+        label_events=(
+            _approval_event("decision:auto-revert", actor="owner", at="2026-05-25T00:00:00Z"),
+            _approval_event("decision:auto-revert", actor="mallory", at="2026-05-25T00:02:00Z"),
+        ),
+        unlabel_events=(_unlabel_event("decision:auto-revert", at="2026-05-25T00:01:00Z"),),
+    )
+    v = AutoRevertClassifier(
+        allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:auto-revert": "h" * 40},
+    ).evaluate(pr)
+    assert v.quadrant == "A"

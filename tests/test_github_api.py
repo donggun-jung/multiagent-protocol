@@ -60,20 +60,28 @@ def test_check_runs_paginates_over_100():
     assert runs[-1]["name"] == "c149"
 
 
-# -- label_events: list paginator + filter --
+# -- label_events: list paginator + labeled/unlabeled filter --
 
-def test_label_events_filters_to_labeled():
+def test_label_events_filters_to_labeled_and_unlabeled():
+    # Both ``labeled`` and ``unlabeled`` are carried (each tagged with its
+    # ``event`` kind); other timeline events (e.g. ``commented``) are dropped.
     api = _FakeRequestAPI([[
         {"event": "labeled", "label": {"name": "ready-to-merge"},
          "actor": {"login": "owner"}, "created_at": "2026-05-25T00:00:00Z"},
         {"event": "commented", "actor": {"login": "x"}},
+        {"event": "unlabeled", "label": {"name": "ready-to-merge"},
+         "actor": {"login": "owner"}, "created_at": "2026-05-25T00:02:00Z"},
         {"event": "labeled", "label": {"name": "documentation"},
          "actor": {"login": "bot[bot]"}, "created_at": "2026-05-25T00:01:00Z"},
     ]])
     evs = api.label_events("o", "r", 1)
     assert evs == [
-        {"label": "ready-to-merge", "actor": "owner", "created_at": "2026-05-25T00:00:00Z"},
-        {"label": "documentation", "actor": "bot[bot]", "created_at": "2026-05-25T00:01:00Z"},
+        {"event": "labeled", "label": "ready-to-merge", "actor": "owner",
+         "created_at": "2026-05-25T00:00:00Z"},
+        {"event": "unlabeled", "label": "ready-to-merge", "actor": "owner",
+         "created_at": "2026-05-25T00:02:00Z"},
+        {"event": "labeled", "label": "documentation", "actor": "bot[bot]",
+         "created_at": "2026-05-25T00:01:00Z"},
     ]
 
 

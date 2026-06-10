@@ -30,6 +30,21 @@ from multiagent_protocol.skills.base import (
 DEFAULT_CHECK_PUBLISHER = "github-actions"
 
 
+def publisher_satisfied(app_slugs, expected_publisher: str | None) -> bool:
+    """True iff the expected publisher is among ``app_slugs`` (or none expected).
+
+    The shared publisher-trust primitive: a check signal counts only if at
+    least one contributing run was published by ``expected_publisher``. A run
+    with no app slug cannot prove its publisher and never satisfies the gate
+    (fail closed). With ``expected_publisher`` unset (None) the gate is skipped
+    (legacy / publisher-agnostic). Reused by C2 (pre-merge) and L2 (post-merge)
+    so a foreign App's green is rejected identically on both sides of the merge.
+    """
+    if not expected_publisher:
+        return True
+    return any(slug == expected_publisher for slug in app_slugs)
+
+
 class CiGreenValidator:
     name = "validator_ci_green"
     severity = "P0"
@@ -73,8 +88,8 @@ class CiGreenValidator:
                 # "not yet green" — fail closed, mirroring the identity gate
                 # in validator_classifier_publisher. Foreign non-success runs
                 # were already rejected above (we never RELAX on identity).
-                if self.expected_check_publisher and not any(
-                    c.app_slug == self.expected_check_publisher for c in runs
+                if not publisher_satisfied(
+                    (c.app_slug for c in runs), self.expected_check_publisher
                 ):
                     seen = sorted(
                         {c.app_slug or "<missing app>" for c in runs}
@@ -105,9 +120,9 @@ class CiGreenValidator:
         # foreign App's green must not satisfy C2 by itself. When a publisher
         # is expected, require at least one SUCCESS run from it (fail closed,
         # mirroring the named-required path and validator_classifier_publisher).
-        if self.expected_check_publisher and not any(
-            c.conclusion == "success" and c.app_slug == self.expected_check_publisher
-            for c in pr_context.check_runs
+        if not publisher_satisfied(
+            (c.app_slug for c in pr_context.check_runs if c.conclusion == "success"),
+            self.expected_check_publisher,
         ):
             seen = sorted({c.app_slug or "<missing app>" for c in pr_context.check_runs})
             return ValidationResult.fail(

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from multiagent_protocol.label_provenance import effective_label_applier
 from multiagent_protocol.skills.base import (
     PRContext,
     ValidationResult,
@@ -85,12 +86,16 @@ class ReadyToMergeValidator:
         # receipt); an empty allowlist relaxes only this actor check.
         if not self.allowlisted_actors:
             return ValidationResult.ok()
-        # The label must have been applied by an allowlisted actor at some
-        # point in PR history. We accept the most recent add event by such
-        # an actor.
-        for event in reversed(pr_context.label_events):
-            if event.label == READY_LABEL and event.actor_login in self.allowlisted_actors:
-                return ValidationResult.ok()
+        # The CURRENT presence of the label must have been established by an
+        # allowlisted actor — the most recent add after the most recent removal,
+        # NOT any historical trusted add. A trusted-add → unlabeled → untrusted
+        # re-add (even at an unchanged head, so the receipt still SHA-matches)
+        # is therefore rejected here, mirroring C3/auto-revert provenance.
+        applier = effective_label_applier(
+            READY_LABEL, pr_context.label_events, pr_context.unlabel_events
+        )
+        if applier in self.allowlisted_actors:
+            return ValidationResult.ok()
         return ValidationResult.fail(
             f"C1: label '{READY_LABEL}' was not applied by an "
             f"allowlisted actor (allowlist: "

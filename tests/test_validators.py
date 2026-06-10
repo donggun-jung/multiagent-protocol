@@ -180,6 +180,52 @@ def test_ready_to_merge_stale_binding_vetoes_even_with_empty_allowlist(pr_factor
     assert not v.check(pr).passed
 
 
+def test_ready_to_merge_untrusted_readd_after_removal_fails_actor_check(pr_factory):
+    # ITEM 1: trusted-add → unlabeled → untrusted re-add, at an UNCHANGED head
+    # so the receipt still SHA-matches. C1's defense-in-depth actor check uses
+    # the establishing applier (the untrusted re-add), so it FAILS — the stale
+    # trusted add no longer authenticates the label.
+    pr = pr_factory(
+        labels=("ready-to-merge",), head_sha="h" * 40,
+        label_events=(
+            LabelEvent(label="ready-to-merge", actor_login="owner",
+                       created_at="2026-05-25T00:00:00Z"),
+            LabelEvent(label="ready-to-merge", actor_login="mallory",
+                       created_at="2026-05-25T00:02:00Z"),
+        ),
+        unlabel_events=(
+            LabelEvent(label="ready-to-merge", actor_login="owner",
+                       created_at="2026-05-25T00:01:00Z"),
+        ),
+    )
+    v = ReadyToMergeValidator(allowlisted_actors=("owner",),
+                              approved_shas={"ready-to-merge": "h" * 40})
+    r = v.check(pr)
+    assert not r.passed
+    assert "allowlisted actor" in r.failure_reason
+
+
+def test_ready_to_merge_trusted_readd_after_removal_passes(pr_factory):
+    # Control: trusted-add → unlabeled → TRUSTED re-add → C1's actor check is
+    # satisfied by the establishing (trusted) applier.
+    pr = pr_factory(
+        labels=("ready-to-merge",), head_sha="h" * 40,
+        label_events=(
+            LabelEvent(label="ready-to-merge", actor_login="owner",
+                       created_at="2026-05-25T00:00:00Z"),
+            LabelEvent(label="ready-to-merge", actor_login="owner",
+                       created_at="2026-05-25T00:02:00Z"),
+        ),
+        unlabel_events=(
+            LabelEvent(label="ready-to-merge", actor_login="owner",
+                       created_at="2026-05-25T00:01:00Z"),
+        ),
+    )
+    v = ReadyToMergeValidator(allowlisted_actors=("owner",),
+                              approved_shas={"ready-to-merge": "h" * 40})
+    assert v.check(pr).passed
+
+
 # -- CI green --
 
 def test_ci_green_no_required_list_strict(pr_factory):

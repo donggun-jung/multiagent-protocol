@@ -62,6 +62,7 @@ def make_pr_context(
     files_changed: tuple[FileChange, ...] = (),
     check_runs: tuple[CheckRunStatus, ...] = (),
     label_events: tuple[LabelEvent, ...] = (),
+    unlabel_events: tuple[LabelEvent, ...] = (),
     head_sha: str = "h" * 40,
     base_sha: str = "b" * 40,
     author_login: str = "alice",
@@ -85,6 +86,7 @@ def make_pr_context(
         files_changed=files_changed,
         check_runs=check_runs,
         label_events=label_events,
+        unlabel_events=unlabel_events,
     )
 
 
@@ -271,7 +273,14 @@ class FakeAPI:
     def pr_commits(self, owner, repo, number): return self._commits.get(number, [])
     def pr_files(self, owner, repo, number): return self._files.get(number, [])
     def check_runs(self, owner, repo, sha): return self._checks.get(sha, [])
-    def label_events(self, owner, repo, number): return self._label_events.get(number, [])
+    def label_events(self, owner, repo, number):
+        # Mirror the real client: each timeline entry carries an ``event``
+        # discriminator ("labeled" / "unlabeled"). Seeded events that omit it
+        # default to "labeled" (the common add-only case + backward compat).
+        out = []
+        for e in self._label_events.get(number, []):
+            out.append({**e, "event": e.get("event", "labeled")})
+        return out
     def main_head_sha(self, owner, repo): return self._main_head
     def list_commits_on_main(self, owner, repo, since_sha=None):
         commits = self._main_commits.get((owner, repo), [])

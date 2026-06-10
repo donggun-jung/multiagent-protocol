@@ -153,3 +153,79 @@ def test_l2_required_duplicate_failure_then_success_is_incident(fake_api):
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "l" * 40
     assert wm == "l" * 40
+
+
+# -- ITEM 2: L2 publisher trust mirrors C2 ------------------------------------
+
+def test_l2_required_green_from_foreign_app_is_incident(fake_api):
+    # ITEM 2: the required check 'build' is green but published by a FOREIGN
+    # app. The pre-merge C2 already rejects this; L2 must too — treat it as
+    # not-satisfied → a real failure (incident), not a silent pass. Without the
+    # publisher gate this commit would have been classed 'passed'.
+    _seed(fake_api, "m" * 40, [make_check("build", "success", slug="attacker-app")])
+    incidents, wm = revalidate_main(
+        fake_api, "o", "r", ("build",), {},
+        expected_check_publisher="github-actions")
+    assert len(incidents) == 1
+    assert incidents[0].label == "decision:post-merge-revalidation"
+    assert incidents[0].commit_sha == "m" * 40
+    assert "build" in incidents[0].body
+    assert wm == "m" * 40   # settled (incident raised)
+
+
+def test_l2_required_green_from_expected_app_passes(fake_api):
+    # Control: the same green required check published by the expected app
+    # satisfies L2 (no incident, watermark advances).
+    _seed(fake_api, "n" * 40, [make_check("build", "success", slug="github-actions")])
+    incidents, wm = revalidate_main(
+        fake_api, "o", "r", ("build",), {},
+        expected_check_publisher="github-actions")
+    assert incidents == []
+    assert wm == "n" * 40
+
+
+def test_l2_required_expected_plus_foreign_green_passes(fake_api):
+    # One green run from the expected app satisfies L2; an extra foreign green
+    # neither helps nor hurts (mirrors C2's named-required path).
+    _seed(fake_api, "o" * 40, [
+        make_check("build", "success", slug="github-actions"),
+        make_check("build", "success", slug="some-other-app"),
+    ])
+    incidents, wm = revalidate_main(
+        fake_api, "o", "r", ("build",), {},
+        expected_check_publisher="github-actions")
+    assert incidents == []
+    assert wm == "o" * 40
+
+
+def test_l2_required_publisher_gate_skipped_when_none(fake_api):
+    # With the publisher gate disabled (None) a foreign-published green passes —
+    # the publisher-agnostic legacy behavior.
+    _seed(fake_api, "p" * 40, [make_check("build", "success", slug="attacker-app")])
+    incidents, wm = revalidate_main(
+        fake_api, "o", "r", ("build",), {}, expected_check_publisher=None)
+    assert incidents == []
+    assert wm == "p" * 40
+
+
+def test_l2_required_missing_app_slug_is_incident_when_publisher_expected(fake_api):
+    # A required run with no app slug cannot prove its publisher → not-satisfied
+    # → real failure (fail closed), mirroring C2's <missing app> handling.
+    _seed(fake_api, "q" * 40, [make_check("build", "success", slug=None)])
+    incidents, wm = revalidate_main(
+        fake_api, "o", "r", ("build",), {},
+        expected_check_publisher="github-actions")
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "q" * 40
+    assert wm == "q" * 40
+
+
+def test_l2_default_publisher_is_github_actions(fake_api):
+    # The default expected publisher (no kwarg) is 'github-actions': a foreign
+    # green required check is an incident even without explicitly passing it.
+    # This documents the safe default that ships before the main.py wiring
+    # follow-up lands.
+    _seed(fake_api, "r" * 40, [make_check("build", "success", slug="attacker-app")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "r" * 40

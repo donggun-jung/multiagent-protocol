@@ -687,3 +687,77 @@ def test_non_allowlisted_labels_never_receipted_never_honored(fake_api, solo_con
     assert d.action == "blocked"          # C1: not allowlisted-applied
     assert fake_api.merged == []
     assert _written_receipts(fake_api) == {}   # no receipts for either label
+
+
+# -- ITEM 1: remove-then-untrusted-readd provenance bypass (GPT-5.5 confirmed) -
+#
+# A label applied by a TRUSTED actor, REMOVED, then RE-ADDED by an UNTRUSTED
+# actor must NOT stay authenticated by the stale earlier trusted ``labeled``
+# event. End-to-end through process_pr (build_context splits labeled/unlabeled,
+# the receipt writer, and C1/C3 all see the unlabeled stream).
+
+def test_unlabel_then_untrusted_readd_not_honored_no_receipt_e2e(fake_api, solo_config):
+    # ready-to-merge: owner added it (00:00), it was removed (00:01), then an
+    # UNtrusted actor re-added it (00:02) at the SAME head. The label is NOT
+    # honoured (blocked) and NO receipt is written for it.
+    pr = fake_api.register_pr(
+        number=140, labels=("ready-to-merge",),
+        files=[changed_file("README.md")],
+        label_events=[
+            {"event": "labeled", "label": "ready-to-merge",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"event": "unlabeled", "label": "ready-to-merge",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:01:00Z"},
+            {"event": "labeled", "label": "ready-to-merge",
+             "actor": "mallory", "created_at": "2026-05-25T00:02:00Z"},
+        ])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "blocked"
+    assert "C1" in d.detail
+    assert fake_api.merged == []
+    assert "ready-to-merge" not in _written_receipts(fake_api)  # no receipt
+
+
+def test_unlabel_then_trusted_readd_honored_and_merges_e2e(fake_api, solo_config):
+    # Control: the re-add (00:02) is by the allowlisted owner → the label is
+    # honoured via the normal current-head receipt flow → merges (Quadrant A).
+    pr = fake_api.register_pr(
+        number=141, labels=("ready-to-merge",),
+        files=[changed_file("README.md")],
+        label_events=[
+            {"event": "labeled", "label": "ready-to-merge",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"event": "unlabeled", "label": "ready-to-merge",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:01:00Z"},
+            {"event": "labeled", "label": "ready-to-merge",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:02:00Z"},
+        ])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "merged"
+    assert _written_receipts(fake_api).get("ready-to-merge") == "h" * 40
+
+
+def test_unlabel_then_untrusted_readd_blocks_quadrant_d_approval_e2e(fake_api, solo_config):
+    # The C3 (owner-approval) door: a Quadrant-D PR whose decision:approved-A
+    # was owner-added, removed, then re-added by an untrusted actor (head
+    # unchanged so a bot receipt would still SHA-match) is NOT merged — it is
+    # routed to the inbox, because the establishing applier is untrusted.
+    pr = fake_api.register_pr(
+        number=142, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],  # Quadrant D
+        label_events=[
+            {"event": "labeled", "label": "ready-to-merge",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"event": "labeled", "label": "decision:approved-A",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"event": "unlabeled", "label": "decision:approved-A",
+             "actor": "your-github-login", "created_at": "2026-05-25T00:01:00Z"},
+            {"event": "labeled", "label": "decision:approved-A",
+             "actor": "mallory", "created_at": "2026-05-25T00:02:00Z"},
+        ])
+    # A pre-existing bot receipt at the current head would otherwise satisfy C3.
+    fake_api.seed_comment(
+        142, BOT_USER, approval_receipt_comment("decision:approved-A", "h" * 40))
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "inbox"
+    assert fake_api.merged == []

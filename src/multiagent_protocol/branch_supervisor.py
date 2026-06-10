@@ -30,6 +30,10 @@ from typing import Any
 
 from multiagent_protocol.github_api import SINCE_NOT_FOUND, GitHubAPI
 from multiagent_protocol.skills.base import BranchHook
+from multiagent_protocol.skills.builtin.validator_ci_green import (
+    DEFAULT_CHECK_PUBLISHER,
+    publisher_satisfied,
+)
 from multiagent_protocol.trailers import parse_trailers
 from multiagent_protocol.types import CommitContext
 
@@ -355,10 +359,19 @@ def _classify_commit_checks(
     sha: str,
     required_checks: tuple[str, ...],
     allow_no_ci: bool = False,
+    expected_check_publisher: str | None = DEFAULT_CHECK_PUBLISHER,
 ) -> tuple[str, list[str]]:
     """Return ``(status, failing_names)`` for one merged commit.
 
     ``status`` is ``"passed"``, ``"real_failure"``, or ``"infra"``.
+
+    ``expected_check_publisher`` mirrors C2's publisher trust on the post-merge
+    side: a NAMED required check counts as satisfied only if at least one of its
+    same-named passing runs was published by that App. A required check that is
+    green only because a FOREIGN App published it is treated as not-satisfied →
+    a real failure (the L2 incident path) — so a foreign-published required
+    check can no longer slip through L2 the way it is blocked at C2. ``None``
+    skips the publisher gate (publisher-agnostic / legacy).
     """
     checks = api.check_runs(owner, repo, sha)
 
@@ -383,18 +396,35 @@ def _classify_commit_checks(
                 # Mark infra so the tick retries this commit next time.
                 infra = True
                 continue
+            name_real = False
+            name_infra = False
+            passing_slugs: list[str | None] = []
             for c in completed:
                 if c.get("conclusion") in _PASSING_REQUIRED_CONCLUSIONS:
+                    passing_slugs.append((c.get("app") or {}).get("slug"))
                     continue
                 if c.get("conclusion") == "skipped":
                     # A REQUIRED check resolved ``skipped`` → it never ran;
                     # leave unsettled (retry → stall-escalate) rather than pass.
-                    infra = True
+                    name_infra = True
                     continue
                 if _is_infra_failure(c):
-                    infra = True
+                    name_infra = True
                 else:
+                    name_real = True
                     real.append(c.get("name", "?"))
+            # Publisher trust (mirrors C2's named-required path): only fire when
+            # the check is otherwise green for this name — a foreign-published
+            # green required check is then a REAL failure (not-satisfied), never
+            # silently passed. Foreign non-success runs already failed above.
+            if (
+                not name_real and not name_infra
+                and not publisher_satisfied(passing_slugs, expected_check_publisher)
+            ):
+                name_real = True
+                real.append(name)
+            if name_infra and not name_real:
+                infra = True
         if real:
             return "real_failure", real
         if infra:
@@ -436,6 +466,7 @@ def revalidate_main(
     *,
     l2_key_suffix: str = ":l2",
     allow_no_ci: bool = False,
+    expected_check_publisher: str | None = DEFAULT_CHECK_PUBLISHER,
     max_commits: int = MAX_COMMITS_PER_TICK,
     stall_deadline_hours: int = L2_STALL_DEADLINE_HOURS,
     clock: Callable[[], datetime] | None = None,
@@ -456,6 +487,16 @@ def revalidate_main(
     the newest settled commit within that budget. A watermark that fell off
     ``main`` history re-bootstraps to HEAD with a ``decision:watermark-lost``
     incident (no full replay).
+
+    ``expected_check_publisher`` applies C2's publisher trust to the post-merge
+    re-validation: a named required check is satisfied only by a same-named run
+    from that App; a foreign-published green required check is treated as
+    not-satisfied → the normal L2 incident path. It defaults to
+    ``"github-actions"``. FOLLOW-UP (one line, in the protected ``main.py``):
+    pass ``config.projects.effective_expected_check_publisher(full,
+    config.env.expected_check_publisher) or DEFAULT_CHECK_PUBLISHER`` here so
+    per-repo / env overrides apply to L2 exactly as they do to C2; until then
+    L2 uses the ``"github-actions"`` default.
     """
     now = (clock or _utcnow)()
     deadline = timedelta(hours=stall_deadline_hours)
@@ -486,7 +527,8 @@ def revalidate_main(
         sha = raw["sha"]
         stall_id = f"{owner}/{repo}:{sha}"
         status, failing = _classify_commit_checks(
-            api, owner, repo, sha, required_checks, allow_no_ci=allow_no_ci
+            api, owner, repo, sha, required_checks, allow_no_ci=allow_no_ci,
+            expected_check_publisher=expected_check_publisher,
         )
         if status == "infra":
             first_seen = _parse_iso(unsettled.get(stall_id))

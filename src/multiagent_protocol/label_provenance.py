@@ -57,7 +57,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 
-from multiagent_protocol.types import PRContext
+from multiagent_protocol.types import LabelEvent, PRContext
 
 # Sanity window for the head commit's committer date (the time-based fallback
 # only). Committer dates are attacker-controlled; a date in the future (beyond
@@ -93,6 +93,76 @@ RECEIPT_ELIGIBLE_LABELS = frozenset({
 # re-approves against a verified head. Auto-re-binding an approval would be
 # auto-re-approval of unreviewed code.
 REBINDABLE_LABELS = frozenset({"ready-to-merge"})
+
+
+def establishing_labeled_event(
+    label: str,
+    label_events: Iterable[LabelEvent],
+    unlabel_events: Iterable[LabelEvent],
+) -> LabelEvent | None:
+    """The ``labeled`` event that established a label's CURRENT presence.
+
+    A label may be added by a trusted actor, removed, then re-added by an
+    UNtrusted actor: the stale earlier trusted ``labeled`` event must not keep
+    authenticating it. The *establishing* add is the most recent ``labeled``
+    event for ``label`` whose GitHub-assigned timestamp is at-or-after the most
+    recent ``unlabeled`` event for the same label (the add that re-created its
+    current presence). Returns None when none can be determined — every caller
+    treats that as **fail closed** (untrusted / not honoured).
+
+    - No ``unlabeled`` event for the label → never removed, so the latest
+      ``labeled`` (timeline order) establishes it. On a real GitHub timeline a
+      label name has at most one ``labeled`` with no intervening ``unlabeled``,
+      so this preserves the prior single-event behaviour exactly.
+    - Removed at least once → only a ``labeled`` at-or-after the latest removal
+      can be the establisher; the most recent such add (by event timestamp)
+      wins. A ``labeled`` whose timestamp is unparseable or strictly before the
+      latest removal cannot be proven to establish the present label and is
+      ignored (fail closed) — so a stale pre-removal trusted add is never the
+      effective applier.
+
+    GitHub event timestamps only are consulted here (never commit dates).
+    """
+    labeleds = [e for e in label_events if e.label == label]
+    if not labeleds:
+        return None
+    last_unlabel_dt: datetime | None = None
+    for e in unlabel_events:
+        if e.label != label:
+            continue
+        dt = _parse_date(e.created_at)
+        if dt is not None and (last_unlabel_dt is None or dt > last_unlabel_dt):
+            last_unlabel_dt = dt
+    if last_unlabel_dt is None:
+        # Never removed: the latest add in chronological timeline order.
+        return labeleds[-1]
+    establisher: LabelEvent | None = None
+    establisher_dt: datetime | None = None
+    for e in labeleds:
+        dt = _parse_date(e.created_at)
+        if dt is None or dt < last_unlabel_dt:
+            continue  # cannot prove this add re-established the current presence
+        # ">=" so the most recently RECORDED add at the max timestamp wins
+        # (timeline order breaks a same-second tie toward the latest event).
+        if establisher_dt is None or dt >= establisher_dt:
+            establisher, establisher_dt = e, dt
+    return establisher
+
+
+def effective_label_applier(
+    label: str,
+    label_events: Iterable[LabelEvent],
+    unlabel_events: Iterable[LabelEvent],
+) -> str | None:
+    """Login of the actor whose add established the label's current presence.
+
+    Thin wrapper over :func:`establishing_labeled_event` returning just the
+    actor login (None when no establishing add can be determined). C1's
+    defense-in-depth actor check uses this so a remove-then-untrusted-readd is
+    rejected exactly like C3/auto-revert.
+    """
+    event = establishing_labeled_event(label, label_events, unlabel_events)
+    return event.actor_login if event is not None else None
 
 
 def head_commit_date(pr_context: PRContext) -> str | None:
@@ -253,20 +323,27 @@ def has_verified_label(
     head_dt = _parse_date(hdate)
     if head_dt is not None and not plausible_head_date(hdate, now):
         head_dt = None  # implausible committer date → time path fails closed
-    for event in pr_context.label_events:
-        if event.label not in label_set:
-            continue
-        if event.label not in pr_context.labels:
-            continue  # label was removed since the event
+    for label in label_set:
+        if label not in pr_context.labels:
+            continue  # label was removed since (not currently present)
+        # The trusted-applier check uses the add that ESTABLISHED the current
+        # presence (most recent labeled after the most recent unlabeled), not
+        # any historical trusted add: a trusted-add → unlabeled → untrusted
+        # re-add must NOT stay authenticated by the stale earlier trusted event.
+        event = establishing_labeled_event(
+            label, pr_context.label_events, pr_context.unlabel_events
+        )
+        if event is None:
+            continue  # no determinable establishing add → fail closed
         actor = event.actor_login
         if actor is None or (actor not in allowlisted_actors and actor != bot_user):
-            continue  # self-applied by an untrusted actor
-        bound = None if approved_shas is None else approved_shas.get(event.label)
+            continue  # current presence established by an untrusted actor
+        bound = None if approved_shas is None else approved_shas.get(label)
         if bound is not None:
             if bound == pr_context.head_sha:
                 return True
             continue  # recorded against a different head → void until re-approved
-        if event.label in RECEIPT_ELIGIBLE_LABELS:
+        if label in RECEIPT_ELIGIBLE_LABELS:
             continue  # gate-opening label without a receipt → never honoured
         event_dt = _parse_date(event.created_at)
         if head_dt is None or event_dt is None:
@@ -336,19 +413,24 @@ def labels_needing_receipt(
             min_event_dt = _parse_date(receipt_times.get(label))
             if min_event_dt is None:
                 continue  # cannot prove a re-apply postdates the binding
-        for event in pr_context.label_events:
-            if event.label != label:
+        # The applier that matters is the one who ESTABLISHED the current
+        # presence (most recent labeled after the most recent unlabeled): a
+        # trusted-add → unlabeled → untrusted re-add must get NO receipt, so a
+        # stale earlier trusted add can never mint one for an untrusted re-add.
+        event = establishing_labeled_event(
+            label, pr_context.label_events, pr_context.unlabel_events
+        )
+        if event is None:
+            continue
+        actor = event.actor_login
+        if actor is None or (actor not in allowlisted_actors and actor != bot_user):
+            continue
+        if min_event_dt is not None:
+            # Re-bind needs proof of fresh owner intent: the establishing label
+            # event strictly NEWER than the bot's last receipt comment (both
+            # timestamps GitHub-assigned, not forgeable).
+            event_dt = _parse_date(event.created_at)
+            if event_dt is None or event_dt <= min_event_dt:
                 continue
-            actor = event.actor_login
-            if actor is None or (actor not in allowlisted_actors and actor != bot_user):
-                continue
-            if min_event_dt is not None:
-                # Re-bind needs proof of fresh owner intent: a trusted label
-                # event strictly NEWER than the bot's last receipt comment
-                # (both timestamps GitHub-assigned, not forgeable).
-                event_dt = _parse_date(event.created_at)
-                if event_dt is None or event_dt <= min_event_dt:
-                    continue
-            out.append(label)
-            break
+        out.append(label)
     return tuple(out)
