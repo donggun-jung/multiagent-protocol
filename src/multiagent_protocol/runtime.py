@@ -163,15 +163,38 @@ def _main_head_lookup(api: GitHubAPI):
 
 
 def _resolve_bot_user(config: AppConfig, api: GitHubAPI) -> str:
-    """The bot App's user login (``<slug>[bot]``).
+    """The bot App's user login (``<slug>[bot]``) — authoritative only.
 
-    Prefer the App's *actual* slug (authoritative, from ``GET /app``) over the
-    operator-typed ``env.yml`` ``bot_app_slug`` so a typo cannot silently break
-    the approve→merge flow. Falls back to config if the lookup is unavailable
-    (e.g. the FakeAPI in tests has no ``.auth``)."""
+    The approval/identity checks (C3 receipts, label provenance, diagnostic
+    dedupe, R3) trust this login, so it must come from ``GET /app``, never
+    from the operator-typed ``env.yml`` ``bot_app_slug``: a transient API
+    hiccup combined with a stale config value must not silently change which
+    identity the gate trusts. If the authoritative slug is unavailable this
+    **fails closed** (raises; the tick aborts rather than guessing). A
+    mismatch between the authoritative slug and the config value is surfaced
+    loudly but the authoritative one wins.
+
+    Test doubles without App auth (no ``.auth`` attribute, e.g. the FakeAPI)
+    have no authoritative source at all and use the config value directly.
+    """
     auth = getattr(api, "auth", None)
-    app_slug = auth.app_slug() if auth is not None else None
-    return f"{app_slug or config.env.bot_app_slug}[bot]"
+    if auth is None:
+        return f"{config.env.bot_app_slug}[bot]"
+    app_slug = auth.app_slug()
+    if not app_slug:
+        raise RuntimeError(
+            "bot identity unavailable: GET /app did not yield the App slug. "
+            "Refusing to fall back to config env.bot_app_slug — the "
+            "approval/identity path fails closed until the authoritative "
+            "slug can be resolved."
+        )
+    if config.env.bot_app_slug and app_slug != config.env.bot_app_slug:
+        logger.warning(
+            "config env.bot_app_slug=%r does not match the App's actual slug "
+            "%r — using the authoritative slug; fix env.yml.",
+            config.env.bot_app_slug, app_slug,
+        )
+    return f"{app_slug}[bot]"
 
 
 def _adr_finder(api: GitHubAPI, gov_owner: str, gov_repo: str):

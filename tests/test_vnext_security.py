@@ -21,13 +21,14 @@ from pathlib import Path
 import jsonschema
 import pytest
 
+from multiagent_protocol.auth import AppAuth, AppCredentials
 from multiagent_protocol.decision_inbox import resolve_open_issues
 from multiagent_protocol.label_provenance import (
     approval_receipt_comment,
     approval_receipts,
 )
 from multiagent_protocol.runtime import build_runtime_skills, process_pr
-from tests.conftest import changed_file, make_check, raw_commit
+from tests.conftest import FakeAPI, changed_file, make_check, raw_commit
 
 BOT_USER = "your-merge-gate-bot[bot]"  # solo_config env.bot_app_slug + "[bot]"
 ROOT = Path(__file__).resolve().parents[1]
@@ -215,6 +216,88 @@ def test_governance_rubric_modification_classifies_b(pr_factory):
                    additions=3, deletions=1),
     ))
     assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+
+
+# -- 6. Bot identity: authoritative source only, fail closed --------------------
+
+class _FakeAuthSlug:
+    def __init__(self, slug: str | None) -> None:
+        self._slug = slug
+
+    def app_slug(self) -> str | None:
+        return self._slug
+
+
+class _AuthedFakeAPI(FakeAPI):
+    """FakeAPI that carries App auth, like the real GitHubAPI."""
+
+    def __init__(self, slug: str | None) -> None:
+        super().__init__()
+        self.auth = _FakeAuthSlug(slug)
+
+
+def test_bot_identity_fails_closed_when_slug_unavailable(solo_config):
+    # App auth is present but GET /app could not yield the slug → the identity
+    # path must fail closed, NOT silently trust config env.bot_app_slug.
+    api = _AuthedFakeAPI(slug=None)
+    with pytest.raises(RuntimeError, match="fails closed"):
+        build_runtime_skills(solo_config, api, config_dir=None)
+
+
+def test_bot_identity_uses_authoritative_slug_and_warns_on_mismatch(solo_config, caplog):
+    # The authoritative slug wins over a stale/typo'd config value, loudly.
+    api = _AuthedFakeAPI(slug="actual-bot")
+    with caplog.at_level("WARNING"):
+        rt = build_runtime_skills(solo_config, api, config_dir=None)
+    assert rt.bot_user == "actual-bot[bot]"
+    assert any("does not match the App's actual slug" in r.message
+               for r in caplog.records)
+
+
+class _Resp:
+    def __init__(self, payload) -> None:
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        return None
+
+
+class _FlakySess:
+    """First GET raises (transient); subsequent GETs succeed."""
+
+    def __init__(self, payload) -> None:
+        self._payload = payload
+        self.calls = 0
+
+    def get(self, url, **kw):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("transient network error")
+        return _Resp(self._payload)
+
+
+def test_app_slug_transient_failure_is_not_cached():
+    sess = _FlakySess({"slug": "real-bot"})
+    auth = AppAuth(AppCredentials(app_id="1", private_key_pem="x"), session=sess)
+    auth.build_app_jwt = lambda now=None: "fake-jwt"  # avoid signing a fake PEM
+    assert auth.app_slug() is None            # unavailable this call
+    assert auth.app_slug() == "real-bot"      # retried, NOT negatively cached
+    assert sess.calls == 2
+
+
+class _NoSlugSess:
+    def get(self, url, **kw):
+        return _Resp({})  # GET /app ok but no slug field
+
+
+def test_app_slug_missing_field_is_unavailable():
+    auth = AppAuth(AppCredentials(app_id="1", private_key_pem="x"),
+                   session=_NoSlugSess())
+    auth.build_app_jwt = lambda now=None: "fake-jwt"
+    assert auth.app_slug() is None
 
 
 def test_stale_sha_receipt_blocks_merge_after_backdated_commit_e2e(fake_api, solo_config):
