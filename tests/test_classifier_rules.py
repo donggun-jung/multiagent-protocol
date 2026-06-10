@@ -179,7 +179,8 @@ def test_path_default_rename_out_of_governed_dir_is_d(pr_factory):
 
 def test_path_default_github_scripts_modify_is_d(pr_factory):
     # A1 (GPT-5.5): .github/scripts/* are executed BY the CI workflows, so they
-    # are enforcement-governing — the always-D prefix is the whole .github/ dir.
+    # are enforcement-governing — part of the CI-executable always-D set
+    # (.github/workflows/, .github/scripts/, .github/actions/).
     pr = pr_factory(files_changed=(
         FileChange(path=".github/scripts/scan_no_personal_data.py",
                    status="modified", additions=2, deletions=0),
