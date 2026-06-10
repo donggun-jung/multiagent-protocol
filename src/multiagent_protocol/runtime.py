@@ -274,11 +274,12 @@ def build_runtime_skills(
             required_checks=config.env.required_checks,
             allow_no_checks=config.env.allow_no_ci,
             # Publisher trust for required checks: only runs published by the
-            # repo's own CI App count as green. ``env.expected_check_publisher``
-            # (when the config grows it) overrides; default ``github-actions``.
+            # repo's own CI App count as green. Seeded with the GLOBAL
+            # ``env.expected_check_publisher`` (default ``github-actions``);
+            # process_pr patches the per-repo effective value before each PR,
+            # mirroring required_checks.
             expected_check_publisher=(
-                getattr(config.env, "expected_check_publisher", None)
-                or DEFAULT_CHECK_PUBLISHER
+                config.env.expected_check_publisher or DEFAULT_CHECK_PUBLISHER
             ),
         ),
         TrailersValidator(),
@@ -495,15 +496,24 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
         )
 
     # R1: resolve this repo's effective required_checks (per-repo override >
-    # global env default > ()) and apply it to the CiGreen validator before L1.
-    # The runtime's CiGreen carries the global default; only the per-repo
-    # override differs, so we patch the one instance for this PR's repo.
+    # global env default > ()) and expected check publisher (per-repo override
+    # > env default > "github-actions"), and apply both to the CiGreen
+    # validator before L1. The runtime's CiGreen carries the global defaults;
+    # only the per-repo overrides differ, so we patch the one instance for
+    # this PR's repo.
     eff_required = config.projects.effective_required_checks(
         full, config.env.required_checks
+    )
+    eff_publisher = (
+        config.projects.effective_expected_check_publisher(
+            full, config.env.expected_check_publisher
+        )
+        or DEFAULT_CHECK_PUBLISHER
     )
     for v in runtime.validators:
         if v.name == "validator_ci_green":
             v.required_checks = eff_required
+            v.expected_check_publisher = eff_publisher
         elif v.name == "validator_ready_to_merge":
             # Staleness veto: a bot-recorded ready label is bound to the head
             # SHA in its receipt; a moved head voids it.

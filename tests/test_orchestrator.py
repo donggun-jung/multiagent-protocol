@@ -154,6 +154,73 @@ def test_per_repo_required_overrides_global(fake_api, solo_config):
     assert d.action == "merged"
 
 
+# -- C2 publisher trust: expected_check_publisher threaded through process_pr --
+
+def test_per_repo_expected_publisher_override_used(fake_api, solo_config):
+    # The repo's CI runs under a non-default App ('custom-ci'). With the
+    # per-repo override set, a green required check published by custom-ci
+    # satisfies C2 → merges.
+    from multiagent_protocol.config.loader import RepoOverride
+    cfg = dataclasses.replace(
+        solo_config,
+        projects=dataclasses.replace(
+            solo_config.projects,
+            repo_overrides={"example/repo": RepoOverride(
+                required_checks=("ci",), expected_check_publisher="custom-ci")},
+        ),
+    )
+    pr = fake_api.register_pr(
+        number=54, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="custom-ci")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "merged"
+
+
+def test_per_repo_expected_publisher_rejects_other_publishers(fake_api, solo_config):
+    # Same override; the only green 'ci' run comes from the DEFAULT publisher
+    # (github-actions), which is NOT this repo's CI App → fail closed →
+    # blocked. Proves the per-PR patch actually swaps the expected publisher
+    # (without it, github-actions would have passed).
+    from multiagent_protocol.config.loader import RepoOverride
+    cfg = dataclasses.replace(
+        solo_config,
+        projects=dataclasses.replace(
+            solo_config.projects,
+            repo_overrides={"example/repo": RepoOverride(
+                required_checks=("ci",), expected_check_publisher="custom-ci")},
+        ),
+    )
+    pr = fake_api.register_pr(
+        number=55, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="github-actions")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "blocked"
+    assert "custom-ci" in d.detail
+    assert fake_api.merged == []
+
+
+def test_env_expected_publisher_is_global_default(fake_api, solo_config):
+    # env.expected_check_publisher applies to every repo without a per-repo
+    # override: green from org-ci merges, green from github-actions does not.
+    cfg = dataclasses.replace(
+        solo_config,
+        env=dataclasses.replace(
+            solo_config.env, required_checks=("ci",),
+            expected_check_publisher="org-ci"),
+    )
+    ok = fake_api.register_pr(
+        number=56, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="org-ci")])
+    rt = _rt(fake_api, cfg)
+    assert process_pr(fake_api, cfg, rt, ok).action == "merged"
+
+    not_ours = fake_api.register_pr(
+        number=57, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="github-actions")],
+        head_sha="x" * 40, commits=[raw_commit(sha="x" * 40)])
+    assert process_pr(fake_api, cfg, rt, not_ours).action == "blocked"
+
+
 def test_quadrant_d_inbox_is_idempotent(fake_api, solo_config):
     pr = fake_api.register_pr(
         number=6, labels=("ready-to-merge",),
