@@ -14,6 +14,12 @@ End-to-end (FakeAPI + runtime) and unit coverage for:
 from __future__ import annotations
 
 import dataclasses
+import json
+import shutil
+from pathlib import Path
+
+import jsonschema
+import pytest
 
 from multiagent_protocol.decision_inbox import resolve_open_issues
 from multiagent_protocol.label_provenance import (
@@ -24,6 +30,7 @@ from multiagent_protocol.runtime import build_runtime_skills, process_pr
 from tests.conftest import changed_file, make_check, raw_commit
 
 BOT_USER = "your-merge-gate-bot[bot]"  # solo_config env.bot_app_slug + "[bot]"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _rt(api, cfg):
@@ -111,6 +118,71 @@ def test_approval_receipts_requires_both_markers():
     half = {"user": {"login": BOT_USER},
             "body": "<!-- merge-gate-approval-label: decision:approved-A -->"}
     assert approval_receipts([half], BOT_USER) == {}
+
+
+# -- 4. Core L1 validators cannot be disabled -----------------------------------
+
+CORE_L1 = ("validator_ready_to_merge", "validator_ci_green",
+           "validator_owner_approval", "validator_base_up_to_date")
+
+
+def test_core_l1_validators_survive_disabled_config(fake_api, solo_config):
+    # Belt-and-suspenders: even a config object that bypassed schema
+    # validation cannot remove the core L1 validators from the runtime.
+    cfg = dataclasses.replace(
+        solo_config,
+        skills=dataclasses.replace(solo_config.skills, disabled=CORE_L1),
+    )
+    rt = _rt(fake_api, cfg)
+    names = {v.name for v in rt.validators}
+    # (validator_owner_approval is constructed per-PR in process_pr, so it is
+    # not part of the builder's list — its always-on path is e2e-tested below.)
+    assert {"validator_ready_to_merge", "validator_ci_green",
+            "validator_base_up_to_date"} <= names
+
+
+def test_disabled_core_validators_still_block_e2e(fake_api, solo_config):
+    # A config disabling validator_ci_green + validator_ready_to_merge still
+    # runs them: a PR with a failing required check and no ready label stays
+    # blocked.
+    cfg = dataclasses.replace(
+        solo_config,
+        env=dataclasses.replace(solo_config.env, required_checks=("ci",)),
+        skills=dataclasses.replace(
+            solo_config.skills,
+            disabled=("validator_ci_green", "validator_ready_to_merge")),
+    )
+    pr = fake_api.register_pr(
+        number=90, labels=(), files=[changed_file("README.md")],
+        checks=[make_check("ci", "failure")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "blocked"
+    assert "C1" in d.detail and "C2" in d.detail  # both validators ran
+    assert fake_api.merged == []
+
+
+def test_skills_schema_rejects_disabling_core_skills():
+    schema = json.loads(
+        (ROOT / "schemas" / "skills.schema.json").read_text(encoding="utf-8"))
+    for core in CORE_L1 + ("validator_trailers", "validator_classifier_publisher",
+                           "classifier_bot_self_repo", "hook_break_glass_audit",
+                           "hook_unauthorized_push"):
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(instance={"disabled": [core]}, schema=schema)
+    # Non-core skills remain disableable.
+    jsonschema.validate(
+        instance={"disabled": ["classifier_empty_pr", "hook_hallucination_guard"]},
+        schema=schema)
+
+
+def test_load_config_rejects_core_disable(tmp_path):
+    from multiagent_protocol.config.loader import load_config
+    cfg_dir = tmp_path / "config"
+    shutil.copytree(ROOT / "examples" / "solo-developer" / "config", cfg_dir)
+    (cfg_dir / "skills.yml").write_text(
+        "disabled:\n  - validator_ci_green\n", encoding="utf-8")
+    with pytest.raises(jsonschema.ValidationError):
+        load_config(cfg_dir, ROOT / "schemas")
 
 
 # -- 3. governance/ is a critical path -----------------------------------------

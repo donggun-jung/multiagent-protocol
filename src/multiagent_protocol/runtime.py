@@ -81,6 +81,9 @@ logger = logging.getLogger(__name__)
 
 # Built-ins the operator may NOT disable via config/skills.yml. See
 # docs/concepts/general-preferences.md ("not permitted via disabled:").
+# schemas/skills.schema.json rejects these names in `disabled` at config-load
+# time; this set is the belt-and-suspenders runtime enforcement for configs
+# that bypass schema validation.
 NON_DISABLEABLE = frozenset({
     "validator_trailers",
     "validator_classifier_publisher",
@@ -91,6 +94,16 @@ NON_DISABLEABLE = frozenset({
     # protection would have NOTHING watching main for unsanctioned writes — a
     # fail-open. It stays armed regardless of `disabled`.
     "hook_unauthorized_push",
+    # The core L1 gate conditions (C1-C4). Previously only their SEVERITY was
+    # clamped (CORE_L1_VALIDATORS below); a `disabled:` entry could remove
+    # them entirely — letting a PR with red CI or no ready label auto-merge.
+    # They now always run regardless of config. (validator_owner_approval/C3
+    # is also constructed unconditionally per-PR in process_pr, so listing it
+    # here keeps the declared policy complete.)
+    "validator_ready_to_merge",
+    "validator_ci_green",
+    "validator_owner_approval",
+    "validator_base_up_to_date",
 })
 
 # Core L1 validators whose severity must stay blocking (P0/P1). The operator
