@@ -682,9 +682,10 @@ def _is_transient_push_error(e: BaseException) -> bool:
 
     Only two cases are survivable (skip this push, retry next tick):
 
-    * a stale-precondition **422** — a concurrent tick advanced the file
-      between our blob-SHA re-read and our PUT (its newer state already
-      persisted, so losing this push is harmless), and
+    * a stale-precondition conflict (**409** or **422**) — a concurrent tick
+      advanced the file between our blob-SHA re-read and our PUT, so our ``sha``
+      precondition is out of date (its newer state already persisted, so losing
+      this push is harmless), and
     * a secondary-rate-limit — inherently transient, already retried at the
       repo level next tick.
 
@@ -692,11 +693,24 @@ def _is_transient_push_error(e: BaseException) -> bool:
     an exhausted-retry 5xx, or a non-HTTP error — is a hard failure that would
     never succeed on retry, so the caller fails the tick closed rather than
     cold-start L2/L5 forever.
+
+    A 409/422 is treated as the stale-precondition case ONLY when its body
+    references the SHA mismatch. A 409/422 for any OTHER reason (validation /
+    bad request) would recur on every retry, so swallowing it would silently
+    skip persistence forever — that is classed HARD (fail closed). If the body
+    cannot be read, fail closed (do not assume survivable).
     """
     if isinstance(e, SecondaryRateLimitError):
         return True
-    status = getattr(getattr(e, "response", None), "status_code", None)
-    return status == 422
+    resp = getattr(e, "response", None)
+    status = getattr(resp, "status_code", None)
+    if status not in (409, 422):
+        return False
+    try:
+        body = resp.json()
+    except Exception:
+        return False  # unreadable body → fail closed, don't assume survivable
+    return "sha" in json.dumps(body).lower()
 
 
 class BotStateStore:
@@ -742,6 +756,31 @@ class BotStateStore:
         branch_sha = self.api.get_ref_sha(self.owner, self.repo, self.branch)
         branch_existed = branch_sha is not None
         if branch_sha is None:
+            # The durable source of truth (the branch) is absent. A LOCAL CACHE
+            # present here is anomalous and must be resolved BEFORE we create the
+            # branch (creating it then failing would leave a created-but-empty
+            # branch that wedges every later tick on the "file missing" check).
+            # Two ways this happens, neither safe to guess between from the file
+            # alone:
+            #   * disaster — the bot-state branch was deleted while a GOOD local
+            #     mirror survived; trusting nothing silently skips the interval
+            #     that mirror covered; or
+            #   * a reused (self-hosted) workspace leaked STALE state from a run
+            #     whose durable push failed — trusting it risks re-flooding on a
+            #     stale / null entry (the production incident).
+            # Fail closed and let a human decide. The cron clears this cache
+            # before each tick, so on a healthy deployment this is unreachable;
+            # reaching it means the workspace was NOT cleaned.
+            if self.local_path.exists():
+                raise RuntimeError(
+                    f"bot-state branch {self.owner}/{self.repo}@{self.branch} is "
+                    f"absent but a local watermark cache exists at "
+                    f"{self.local_path} (fail-closed): refusing to silently "
+                    f"bootstrap-to-HEAD (which would skip any interval the cache "
+                    f"covered) or trust a possibly-stale cache (which could "
+                    f"re-flood). Manual recovery: restore the bot-state branch, "
+                    f"or delete {self.local_path} to force a clean re-bootstrap."
+                )
             # First ever run for this deployment: create the dedicated branch
             # off main HEAD so subsequent saves have a ref to write to.
             head = self.api.main_head_sha(self.owner, self.repo)
@@ -822,12 +861,9 @@ class BotStateStore:
                     f"unreadable (fail-closed): refusing to re-bootstrap to "
                     f"HEAD, which would disable L2/L5 post-merge re-validation."
                 )
-            # Branch did not exist before this tick (genuine first run) or was
-            # just created during it: the durable source of truth is empty, so
-            # start EMPTY. Deliberately do NOT seed from the local cache — on a
-            # reused (self-hosted) workspace it is stale state from a prior run
-            # whose durable push failed, and a stale / null entry there is
-            # exactly what drove the production cold-start flood. bootstrap-to-
+            # Branch did not exist before this tick (genuine clean first run; the
+            # branch-absent + local-cache anomaly was already fail-closed above).
+            # Start EMPTY — deliberately do NOT seed from any cache. bootstrap-to-
             # HEAD sets fresh per-repo watermarks this tick, and this tick's
             # save() writes them to the freshly-created branch.
             self._remote_blob_sha = None

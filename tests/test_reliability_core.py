@@ -354,16 +354,26 @@ def test_genuine_first_run_no_branch_starts_empty(tmp_path):
 
 
 class _Resp:
-    def __init__(self, status_code: int) -> None:
+    def __init__(self, status_code: int, body: dict | None = None) -> None:
         self.status_code = status_code
+        self._body = body if body is not None else {}
+
+    def json(self) -> dict:
+        return self._body
 
 
 class _PushError(Exception):
-    """An HTTPError-shaped push failure (carries .response.status_code)."""
+    """An HTTPError-shaped push failure (carries .response.status_code + .json())."""
 
-    def __init__(self, status_code: int) -> None:
+    def __init__(self, status_code: int, body: dict | None = None) -> None:
         super().__init__(f"HTTP {status_code}")
-        self.response = _Resp(status_code)
+        self.response = _Resp(status_code, body)
+
+
+# A stale-precondition 409/422 body references the SHA mismatch (survivable); a
+# generic 422 body does not (hard — would recur).
+_STALE_SHA_BODY = {"message": "branch_supervisor_watermarks.json does not match "
+                   "the expected sha; it was updated by another request"}
 
 
 def test_hard_save_permission_error_raises(tmp_path):
@@ -396,7 +406,7 @@ def test_transient_save_422_is_swallowed_and_retries(tmp_path):
                             blob_sha=None):
             if self.fail_next:
                 self.fail_next = False
-                raise _PushError(422)
+                raise _PushError(422, _STALE_SHA_BODY)
             return super().put_file_on_ref(
                 owner, repo, path, ref=ref, content=content,
                 message=message, blob_sha=blob_sha)
@@ -409,6 +419,23 @@ def test_transient_save_422_is_swallowed_and_retries(tmp_path):
     assert store._remote_blob_sha is None        # dropped for a clean re-read
     store.save({"acme/app": "g" * 40})           # next save succeeds
     assert api.bot_state_writes                   # the retry persisted
+
+
+def test_non_stale_422_is_hard_not_swallowed(tmp_path):
+    # GPT Q7: a 422 whose body is NOT a SHA stale-precondition (e.g. a content
+    # validation error) would recur on every retry. Swallowing it would silently
+    # skip persistence forever, so save() must treat it as HARD and RAISE.
+    class _BadRequestAPI(FakeAPI):
+        def put_file_on_ref(self, *a, **k):
+            raise _PushError(422, {"message": "Invalid request: content too large",
+                                   "errors": [{"resource": "Content"}]})
+
+    api = _BadRequestAPI(main_head=HEAD)
+    api.seed_bot_state("acme", "governance", {"acme/app": "f" * 40})
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    store.load()
+    with pytest.raises(_PushError):
+        store.save({"acme/app": "g" * 40})
 
 
 def test_hard_save_error_fails_whole_tick(tmp_path, monkeypatch):
@@ -888,17 +915,24 @@ def test_create_ref_race_is_tolerated_even_if_recheck_flaky(tmp_path):
     assert api.bot_state_writes == []    # nothing written during load itself
 
 
-def test_first_run_does_not_seed_from_stale_local_cache(tmp_path):
+def test_branch_absent_with_local_cache_fails_closed(tmp_path):
     # On a reused (self-hosted) workspace the local cache can hold stale state
-    # from a prior run whose durable push failed. On a genuine first run (no
-    # bot-state branch yet) load() must START EMPTY, not resurrect that stale
-    # file — a stale/null entry there is precisely what fed the production flood.
+    # from a prior run whose durable push failed (or the bot-state branch was
+    # lost). With NO durable branch but a local cache present, load() must NOT
+    # silently bootstrap-to-HEAD (skip the gap) NOR trust the possibly-stale
+    # cache (which fed the production flood): it FAILS CLOSED, before creating a
+    # branch, for a human to resolve. (The cron clears this cache before each
+    # tick, so this is an uncleaned-workspace safety net.)
     local = tmp_path / "wm.json"
     local.write_text(json.dumps({"acme/app": "stale" + "0" * 35}), encoding="utf-8")
     api = FakeAPI(main_head=HEAD)
     store = BotStateStore(api, "acme", "governance", local_path=local)
-    assert store.load() == {}            # the stale entry is NOT seeded
-    assert api.refs_created              # branch created off HEAD for next save
+    with pytest.raises(RuntimeError, match="fail-closed"):
+        store.load()
+    # The branch was NOT created (we fail before create_ref), so a later tick
+    # after the operator clears the cache can cleanly bootstrap — no wedge.
+    assert api.refs_created == []
+    assert api.bot_state_writes == []
 
 
 def test_null_watermark_entry_never_floods_end_to_end(tmp_path, monkeypatch):
