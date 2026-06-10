@@ -321,6 +321,35 @@ def test_projects_schema_accepts_audit_only_and_repo_overrides():
     )
 
 
+def test_projects_schema_accepts_expected_check_publisher_override():
+    # R1 + C2 publisher trust: a per-repo expected_check_publisher override is
+    # a valid repo_overrides property (string, minLength 1).
+    schema = _load_schema("projects.schema.json")
+    _jsonschema.validate(
+        instance={
+            "governance_repo": "alice/p",
+            "repo_overrides": {
+                "alice/repo-a": {
+                    "required_checks": ["build"],
+                    "expected_check_publisher": "custom-ci",
+                },
+                "alice/repo-b": {"expected_check_publisher": "org-ci"},
+            },
+        },
+        schema=schema,
+    )
+    # An empty slug is rejected (minLength 1), mirroring env.schema.
+    import pytest
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={
+                "governance_repo": "alice/p",
+                "repo_overrides": {"alice/repo-a": {"expected_check_publisher": ""}},
+            },
+            schema=schema,
+        )
+
+
 def test_projects_schema_rejects_unknown_repo_override_key():
     schema = _load_schema("projects.schema.json")
     import pytest

@@ -9,8 +9,12 @@ installed on the repo can publish a check-run named ``test`` with
 ``conclusion = success``. When ``expected_check_publisher`` is set, a named
 required check is satisfied only by a run published by that App; a same-named
 green run from any other publisher is treated as "not yet green" (fail
-closed). This mirrors the publisher-identity gate in
-:mod:`validator_classifier_publisher`.
+closed). On the legacy path (no named required checks, the strict
+all-completed-checks-succeed mode) the same rule applies to the green signal
+as a whole: at least one SUCCESS run must come from the expected App, so a
+foreign App's green cannot satisfy C2 by itself. A head with zero check-runs
+under ``allow_no_checks`` still passes vacuously (no run to attribute). This
+mirrors the publisher-identity gate in :mod:`validator_classifier_publisher`.
 """
 
 from __future__ import annotations
@@ -96,6 +100,21 @@ class CiGreenValidator:
         bad = self._first_non_success(pr_context.check_runs, allow_neutral=True)
         if bad is not None:
             return bad
+        # Publisher trust on the legacy path too: with no named required
+        # checks the "green" signal is whatever success runs are present, so a
+        # foreign App's green must not satisfy C2 by itself. When a publisher
+        # is expected, require at least one SUCCESS run from it (fail closed,
+        # mirroring the named-required path and validator_classifier_publisher).
+        if self.expected_check_publisher and not any(
+            c.conclusion == "success" and c.app_slug == self.expected_check_publisher
+            for c in pr_context.check_runs
+        ):
+            seen = sorted({c.app_slug or "<missing app>" for c in pr_context.check_runs})
+            return ValidationResult.fail(
+                f"C2: no green check-run was published by the expected app "
+                f"'{self.expected_check_publisher}' (publishers seen: "
+                f"{', '.join(seen)}). Treating as not yet green."
+            )
         return ValidationResult.ok()
 
     @staticmethod

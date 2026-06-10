@@ -387,13 +387,19 @@ def test_no_receipt_for_non_allowlisted_applier(pr_factory):
     assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
 
 
-def test_no_receipt_for_stale_label_event(pr_factory):
-    # The label PREDATES the current head (force-push after labeling) → the
-    # bot never silently binds it to code the labeler did not see.
+def test_first_bind_ignores_committer_date_when_event_predates_head(pr_factory):
+    # vNext: the WRITER no longer consults the head's committer date. A commit
+    # date is client-supplied and forgeable, so "label event before the head
+    # commit date" is NOT a freshness signal: an attacker can always backdate
+    # a force-pushed head. The first receipt binds to the head the bot
+    # observes here regardless of the head date — the residual is a force-push
+    # before the bot's FIRST observation (documented; airtight path = inbox).
     pr = _hand_applied_pr(
         pr_factory, ("decision:approved-A",),
         head_date="2026-05-25T00:10:00Z", event_at="2026-05-25T00:00:00Z")
-    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == (
+        "decision:approved-A",
+    )
 
 
 def test_no_receipt_when_already_bound_to_current_head(pr_factory):
@@ -452,24 +458,32 @@ def test_stale_ready_receipt_not_rebound_without_receipt_time(pr_factory):
     ) == ()
 
 
-def test_no_receipt_when_head_date_unverifiable(pr_factory):
-    # Unparseable or implausible head committer date → bind nothing.
-    pr = _hand_applied_pr(
+def test_first_bind_ignores_head_date_even_when_unparseable_or_future(pr_factory):
+    # vNext: the writer ignores the head committer date entirely, so an
+    # unparseable OR implausibly-future head date no longer suppresses the
+    # first receipt — the binding is by observed SHA, not by time.
+    bad_date = _hand_applied_pr(
         pr_factory, ("decision:approved-A",), head_date="not-a-date")
-    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
+    assert labels_needing_receipt(bad_date, OWNER, BOT, approved_shas={}) == (
+        "decision:approved-A",
+    )
     future = _hand_applied_pr(
         pr_factory, ("decision:approved-A",),
         head_date="2026-05-25T12:00:00Z", event_at="2026-05-25T13:00:00Z")
-    assert labels_needing_receipt(
-        future, OWNER, BOT, approved_shas={},
-        now=datetime(2026, 5, 25, 0, 0, tzinfo=timezone.utc),
-    ) == ()
+    assert labels_needing_receipt(future, OWNER, BOT, approved_shas={}) == (
+        "decision:approved-A",
+    )
 
 
-def test_no_receipt_for_unparseable_event_timestamp(pr_factory):
+def test_first_bind_ignores_unparseable_event_timestamp(pr_factory):
+    # First-bind needs only present + trusted applier + no receipt; it does
+    # not parse the label-event timestamp (only the re-bind freshness check
+    # does). A garbage event time no longer suppresses the first receipt.
     pr = _hand_applied_pr(
         pr_factory, ("decision:approved-A",), event_at="yesterday")
-    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == (
+        "decision:approved-A",
+    )
 
 
 # -- Auto-revert classifier (provenance-checked, like C3) --

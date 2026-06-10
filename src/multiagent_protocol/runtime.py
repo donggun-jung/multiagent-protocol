@@ -74,7 +74,6 @@ from multiagent_protocol.skills.builtin.validator_classifier_publisher import (
     ClassifierPublisherValidator,
 )
 from multiagent_protocol.skills.builtin.validator_owner_approval import (
-    APPROVAL_LABELS,
     OwnerApprovalValidator,
 )
 from multiagent_protocol.skills.builtin.validator_ready_to_merge import (
@@ -467,33 +466,31 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
 
     verdict = classify(ctx, runtime.classifier_rules, audit_log_path)
 
-    # Receipt writer: receipt-eligible labels are honoured ONLY through a bot
-    # SHA receipt (label_provenance), so an allowlisted HAND-applied label is
-    # converted into a receipt binding it to the current head. The rest of
-    # this tick keeps evaluating against the receipts as they were at the
-    # START of the tick (``approved_shas`` is not updated), and a freshly
-    # receipted APPROVAL label additionally defers the whole PR one tick — a
-    # label is never honoured on the tick its receipt is first written, which
-    # gives the owner a confirmation window (the receipt comment names the
-    # exact bound SHA) before a hand-applied approval can merge. A label
-    # applied by a non-allowlisted actor never gets a receipt.
+    # Receipt writer: receipt-eligible labels (C1 ready-to-merge, C3
+    # decision:approved-*) are honoured ONLY through a bot SHA receipt
+    # (label_provenance), so an allowlisted HAND-applied label is converted
+    # into a receipt binding it to the head observed THIS tick. A label
+    # applied by a non-allowlisted actor never gets a receipt. The receipts
+    # written here are then merged into ``approved_shas`` and honoured the
+    # SAME tick: the head cannot change within a tick's execution, so binding
+    # to and then validating against the just-observed head is atomic and
+    # safe (there is no one-tick deferral). A force-push BETWEEN ticks is
+    # caught because the receipt's SHA then differs from the new head, and the
+    # writer refuses to re-bind an approval (only the Decision Inbox may
+    # supersede an approval receipt). approvals and ready-to-merge behave
+    # identically: receipt-required, honoured same-tick once bound.
     to_record = labels_needing_receipt(
         ctx, config.owner.allowlisted_actors, runtime.bot_user,
         approved_shas=approved_shas, receipt_times=receipt_times,
     )
-    for label in to_record:
-        api.post_comment(
-            ctx.repo_owner, ctx.repo_name, ctx.number,
-            approval_receipt_comment(label, ctx.head_sha),
-        )
-    newly_receipted_approvals = [lb for lb in to_record if lb in APPROVAL_LABELS]
-    if newly_receipted_approvals:
-        return PRDecision(
-            full, ctx.number, "skipped", verdict.quadrant,
-            f"recorded approval receipt for "
-            f"{', '.join(newly_receipted_approvals)} at the current head; "
-            f"honoured next tick if the head is unchanged",
-        )
+    if to_record:
+        approved_shas = dict(approved_shas)
+        for label in to_record:
+            api.post_comment(
+                ctx.repo_owner, ctx.repo_name, ctx.number,
+                approval_receipt_comment(label, ctx.head_sha),
+            )
+            approved_shas[label] = ctx.head_sha
 
     # R1: resolve this repo's effective required_checks (per-repo override >
     # global env default > ()) and expected check publisher (per-repo override
@@ -515,8 +512,10 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
             v.required_checks = eff_required
             v.expected_check_publisher = eff_publisher
         elif v.name == "validator_ready_to_merge":
-            # Staleness veto: a bot-recorded ready label is bound to the head
-            # SHA in its receipt; a moved head voids it.
+            # C1 is receipt-required (mirrors C3): the ready label opens C1
+            # only with a bot receipt bound to the current head. This map
+            # includes any receipt written this tick (honoured same-tick); a
+            # moved head voids a stale receipt.
             v.approved_shas = approved_shas
 
     # Evaluate the L1 conditions *other than* C3 (owner approval). C3 is the
@@ -534,8 +533,9 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
 
     # C3 — owner approval. Passes for Quadrant A/B/C (auto-approval), or for a
     # Quadrant-D PR whose ``decision:approved-*`` label is owner/bot-applied
-    # and bound to the current head (SHA receipt, else at-or-after-head; see
-    # OwnerApprovalValidator). ``runtime.bot_user`` is the App's resolved
+    # and bound to the current head via the bot's SHA receipt (no time
+    # fallback; see OwnerApprovalValidator). ``approved_shas`` includes any
+    # receipt written this tick. ``runtime.bot_user`` is the App's resolved
     # ``<slug>[bot]`` identity.
     owner_approval = OwnerApprovalValidator(
         classifier_verdict=verdict.quadrant,

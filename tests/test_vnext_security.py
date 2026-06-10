@@ -69,6 +69,31 @@ def test_required_check_green_from_expected_app_merges_e2e(fake_api, solo_config
     assert d.action == "merged"
 
 
+def test_legacy_no_required_checks_foreign_green_blocks_e2e(fake_api, solo_config):
+    # No NAMED required checks (legacy strict-all-green path). The runtime
+    # always sets the expected publisher (default github-actions), so a head
+    # whose only green run is from a foreign App is treated as not-yet-green →
+    # C2 fails closed → blocked (a foreign green must not satisfy C2 even with
+    # no named required checks).
+    pr = fake_api.register_pr(
+        number=72, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="attacker-app")])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "blocked"
+    assert "github-actions" in d.detail
+    assert fake_api.merged == []
+
+
+def test_legacy_no_required_checks_expected_green_merges_e2e(fake_api, solo_config):
+    # The same legacy path with the default green check (github-actions) still
+    # merges — the publisher gate does not regress the common case.
+    pr = fake_api.register_pr(
+        number=73, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="github-actions")])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "merged"
+
+
 # -- 2. SHA-bound approvals: receipt write + parse + end-to-end ----------------
 
 SHA1 = "1" * 40
@@ -497,16 +522,11 @@ def test_matching_sha_receipt_merges_e2e(fake_api, solo_config):
 #
 # Receipt-eligible labels (decision:approved-A/B, ready-to-merge) are honoured
 # only through a bot SHA receipt. The runtime converts an allowlisted
-# HAND-applied label into a receipt bound to the current head; a label is
-# never honoured on the tick its receipt is first written (approval labels
-# defer the whole PR one tick — the owner's confirmation window).
-
-
-def _replay_bot_comments(fake_api):
-    """Feed the bot's posted comments back as readable bot comments (the
-    FakeAPI does not connect post_comment to list_issue_comments)."""
-    for (_o, _r, number, body) in list(fake_api.comments_posted):
-        fake_api.seed_comment(number, BOT_USER, body)
+# HAND-applied label into a receipt bound to the head observed THIS tick and
+# honours it the SAME tick (no one-tick deferral; the head cannot change
+# within a tick's execution). approvals and ready-to-merge behave identically.
+# A non-allowlisted applier never gets a receipt, and the writer never
+# re-binds an approval (only the Decision Inbox may supersede one).
 
 
 def _written_receipts(fake_api):
@@ -515,49 +535,54 @@ def _written_receipts(fake_api):
          for (*_, b) in fake_api.comments_posted], BOT_USER)
 
 
-def test_hand_applied_approval_receipted_then_honored_next_tick(fake_api, solo_config):
-    # (a) Tick 1: the bot writes receipts for the hand-applied labels and
-    # defers (NOT merged). Tick 2, receipt present + head unchanged → merged.
+def test_hand_applied_approval_receipted_and_honored_same_tick(fake_api, solo_config):
+    # (a) vNext: NO one-tick deferral. The bot writes receipts for the
+    # hand-applied labels and honours them the SAME tick (the head cannot
+    # change within a tick's execution), so a Quadrant-D PR with fresh
+    # owner-applied ready + approval labels merges immediately.
     pr = fake_api.register_pr(
         number=130, labels=("ready-to-merge", "decision:approved-A"),
         files=[changed_file("src/x.py", status="removed")])  # Quadrant D
     rt = _rt(fake_api, solo_config)
 
     d1 = process_pr(fake_api, solo_config, rt, pr)
-    assert d1.action == "skipped"
-    assert fake_api.merged == []
+    assert d1.action == "merged"
+    assert d1.quadrant == "D"
+    assert len(fake_api.merged) == 1
     written = _written_receipts(fake_api)
     assert written.get("decision:approved-A") == "h" * 40   # bound to head
     assert written.get("ready-to-merge") == "h" * 40        # C1 bound too
 
-    _replay_bot_comments(fake_api)
-    d2 = process_pr(fake_api, solo_config, rt, pr)
-    assert d2.action == "merged"
-    assert d2.quadrant == "D"
 
-
-def test_hand_applied_approval_not_honored_if_head_changes_between_ticks(fake_api, solo_config):
-    # (a) Receipts were written at SHA1 on tick 1; the head moves to SHA2
-    # before tick 2 → nothing is honoured (and the approval is NOT re-bound).
+def test_between_tick_forcepush_voids_approval_and_is_not_rebound(fake_api, solo_config):
+    # (a) The bot already observed + receipted the approval at SHA1 on a prior
+    # tick. A force-push then moved the head to SHA2. Even though the owner
+    # re-applied the approval AFTER that receipt (event 00:20 > receipt 00:00),
+    # the approval is NEVER auto-re-bound — only the Decision Inbox may
+    # supersede an approval receipt. C3 voids the stale receipt (SHA1 != SHA2)
+    # → routed to the inbox, not merged. This is the airtight between-tick
+    # protection (a pre-existing receipt at the old head), independent of any
+    # committer date.
     pr = fake_api.register_pr(
         number=131, labels=("ready-to-merge", "decision:approved-A"),
         files=[changed_file("src/x.py", status="removed")],
-        head_sha=SHA1, commits=[raw_commit(sha=SHA1, date="2026-05-25T00:00:00Z")])
-    rt = _rt(fake_api, solo_config)
-    d1 = process_pr(fake_api, solo_config, rt, pr)
-    assert d1.action == "skipped" and fake_api.merged == []
-    _replay_bot_comments(fake_api)
-
-    # Head moves between the ticks (new commit; label events unchanged).
-    pr["head"]["sha"] = SHA2
-    fake_api._commits[131] = [raw_commit(sha=SHA2, date="2026-05-25T00:10:00Z")]
-    fake_api._checks[SHA2] = fake_api._checks[SHA1]
-
-    d2 = process_pr(fake_api, solo_config, rt, pr)
-    assert d2.action != "merged"
+        head_sha=SHA2,
+        commits=[raw_commit(sha=SHA2, date="2026-05-25T00:10:00Z")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login",
+             "created_at": "2026-05-25T00:20:00Z"},
+            {"label": "decision:approved-A", "actor": "your-github-login",
+             "created_at": "2026-05-25T00:20:00Z"},
+        ])
+    fake_api.seed_comment(
+        131, BOT_USER, approval_receipt_comment("decision:approved-A", SHA1))
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "inbox"
     assert fake_api.merged == []
-    # The stale approval receipt is never silently re-bound to the new head.
-    assert _written_receipts(fake_api).get("decision:approved-A") == SHA1
+    # The bot wrote NO new approval receipt this tick — the stale approval is
+    # never silently re-bound to the new head (only the inbox may supersede
+    # it). The pre-existing SHA1 receipt remains the binding of record.
+    assert "decision:approved-A" not in _written_receipts(fake_api)
 
 
 def test_stale_hand_approval_routes_to_inbox_not_rebound(fake_api, solo_config):
@@ -588,9 +613,10 @@ def test_stale_hand_approval_routes_to_inbox_not_rebound(fake_api, solo_config):
 
 def test_ready_label_first_sight_writes_receipt_and_merges(fake_api, solo_config):
     # (b) First sight of an allowlisted hand-applied ready label: the bot
-    # posts a head-bound receipt. The label is still honoured via the C1
-    # actor check this tick (a Quadrant-A PR keeps its single-tick merge),
-    # but the binding is now ACTIVE: any later head change voids C1.
+    # posts a head-bound receipt AND honours it the SAME tick (C1 now requires
+    # that receipt — the actor-only pass is gone). A Quadrant-A PR keeps its
+    # single-tick merge, and the binding is now ACTIVE: any later head change
+    # voids C1.
     pr = fake_api.register_pr(number=133, labels=("ready-to-merge",),
                               files=[changed_file("README.md")])
     d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
@@ -620,13 +646,13 @@ def test_ready_receipt_blocks_after_head_change_e2e(fake_api, solo_config):
     assert "ready-to-merge" not in _written_receipts(fake_api)  # no silent re-bind
 
 
-def test_ready_reapplied_after_head_change_rebinds_with_one_tick_confirmation(
+def test_ready_reapplied_after_head_change_rebinds_and_merges_same_tick(
         fake_api, solo_config):
-    # (b) Recovery: the owner re-applies ready-to-merge AFTER the stale
-    # binding (label event 00:30 > receipt comment 00:00) and after the new
-    # head (00:30 ≥ 00:10). Tick 1: the bot re-binds the label to the new
-    # head but C1 still fails this tick (one-tick confirmation). Tick 2:
-    # the fresh receipt matches the head → merged.
+    # (b) Recovery: ready was receipted at SHA1; the head moved to SHA2 and
+    # the owner re-applied ready-to-merge AFTER the stale binding (label event
+    # 00:30 > receipt comment 00:00). The re-bind freshness check (server
+    # timestamps only) lets the bot re-bind ready to SHA2, and — with no
+    # one-tick deferral — C1 is honoured the SAME tick → merged immediately.
     pr = fake_api.register_pr(
         number=135, labels=("ready-to-merge",),
         files=[changed_file("README.md")],
@@ -640,14 +666,9 @@ def test_ready_reapplied_after_head_change_rebinds_with_one_tick_confirmation(
         135, BOT_USER, approval_receipt_comment("ready-to-merge", SHA1))
     rt = _rt(fake_api, solo_config)
 
-    d1 = process_pr(fake_api, solo_config, rt, pr)
-    assert d1.action == "blocked"                    # not honoured same tick
-    assert fake_api.merged == []
+    d = process_pr(fake_api, solo_config, rt, pr)
+    assert d.action == "merged"
     assert _written_receipts(fake_api).get("ready-to-merge") == SHA2  # re-bound
-
-    _replay_bot_comments(fake_api)
-    d2 = process_pr(fake_api, solo_config, rt, pr)
-    assert d2.action == "merged"
 
 
 def test_non_allowlisted_labels_never_receipted_never_honored(fake_api, solo_config):

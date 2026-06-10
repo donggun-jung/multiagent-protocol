@@ -31,7 +31,13 @@ new, unreviewed code). C3 therefore re-derives the approval from the timeline:
   via the Decision Inbox. There is NO time-based fallback: a hand-applied
   label without a receipt is not honoured directly; instead the runtime's
   receipt writer converts a fresh allowlisted hand-applied label into a
-  head-bound receipt, honoured from the NEXT tick (one-tick confirmation).
+  head-bound receipt and honours it the SAME tick (the head cannot change
+  within a tick's execution, so binding-then-validating against the observed
+  head is atomic — there is no one-tick deferral). The residual is a
+  force-push in the window before the bot's FIRST observation of an
+  out-of-band label; every later force-push is caught by the SHA mismatch,
+  and the writer never re-binds an approval (only the Decision Inbox, which
+  records the head at question time, may supersede an approval receipt).
 
 The classifier auto-approval path (Quadrant A/B/C) is unconditional and does
 not touch labels.
@@ -98,5 +104,5 @@ class OwnerApprovalValidator:
             f"against the current head. A `decision:approved-*` label is "
             f"honoured only via the bot's SHA receipt binding it to the "
             f"current head commit (a fresh hand-applied label is receipted "
-            f"by the bot and honoured one tick later)."
+            f"by the bot and honoured the same tick)."
         )

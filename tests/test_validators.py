@@ -73,9 +73,25 @@ def test_trailers_validator_malformed_task_ref(commit_factory, pr_factory):
 
 # -- Ready to merge --
 
-def test_ready_to_merge_label_present(pr_factory):
+def test_ready_to_merge_label_present_with_matching_receipt(pr_factory):
+    # Receipt-required contract (vNext): the label opens C1 only with a bot
+    # receipt bound to the current head ("h"*40 default).
     pr = pr_factory(labels=("ready-to-merge",))
-    assert ReadyToMergeValidator().check(pr).passed
+    v = ReadyToMergeValidator(approved_shas={"ready-to-merge": "h" * 40})
+    assert v.check(pr).passed
+
+
+def test_ready_to_merge_label_present_no_receipt_fails(pr_factory):
+    # The label alone (no bot receipt) no longer opens C1 — mirrors C3. The
+    # runtime records a receipt this tick; with no receipt map (None) C1 fails.
+    pr = pr_factory(labels=("ready-to-merge",))
+    r = ReadyToMergeValidator().check(pr)
+    assert not r.passed
+    assert "no current-head receipt" in r.failure_reason
+    # An explicitly empty receipt map behaves identically (None == {}).
+    r2 = ReadyToMergeValidator(approved_shas={}).check(pr)
+    assert not r2.passed
+    assert "no current-head receipt" in r2.failure_reason
 
 
 def test_ready_to_merge_label_absent(pr_factory):
@@ -86,6 +102,8 @@ def test_ready_to_merge_label_absent(pr_factory):
 
 
 def test_ready_to_merge_with_allowlist_actor(pr_factory):
+    # Receipt at the current head + an allowlisted applier → C1 passes (the
+    # actor check runs on top of the matching receipt).
     pr = pr_factory(
         labels=("ready-to-merge",),
         label_events=(
@@ -96,11 +114,15 @@ def test_ready_to_merge_with_allowlist_actor(pr_factory):
             ),
         ),
     )
-    v = ReadyToMergeValidator(allowlisted_actors=("owner",))
+    v = ReadyToMergeValidator(allowlisted_actors=("owner",),
+                              approved_shas={"ready-to-merge": "h" * 40})
     assert v.check(pr).passed
 
 
 def test_ready_to_merge_label_applied_by_non_allowlisted_actor(pr_factory):
+    # Defense-in-depth: even WITH a matching current-head receipt, a label
+    # applied only by a non-allowlisted actor fails the applier check (mirrors
+    # owner_approval's receipt-does-not-bless-untrusted-applier).
     pr = pr_factory(
         labels=("ready-to-merge",),
         label_events=(
@@ -111,7 +133,8 @@ def test_ready_to_merge_label_applied_by_non_allowlisted_actor(pr_factory):
             ),
         ),
     )
-    v = ReadyToMergeValidator(allowlisted_actors=("owner",))
+    v = ReadyToMergeValidator(allowlisted_actors=("owner",),
+                              approved_shas={"ready-to-merge": "h" * 40})
     r = v.check(pr)
     assert not r.passed
     assert "allowlisted actor" in r.failure_reason
@@ -365,6 +388,54 @@ def test_ci_green_no_expected_publisher_keeps_legacy_behavior(pr_factory):
     # check passes regardless of publisher (pre-hardening behavior).
     pr = pr_factory(check_runs=(_check_from("test", "success", "whatever-app"),))
     assert CiGreenValidator(required_checks=("test",)).check(pr).passed
+
+
+# -- Publisher trust on the LEGACY no-required-checks path (C2) ---------------
+
+def test_ci_green_legacy_foreign_green_only_fails_when_publisher_expected(pr_factory):
+    # No NAMED required checks (legacy strict-all-green path). The only green
+    # run is from a foreign App → with an expected publisher set, C2 fails
+    # closed: a foreign green must not satisfy C2 even with no named checks.
+    pr = pr_factory(check_runs=(_check_from("ci", "success", "attacker-app"),))
+    v = CiGreenValidator(expected_check_publisher="github-actions")
+    r = v.check(pr)
+    assert not r.passed
+    assert "expected app 'github-actions'" in r.failure_reason
+    assert "attacker-app" in r.failure_reason
+
+
+def test_ci_green_legacy_expected_publisher_green_passes(pr_factory):
+    # A green run from the expected App on the legacy path satisfies C2.
+    pr = pr_factory(check_runs=(_check_from("ci", "success", "github-actions"),))
+    v = CiGreenValidator(expected_check_publisher="github-actions")
+    assert v.check(pr).passed
+
+
+def test_ci_green_legacy_expected_plus_foreign_green_passes(pr_factory):
+    # One green from the expected App is enough; an extra foreign green is
+    # neither necessary nor harmful (all completed runs are still success).
+    pr = pr_factory(check_runs=(
+        _check_from("ci", "success", "github-actions"),
+        _check_from("ci", "success", "some-other-app"),
+    ))
+    v = CiGreenValidator(expected_check_publisher="github-actions")
+    assert v.check(pr).passed
+
+
+def test_ci_green_legacy_publisher_gate_not_applied_when_unset(pr_factory):
+    # With no expected publisher (None), the legacy path is unchanged: a green
+    # run from any App passes.
+    pr = pr_factory(check_runs=(_check_from("ci", "success", "whatever-app"),))
+    assert CiGreenValidator().check(pr).passed
+
+
+def test_ci_green_legacy_allow_no_checks_unaffected_by_publisher(pr_factory):
+    # A head with ZERO check-runs under allow_no_checks still passes vacuously
+    # even with an expected publisher set — there is no run to attribute.
+    pr = pr_factory(check_runs=())
+    v = CiGreenValidator(allow_no_checks=True,
+                         expected_check_publisher="github-actions")
+    assert v.check(pr).passed
 
 
 # -- Base up-to-date --

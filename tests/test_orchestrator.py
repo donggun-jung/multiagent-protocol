@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import dataclasses
 
+from multiagent_protocol.label_provenance import (
+    approval_receipt_comment,
+    approval_receipts,
+)
 from multiagent_protocol.main import main
 from multiagent_protocol.runtime import build_runtime_skills, process_pr
 from tests.conftest import changed_file, make_check, raw_commit
@@ -22,16 +26,6 @@ def _rt(api, cfg):
 
 def _names(objs):
     return {o.name for o in objs}
-
-
-def _replay_bot_comments(fake_api):
-    """Make the bot's posted comments visible to the next tick.
-
-    The FakeAPI records post_comment side effects without feeding them back
-    into list_issue_comments; replaying them as bot-authored comments
-    simulates the next tick reading what the bot wrote (receipts etc.)."""
-    for (_o, _r, number, body) in list(fake_api.comments_posted):
-        fake_api.seed_comment(number, BOT_USER, body)
 
 
 # -- process_pr decisions -----------------------------------------------------
@@ -243,26 +237,20 @@ def test_c1_fails_when_label_by_non_allowlisted(fake_api, solo_config):
     assert fake_api.merged == []
 
 
-def test_quadrant_d_with_owner_approval_label_merges_next_tick(fake_api, solo_config):
-    # Owner (your-github-login) hand-applied the approval label, fresh vs
-    # head. Receipt-required contract: tick 1 converts the label into a SHA
-    # receipt and DEFERS (one-tick confirmation, never honoured on the tick
-    # the receipt is written); tick 2 — receipt present, head unchanged —
-    # honours it and merges.
+def test_quadrant_d_with_owner_approval_label_merges_same_tick(fake_api, solo_config):
+    # Owner (your-github-login) hand-applied the approval label. Receipt-
+    # required contract with NO one-tick deferral: the bot converts the label
+    # into a current-head SHA receipt and honours it the SAME tick (the head
+    # cannot change within a tick's execution), so the Quadrant-D PR merges
+    # immediately.
     pr = fake_api.register_pr(
         number=9, labels=("ready-to-merge", "decision:approved-A"),
         files=[changed_file("src/x.py", status="removed")])
     rt = _rt(fake_api, solo_config)
 
-    d1 = process_pr(fake_api, solo_config, rt, pr)
-    assert d1.action == "skipped"
-    assert "approval receipt" in d1.detail
-    assert fake_api.merged == []
-
-    _replay_bot_comments(fake_api)
-    d2 = process_pr(fake_api, solo_config, rt, pr)
-    assert d2.action == "merged"
-    assert d2.quadrant == "D"
+    d = process_pr(fake_api, solo_config, rt, pr)
+    assert d.action == "merged"
+    assert d.quadrant == "D"
     assert len(fake_api.merged) == 1
 
 
@@ -281,25 +269,33 @@ def test_exploit_a_self_applied_approval_does_not_merge(fake_api, solo_config):
     assert fake_api.merged == []
 
 
-def test_exploit_b_stale_approval_after_forcepush_does_not_merge(fake_api, solo_config):
-    # Owner approved at 00:00; a force-push then landed head at 00:10. The
-    # stale approval must not merge unreviewed code: there is no receipt for
-    # it, the receipt writer refuses to bind a label that PREDATES the head,
-    # and C3 has no time fallback → routed to the inbox for re-approval.
+def test_exploit_b_forcepush_with_existing_receipt_does_not_merge(fake_api, solo_config):
+    # Exploit B (force-push past an approval) is defeated by the SHA receipt,
+    # NOT by committer dates. The bot already observed + receipted the
+    # approval at "h"*40 on a prior tick; a force-push then landed a NEW head
+    # ("f"*40) with a committer date BACKDATED to 00:00 (before the approval
+    # event) so the old time-only guard would have honoured it. C3 voids the
+    # stale receipt (recorded "h" != head "f") and the writer never re-binds
+    # an approval → routed to the inbox for re-approval. (The old writer-side
+    # committer-date check was forgeable and has been removed; the receipt is
+    # the real guard.)
+    head = "f" * 40
     pr = fake_api.register_pr(
         number=21, labels=("ready-to-merge", "decision:approved-A"),
         files=[changed_file("src/x.py", status="removed")],
-        head_sha="h" * 40,
-        commits=[raw_commit(sha="h" * 40, date="2026-05-25T00:10:00Z")],
+        head_sha=head,
+        commits=[raw_commit(sha=head, date="2026-05-25T00:00:00Z")],  # backdated
         label_events=[
             {"label": "ready-to-merge", "actor": "your-github-login", "created_at": "2026-05-25T00:11:00Z"},
-            {"label": "decision:approved-A", "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"label": "decision:approved-A", "actor": "your-github-login", "created_at": "2026-05-25T00:11:00Z"},
         ])
+    fake_api.seed_comment(
+        21, BOT_USER, approval_receipt_comment("decision:approved-A", "h" * 40))
     d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
-    assert d.action == "inbox"        # stale approval voided
+    assert d.action == "inbox"        # stale approval voided by the receipt
     assert fake_api.merged == []
-    # The bot did NOT silently bind the stale approval to the new head.
-    from multiagent_protocol.label_provenance import approval_receipts
+    # The bot wrote NO new approval receipt this tick — it never silently
+    # re-binds an approval to the new head (only the inbox may supersede it).
     written = approval_receipts(
         [{"user": {"login": BOT_USER}, "body": b}
          for (*_, b) in fake_api.comments_posted], BOT_USER)
