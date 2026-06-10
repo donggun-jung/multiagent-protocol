@@ -51,6 +51,9 @@ from multiagent_protocol.runtime import (
 from multiagent_protocol.skills.builtin.hook_unauthorized_push import (
     INCIDENT_LABEL as UNAUTHORIZED_PUSH_LABEL,
 )
+from multiagent_protocol.skills.builtin.validator_ci_green import (
+    DEFAULT_CHECK_PUBLISHER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -313,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     supervised = list(config.projects.supervised_repos)
     allowlisted = config.owner.allowlisted_actors
     metrics: dict[str, int] = {
-        "merged": 0, "inbox": 0, "blocked": 0, "race-rebased": 0,
+        "merged": 0, "observe": 0, "inbox": 0, "blocked": 0, "race-rebased": 0,
         "l5_incidents": 0, "l2_incidents": 0, "drift_incidents": 0,
         "inbox_resolved": 0, "l2_unsettled": 0, "issues_deferred": 0,
         "bootstrapped": 0,
@@ -449,6 +452,12 @@ def main(argv: list[str] | None = None) -> int:
                         l2_incidents, l2_wm = revalidate_main(
                             api, owner, name, l2_required, watermarks,
                             allow_no_ci=config.env.allow_no_ci,
+                            expected_check_publisher=(
+                                config.projects.effective_expected_check_publisher(
+                                    full, config.env.expected_check_publisher
+                                )
+                                or DEFAULT_CHECK_PUBLISHER
+                            ),
                         )
                         l2_deferred = False
                         for inc in l2_incidents:
