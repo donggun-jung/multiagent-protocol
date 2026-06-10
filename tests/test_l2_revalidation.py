@@ -12,17 +12,25 @@ from __future__ import annotations
 from multiagent_protocol.branch_supervisor import revalidate_main
 from tests.conftest import make_check, raw_commit
 
+# A valid L2 watermark anchor. revalidate_main now refuses a since=None
+# full-history walk (it bootstraps-to-HEAD instead — the cold-start flood
+# guard), so these classification tests seed a real anchor commit and start the
+# watermark there: the target commit is the bounded delta scanned this tick.
+ANCHOR = "0" * 40
+
 
 def _seed(fake_api, sha, checks):
     c = raw_commit(sha=sha)
-    fake_api.seed_main_commits("o", "r", [c])
+    # target (newest) first, anchor (oldest) last — list_commits_on_main walks
+    # newest→oldest and stops AT the anchor, yielding exactly the target commit.
+    fake_api.seed_main_commits("o", "r", [c, raw_commit(sha=ANCHOR)])
     fake_api._checks[sha] = checks
     return c
 
 
 def test_real_failure_opens_incident_and_advances(fake_api):
     _seed(fake_api, "a" * 40, [make_check("test", "failure")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert len(incidents) == 1
     assert incidents[0].label == "decision:post-merge-revalidation"
     assert incidents[0].commit_sha == "a" * 40
@@ -31,30 +39,30 @@ def test_real_failure_opens_incident_and_advances(fake_api):
 
 def test_infra_cancelled_no_incident_unsettled(fake_api):
     _seed(fake_api, "b" * 40, [make_check("test", "cancelled")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert incidents == []
-    assert wm is None  # did not advance past the infra-failing commit
+    assert wm == ANCHOR  # did not advance past the infra-failing commit
 
 
 def test_zero_duration_is_infra(fake_api):
     _seed(fake_api, "e" * 40, [make_check(
         "test", "failure",
         started_at="2026-05-25T00:00:00Z", completed_at="2026-05-25T00:00:00Z")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert incidents == []
-    assert wm is None
+    assert wm == ANCHOR
 
 
 def test_skipped_passes(fake_api):
     _seed(fake_api, "c" * 40, [make_check("optional", "skipped")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert incidents == []
     assert wm == "c" * 40
 
 
 def test_success_passes(fake_api):
     _seed(fake_api, "d" * 40, [make_check("test", "success")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert incidents == []
     assert wm == "d" * 40
 
@@ -65,9 +73,9 @@ def test_l2_required_in_progress_is_unsettled_not_passed(fake_api):
     # watermark — a required check that later fails would otherwise be missed
     # (it landed before CI finished). It is unsettled → retry next tick.
     _seed(fake_api, "f" * 40, [make_check("build", "", status="in_progress")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR})
     assert incidents == []
-    assert wm is None  # watermark does NOT advance past the unsettled commit
+    assert wm == ANCHOR  # watermark does NOT advance past the unsettled commit
 
 
 def test_l2_no_required_in_progress_is_unsettled_not_passed(fake_api):
@@ -78,9 +86,9 @@ def test_l2_no_required_in_progress_is_unsettled_not_passed(fake_api):
     # a check that later fails (it landed before CI finished). Mirrors the
     # named-required path's treatment of in_progress.
     _seed(fake_api, "s" * 40, [make_check("build", "", status="in_progress")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert incidents == []
-    assert wm is None  # watermark does NOT advance past the unsettled commit
+    assert wm == ANCHOR  # watermark does NOT advance past the unsettled commit
 
 
 def test_l2_no_required_in_progress_does_not_mask_a_completed_real_failure(fake_api):
@@ -91,7 +99,7 @@ def test_l2_no_required_in_progress_does_not_mask_a_completed_real_failure(fake_
         make_check("lint", "failure"),
         make_check("build", "", status="in_progress"),
     ])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "u" * 40
     assert wm == "u" * 40  # settled (real-failure incident raised)
@@ -108,14 +116,14 @@ def test_no_checks_unsettled_by_default(fake_api):
     # A commit with no check-runs is left unsettled (fail-closed, like C2) so a
     # regression that landed before CI is not silently passed.
     _seed(fake_api, "f" * 40, [])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR})
     assert incidents == []
-    assert wm is None   # watermark did NOT advance
+    assert wm == ANCHOR   # watermark did NOT advance
 
 
 def test_no_checks_passes_with_allow_no_ci(fake_api):
     _seed(fake_api, "g" * 40, [])
-    incidents, wm = revalidate_main(fake_api, "o", "r", (), {}, allow_no_ci=True)
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": ANCHOR}, allow_no_ci=True)
     assert incidents == []
     assert wm == "g" * 40   # opted-in → settled
 
@@ -125,7 +133,7 @@ def test_no_checks_passes_with_allow_no_ci(fake_api):
 def test_l2_required_check_failure_opens_incident(fake_api):
     # The named required check 'build' is present + failing → real failure.
     _seed(fake_api, "h" * 40, [make_check("build", "failure")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR})
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "h" * 40
     assert wm == "h" * 40
@@ -136,7 +144,7 @@ def test_l2_required_check_only_inspects_named(fake_api):
     # filters to required checks, the unrelated red does not open an incident.
     _seed(fake_api, "i" * 40,
           [make_check("build", "success"), make_check("flaky", "failure")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR})
     assert incidents == []
     assert wm == "i" * 40
 
@@ -149,7 +157,7 @@ def test_l2_required_check_missing_is_real_failure(fake_api):
     # (Previously this was silently classed infra/unsettled — a latent
     # fail-open where a never-appearing required check never alarmed.)
     _seed(fake_api, "j" * 40, [make_check("lint", "success")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR})
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "j" * 40
     assert "build" in incidents[0].body
@@ -163,7 +171,7 @@ def test_l2_required_missing_is_incident_even_with_allow_no_ci(fake_api):
     # missing named required check (which previously returned 'passed' here).
     _seed(fake_api, "k" * 40, [make_check("lint", "success")])
     incidents, wm = revalidate_main(
-        fake_api, "o", "r", ("build",), {}, allow_no_ci=True)
+        fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR}, allow_no_ci=True)
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "k" * 40
     assert "build" in incidents[0].body
@@ -176,7 +184,7 @@ def test_l2_required_duplicate_failure_then_success_is_incident(fake_api):
     # same-named runs, so the failing duplicate opens an incident.
     _seed(fake_api, "l" * 40,
           [make_check("build", "failure"), make_check("build", "success")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR})
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "l" * 40
     assert wm == "l" * 40
@@ -191,7 +199,7 @@ def test_l2_required_green_from_foreign_app_is_incident(fake_api):
     # publisher gate this commit would have been classed 'passed'.
     _seed(fake_api, "m" * 40, [make_check("build", "success", slug="attacker-app")])
     incidents, wm = revalidate_main(
-        fake_api, "o", "r", ("build",), {},
+        fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR},
         expected_check_publisher="github-actions")
     assert len(incidents) == 1
     assert incidents[0].label == "decision:post-merge-revalidation"
@@ -205,7 +213,7 @@ def test_l2_required_green_from_expected_app_passes(fake_api):
     # satisfies L2 (no incident, watermark advances).
     _seed(fake_api, "n" * 40, [make_check("build", "success", slug="github-actions")])
     incidents, wm = revalidate_main(
-        fake_api, "o", "r", ("build",), {},
+        fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR},
         expected_check_publisher="github-actions")
     assert incidents == []
     assert wm == "n" * 40
@@ -219,7 +227,7 @@ def test_l2_required_expected_plus_foreign_green_passes(fake_api):
         make_check("build", "success", slug="some-other-app"),
     ])
     incidents, wm = revalidate_main(
-        fake_api, "o", "r", ("build",), {},
+        fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR},
         expected_check_publisher="github-actions")
     assert incidents == []
     assert wm == "o" * 40
@@ -230,7 +238,7 @@ def test_l2_required_publisher_gate_skipped_when_none(fake_api):
     # the publisher-agnostic legacy behavior.
     _seed(fake_api, "p" * 40, [make_check("build", "success", slug="attacker-app")])
     incidents, wm = revalidate_main(
-        fake_api, "o", "r", ("build",), {}, expected_check_publisher=None)
+        fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR}, expected_check_publisher=None)
     assert incidents == []
     assert wm == "p" * 40
 
@@ -240,7 +248,7 @@ def test_l2_required_missing_app_slug_is_incident_when_publisher_expected(fake_a
     # → real failure (fail closed), mirroring C2's <missing app> handling.
     _seed(fake_api, "q" * 40, [make_check("build", "success", slug=None)])
     incidents, wm = revalidate_main(
-        fake_api, "o", "r", ("build",), {},
+        fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR},
         expected_check_publisher="github-actions")
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "q" * 40
@@ -253,6 +261,6 @@ def test_l2_default_publisher_is_github_actions(fake_api):
     # This documents the safe default that ships before the main.py wiring
     # follow-up lands.
     _seed(fake_api, "r" * 40, [make_check("build", "success", slug="attacker-app")])
-    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {})
+    incidents, wm = revalidate_main(fake_api, "o", "r", ("build",), {"o/r:l2": ANCHOR})
     assert len(incidents) == 1
     assert incidents[0].commit_sha == "r" * 40
