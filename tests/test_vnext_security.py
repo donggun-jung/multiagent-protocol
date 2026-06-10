@@ -27,7 +27,11 @@ from multiagent_protocol.label_provenance import (
     approval_receipt_comment,
     approval_receipts,
 )
-from multiagent_protocol.runtime import build_runtime_skills, process_pr
+from multiagent_protocol.runtime import (
+    _agent_trailer_block,
+    build_runtime_skills,
+    process_pr,
+)
 from tests.conftest import FakeAPI, changed_file, make_check, raw_commit
 
 BOT_USER = "your-merge-gate-bot[bot]"  # solo_config env.bot_app_slug + "[bot]"
@@ -216,6 +220,56 @@ def test_governance_rubric_modification_classifies_b(pr_factory):
                    additions=3, deletions=1),
     ))
     assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+
+
+# -- 8. Squash merge keeps the Agent-* identity trailers ------------------------
+
+class _MergeRecordingAPI(FakeAPI):
+    """FakeAPI that records the commit_message passed to merge_pr."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.merge_messages: list = []
+
+    def merge_pr(self, owner, repo, number, *, head_sha, method="squash", **kw):
+        self.merge_messages.append(kw.get("commit_message"))
+        return super().merge_pr(
+            owner, repo, number, head_sha=head_sha, method=method, **kw)
+
+
+def test_squash_merge_passes_agent_trailers_in_commit_message(solo_config):
+    # The default conftest commit carries the WELL_FORMED_TRAILERS block; the
+    # merge call must forward those Agent-* trailers as the squash body.
+    api = _MergeRecordingAPI()
+    pr = api.register_pr(number=110, labels=("ready-to-merge",),
+                         files=[changed_file("README.md")])
+    d = process_pr(api, solo_config, _rt(api, solo_config), pr)
+    assert d.action == "merged"
+    assert len(api.merge_messages) == 1
+    msg = api.merge_messages[0]
+    assert msg is not None
+    assert "Agent-Tool: claude-code" in msg
+    assert "Agent-Model: claude-opus-4.7" in msg
+    assert "Agent-Session: s_test123" in msg
+    assert "Agent-Machine: ci" in msg
+
+
+def test_agent_trailer_block_dedupes_and_keeps_distinct(pr_factory, commit_factory):
+    c1 = commit_factory(sha="a" * 40, full_message=(
+        "feat: x\n\nAgent-Tool: claude-code\nAgent-Model: m1\n"
+        "Agent-Session: s_a\nAgent-Machine: ci\nTask-Ref: PR#1"))
+    c2 = commit_factory(sha="b" * 40, full_message=(
+        "feat: y\n\nAgent-Tool: claude-code\nAgent-Model: m1\n"
+        "Agent-Session: s_b\nAgent-Machine: ci\nTask-Ref: PR#1"))
+    block = _agent_trailer_block(pr_factory(commits=(c1, c2)))
+    assert block.count("Agent-Tool: claude-code") == 1          # deduplicated
+    assert "Agent-Session: s_a" in block                        # distinct values
+    assert "Agent-Session: s_b" in block                        # both kept
+    assert "Task-Ref" not in block                              # Agent-* only
+
+
+def test_agent_trailer_block_none_without_trailers(pr_factory, commit_factory):
+    assert _agent_trailer_block(pr_factory(commits=(commit_factory(),))) is None
 
 
 # -- 7. Diagnostic dedupe only trusts the bot's own comments --------------------

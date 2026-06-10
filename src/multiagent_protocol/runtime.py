@@ -361,6 +361,27 @@ def _quadrant_reasoning(verdict, quadrant: str) -> str:
     return "; ".join(reasons) or f"Quadrant {quadrant}"
 
 
+def _agent_trailer_block(ctx) -> str | None:
+    """The PR commits' ``Agent-*`` trailers as one deduplicated trailer block.
+
+    A squash merge produces a single bot-authored commit, dropping the PR
+    commits' agent-identity trailers. Passing this block as the squash
+    ``commit_message`` keeps the audit trail on ``main``. Distinct values are
+    all kept (e.g. two agents on one PR → two ``Agent-Session`` lines), in
+    first-seen order. Returns None when no Agent-* trailers exist (GitHub
+    then composes its default message).
+    """
+    lines: list[str] = []
+    for commit in ctx.commits:
+        for key, value in commit.trailers.raw.items():
+            if not key.startswith("Agent-"):
+                continue
+            line = f"{key}: {value}"
+            if line not in lines:
+                lines.append(line)
+    return "\n".join(lines) or None
+
+
 def _inbox_issue_exists(api, gov_owner, gov_repo, full_name, number) -> bool:
     for issue in api.list_issues(gov_owner, gov_repo, labels=PENDING_LABEL, state="open"):
         if "pull_request" in issue:
@@ -481,7 +502,13 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
         api.update_branch(ctx.repo_owner, ctx.repo_name, ctx.number)
         return PRDecision(full, ctx.number, "race-rebased", verdict.quadrant)
 
-    api.merge_pr(ctx.repo_owner, ctx.repo_name, ctx.number, head_sha=ctx.head_sha)
+    # Squash merging collapses the PR into one bot-authored commit; pass the
+    # PR's Agent-* trailers as the commit body so the agent-identity audit
+    # trail survives onto main.
+    api.merge_pr(
+        ctx.repo_owner, ctx.repo_name, ctx.number, head_sha=ctx.head_sha,
+        commit_message=_agent_trailer_block(ctx),
+    )
 
     # Passive audit issue for auto-approved B / C — opened only after a
     # successful merge, so a retried tick never double-opens it.
