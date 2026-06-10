@@ -21,6 +21,14 @@ from typing import Literal
 
 from multiagent_protocol.github_api import GitHubAPI
 from multiagent_protocol.label_provenance import approval_receipt_comment
+from multiagent_protocol.receipt_mac import (
+    compute_mac,
+    extract_mac,
+    mac_key,
+    mac_marker,
+    verify_mac,
+    warn_unsigned_once,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +44,13 @@ STALE_APPROVAL_LABEL = "decision:stale-approval"
 # one diagnostic comment so the failure surfaces to the owner.
 INBOX_ERROR_LABEL = "decision:inbox-error"
 INBOX_ERROR_THRESHOLD = 3
+
+# A6 body-integrity guard (_resolve_issue): when MERGE_GATE_RECEIPT_KEY is set
+# and a verdict's inbox body fails its MAC check (the authoritative PR ref /
+# head SHA / nonce was tampered with), the "re-open via the bot" comment is
+# posted ONCE, then this label on the inbox issue suppresses re-posting on
+# every later tick. No verdict is ever honoured on a body that fails the MAC.
+INBOX_INTEGRITY_LABEL = "decision:inbox-integrity-failed"
 
 # Consecutive per-issue failure counts, keyed (inbox owner, inbox repo,
 # issue number). Module-level so the threshold accumulates across
@@ -62,6 +77,20 @@ class OpenedIssue:
     head_sha: str
 
 
+def _inbox_mac_parts(pr_full_name: str, pr_number: int, head_sha: str, nonce: str):
+    """Authoritative fields an inbox-body MAC covers, in a FIXED order.
+
+    A6: the resolver reads the PR ref + head SHA from the (mutable) body. The
+    MAC binds those — plus the per-issue ``nonce`` — so an edit that rewrites
+    the PR ref or head SHA to redirect a legitimate approval fails the MAC and
+    is refused. ``issue_number`` is not part of the body at build time; it is
+    bound by the existing head-SHA tamper check (the resolver re-fetches the
+    named PR and compares head against the body's recorded SHA), so the MAC
+    covers the body's own authoritative assertion.
+    """
+    return (pr_full_name, str(pr_number), head_sha, nonce)
+
+
 def issue_body(
     pr_full_name: str,
     pr_number: int,
@@ -74,6 +103,13 @@ def issue_body(
 
     Schema documented in ``docs/concepts/decision-inbox.md`` §
     "Issue body schema".
+
+    A6 hardening: when ``MERGE_GATE_RECEIPT_KEY`` is set, a keyed MAC over
+    ``(pr_full_name, pr_number, head_sha, nonce)`` is embedded in a
+    ``<!-- merge-gate-mac: ... -->`` marker. The resolver verifies it before
+    honouring any verdict, so an edit that redirects the PR ref/head to a
+    different PR fails the check. With no key set, the one-time
+    unsigned-fallback warning fires and the body is unsigned (prior behaviour).
     """
     if nonce is None:
         nonce = uuid.uuid4().hex
@@ -81,6 +117,15 @@ def issue_body(
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     short_sha = head_sha[:7]
+    key = mac_key()
+    if key is None:
+        warn_unsigned_once()
+        mac_line = ""
+    else:
+        digest = compute_mac(
+            key, *_inbox_mac_parts(pr_full_name, pr_number, head_sha, nonce)
+        )
+        mac_line = mac_marker(digest) + "\n"
     return f"""**Owner approval required (Quadrant D)** — irreversible + critical.
 
 Respond with 👍 (option A / approve), 👎 (reject), `/approve [A|B|C]` / `/reject`,
@@ -99,7 +144,7 @@ or tick a checkbox below.
 
 <!-- decision-inbox-nonce: {nonce} -->
 <!-- decision-inbox-head-sha: {head_sha} -->
-"""
+{mac_line}"""
 
 
 def open_inbox_issue(
@@ -223,8 +268,8 @@ class InboxResolution:
     issue_number: int
     pr_full_name: str
     pr_number: int
-    verdict: str   # "approved-A" | "approved-B" | "approved-C" | "rejected" | "tampered"
-    action: str    # "labeled" | "closed-pr" | "tamper-skip"
+    verdict: str   # "approved-A" | "approved-B" | "approved-C" | "rejected" | "tampered" | "integrity-failed"
+    action: str    # "labeled" | "closed-pr" | "tamper-skip" | "integrity-skip"
 
 
 def _label_names(payload: dict) -> set[str]:
@@ -273,7 +318,7 @@ def _resolve_issue(
     """
     body = issue.get("body") or ""
     issue_number = issue["number"]
-    _nonce, head_sha = parse_nonce_and_sha(body)
+    nonce, head_sha = parse_nonce_and_sha(body)
     pr_ref = parse_pr_ref(body)
     if pr_ref is None or not head_sha:
         return None
@@ -285,6 +330,40 @@ def _resolve_issue(
     verdict = resolve_verdict(reactions, comments, allowlisted_actors)
     if verdict is None:
         return None
+
+    # A6 body-integrity guard: when a key is set, the body's authoritative
+    # fields (PR ref + head SHA + nonce) must match the embedded MAC. An edit
+    # that rewrites the PR ref or head to redirect this approval onto a
+    # different PR/head fails the MAC → the verdict is NOT honoured. The
+    # "re-open via the bot" comment is posted ONCE (then suppressed by the
+    # marker label), like the head-SHA tamper path. With no key set this is a
+    # no-op (the one-time unsigned-fallback warning is emitted by issue_body
+    # on the write side; the resolver keeps prior behaviour).
+    key = mac_key()
+    if key is not None:
+        expected = extract_mac(body)
+        if expected is None or not verify_mac(
+            key, expected,
+            *_inbox_mac_parts(pr_full_name, pr_number, head_sha, nonce or ""),
+        ):
+            if INBOX_INTEGRITY_LABEL in _label_names(issue):
+                return None
+            api.post_comment(
+                governance_owner, governance_repo, issue_number,
+                "⚠️ Inbox body integrity check failed — the PR reference, head "
+                "SHA, or nonce in this issue body does not match its signature. "
+                "The verdict will NOT be honoured (a tampered body cannot "
+                "redirect an approval). Re-open this decision via the bot "
+                "against the current head.",
+            )
+            api.add_label(
+                governance_owner, governance_repo, issue_number,
+                INBOX_INTEGRITY_LABEL,
+            )
+            return InboxResolution(
+                issue_number, pr_full_name, pr_number,
+                "integrity-failed", "integrity-skip",
+            )
 
     # Tamper guard: the PR head must still equal the SHA we asked about.
     try:
@@ -349,7 +428,10 @@ def _resolve_issue(
     api.add_label(pr_owner, pr_repo, pr_number, label)
     api.post_comment(
         pr_owner, pr_repo, pr_number,
-        approval_receipt_comment(label, head_sha),
+        approval_receipt_comment(
+            label, head_sha,
+            repo_full_name=pr_full_name, pr_number=pr_number,
+        ),
     )
     api.close_issue(governance_owner, governance_repo, issue_number)
     return InboxResolution(

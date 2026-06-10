@@ -52,42 +52,83 @@ def test_path_default_doc_deletion_is_c(pr_factory):
     assert PathDefaultClassifier().evaluate(pr).quadrant == "C"
 
 
-def test_path_default_workflow_change_is_b(pr_factory):
+def test_path_default_workflow_change_is_d(pr_factory):
+    # A1: a CI workflow definition governs the gate's runtime (and a PR-introduced
+    # workflow can forge a green check), so MODIFYING it is always Quadrant D.
     pr = pr_factory(files_changed=(
         FileChange(path=".github/workflows/tests.yml",
                    status="modified", additions=5, deletions=1),
     ))
-    assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
 
 
-def test_path_default_concept_doc_change_is_b(pr_factory):
-    # docs/concepts/* is critical (changes rules) but reversible if modified
+def test_path_default_concept_doc_change_is_d(pr_factory):
+    # A1 (crown jewel): docs/concepts/* is the operating doctrine — "always
+    # Quadrant D regardless of the diff". A *modification* must route to the
+    # owner, so an agent cannot quietly rewrite the rules that constrain it.
     pr = pr_factory(files_changed=(
         FileChange(path="docs/concepts/architecture.md",
                    status="modified", additions=1, deletions=0),
     ))
-    assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
 
 
-def test_path_default_config_change_is_critical_not_a(pr_factory):
-    # DEC-C fix: a PR editing the gate's OWN config (e.g. config/projects.yml —
-    # adding a repo to audit_only_repos, changing required_checks, the agent
-    # registry) reconfigures enforcement and must be at least CRITICAL (B/D,
-    # owner-visible), never auto-merged as Quadrant A.
+def test_path_default_config_change_is_d(pr_factory):
+    # A1: a PR editing the gate's OWN config (config/projects.yml — audit_only_repos,
+    # required_checks, the agent registry) reconfigures enforcement itself, so a
+    # MODIFY is always Quadrant D (owner-gated), never auto-merged.
     pr = pr_factory(files_changed=(
         FileChange(path="config/projects.yml",
                    status="modified", additions=2, deletions=0),
     ))
-    assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
+
+
+def test_path_default_governance_and_schema_and_botstate_modify_are_d(pr_factory):
+    # A1: governance logic, JSON schemas, and audit/receipt state are all
+    # enforcement-governing → MODIFY is always Quadrant D.
+    for path in ("governance/scripts/classify_action.py",
+                 "schemas/mirror_paths.json",
+                 "bot-state/classifier_audit.jsonl"):
+        pr = pr_factory(files_changed=(
+            FileChange(path=path, status="modified", additions=1, deletions=0),
+        ))
+        assert PathDefaultClassifier().evaluate(pr).quadrant == "D", path
 
 
 def test_path_default_config_deletion_is_d(pr_factory):
-    # Deleting a config file is irreversible + critical → Quadrant D.
+    # Deleting a config file is also Quadrant D (always-D path).
     pr = pr_factory(files_changed=(
         FileChange(path="config/skills.yml", status="removed",
                    additions=0, deletions=10),
     ))
     assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
+
+
+def test_path_default_existing_adr_modify_is_d_but_new_adr_is_not(pr_factory):
+    # A1 Tier-2 append-only: modifying an EXISTING ADR/meeting record is Quadrant
+    # D (history must not be rewritten), but ADDING a new record is legitimate
+    # (not D — falls through to the normal A/B path).
+    modify = pr_factory(files_changed=(
+        FileChange(path="docs/decisions/0007_x.md",
+                   status="modified", additions=3, deletions=1),
+    ))
+    assert PathDefaultClassifier().evaluate(modify).quadrant == "D"
+    add = pr_factory(files_changed=(
+        FileChange(path="docs/decisions/0042_new.md",
+                   status="added", additions=20, deletions=0),
+    ))
+    assert PathDefaultClassifier().evaluate(add).quadrant != "D"
+
+
+def test_path_default_plain_src_modify_still_b(pr_factory):
+    # Guard against over-reach: an adopter's ordinary src/ refactor is still
+    # Quadrant B (critical-but-reversible), not forced to D.
+    pr = pr_factory(files_changed=(
+        FileChange(path="src/app/widget.py", status="modified",
+                   additions=8, deletions=3),
+    ))
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
 
 
 # -- Empty PR --

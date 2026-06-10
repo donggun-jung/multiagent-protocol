@@ -386,3 +386,61 @@ def test_projects_schema_rejects_unknown_repo_override_key():
             },
             schema=schema,
         )
+
+
+# -- A2: explicit CI posture for gated repos (loud warning on legacy mode) -----
+
+def test_gated_repo_without_ci_posture_warns_not_fails(tmp_path: Path, caplog):
+    # A2: a gated (non-audit-only) repo with NEITHER required_checks NOR
+    # allow_no_ci uses the legacy "all completed checks succeed" C2 mode. load
+    # must WARN loudly (defense-in-depth — the PR-introduced-workflow vector is
+    # already closed at the classifier) but NOT fail an otherwise-valid config.
+    import logging
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/gov\nsupervised_repos:\n  - alice/repo-a\n")
+    _write(cfg_dir, "env.yml", "bot_app_slug: alice-merge-gate\n")
+    with caplog.at_level(logging.WARNING):
+        cfg = load_config(cfg_dir)
+    assert cfg is not None  # did NOT raise
+    assert any("C2 posture" in r.getMessage() for r in caplog.records)
+
+
+def test_named_required_checks_suppresses_ci_posture_warning(tmp_path: Path, caplog):
+    import logging
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/gov\nsupervised_repos:\n  - alice/repo-a\n")
+    _write(cfg_dir, "env.yml",
+           "bot_app_slug: alice-merge-gate\nrequired_checks:\n  - tests\n")
+    with caplog.at_level(logging.WARNING):
+        load_config(cfg_dir)
+    assert not any("C2 posture" in r.getMessage() for r in caplog.records)
+
+
+def test_allow_no_ci_suppresses_ci_posture_warning(tmp_path: Path, caplog):
+    import logging
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/gov\nsupervised_repos:\n  - alice/repo-a\n")
+    _write(cfg_dir, "env.yml", "bot_app_slug: alice-merge-gate\nallow_no_ci: true\n")
+    with caplog.at_level(logging.WARNING):
+        load_config(cfg_dir)
+    assert not any("C2 posture" in r.getMessage() for r in caplog.records)
+
+
+def test_audit_only_repo_not_required_to_declare_ci_posture(tmp_path: Path, caplog):
+    # An audit-only repo is not PR-gated, so it need not declare a CI posture.
+    import logging
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/gov\nsupervised_repos:\n  - alice/gov\n"
+           "audit_only_repos:\n  - alice/gov\n")
+    _write(cfg_dir, "env.yml", "bot_app_slug: alice-merge-gate\n")
+    with caplog.at_level(logging.WARNING):
+        load_config(cfg_dir)
+    assert not any("C2 posture" in r.getMessage() for r in caplog.records)

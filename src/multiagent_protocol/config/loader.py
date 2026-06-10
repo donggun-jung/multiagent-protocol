@@ -20,12 +20,15 @@ Missing optional config files are tolerated (treated as empty); missing
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 from jsonschema import validate as jsonschema_validate
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -263,7 +266,7 @@ def load_config(
         _validate(skills_data, schemas_dir / "skills.schema.json")
         _validate(agent_registry_data, schemas_dir / "agent_registry.schema.json")
 
-    return AppConfig(
+    config = AppConfig(
         owner=OwnerConfig(
             github_login=owner_data["github_login"],
             allowlisted_actors=tuple(
@@ -296,3 +299,41 @@ def load_config(
         ),
         agent_registry=_build_agent_registry(agent_registry_data),
     )
+    _require_explicit_ci_posture(config)
+    return config
+
+
+def _require_explicit_ci_posture(config: AppConfig) -> None:
+    """A2: warn loudly when a gated repo has no explicit CI posture.
+
+    A GATED (non-audit-only) supervised repo should declare an explicit CI
+    posture: either named ``required_checks`` (per-repo override or the env
+    default) OR ``allow_no_ci: true``. With NEITHER, C2 falls into the legacy
+    "every completed check must be success" mode, where the gate trusts whatever
+    green check-runs happen to be present (published under the ``github-actions``
+    slug) instead of a SPECIFIC named check the author cannot manufacture.
+
+    The active PR-introduced-workflow vector is already closed at the classifier
+    (a change to ``.github/workflows/`` routes to Quadrant D), so this is a
+    defense-in-depth posture check rather than an open hole — hence a loud
+    WARNING (not a hard load failure, which would reject otherwise-valid minimal
+    configs). Operators should name ``required_checks`` (the reference config
+    does); setting ``allow_no_ci: true`` is the conscious opt-out for a repo with
+    no CI by design."""
+    if config.env.allow_no_ci:
+        return  # explicit, repo-wide opt-out: no CI by design
+    ungated = [
+        r for r in config.projects.supervised_repos
+        if not config.projects.is_audit_only(r)
+        and not config.projects.effective_required_checks(r, config.env.required_checks)
+    ]
+    if ungated:
+        logger.warning(
+            "C2 posture: gated repos with neither required_checks nor "
+            "allow_no_ci will use the legacy 'all completed checks succeed' "
+            "mode (no specific named check is required): %s. Name the CI "
+            "check(s) each must pass (env.required_checks or "
+            "projects.repo_overrides[<repo>].required_checks), or set "
+            "env.allow_no_ci: true for a repo with no CI by design.",
+            ", ".join(ungated),
+        )

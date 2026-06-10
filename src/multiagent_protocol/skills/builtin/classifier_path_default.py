@@ -17,6 +17,22 @@ critical (→ B/D, owner-visible), never auto-merged as Quadrant A.
 decision logic (``governance/scripts/``, ``governance/REVERSIBILITY_RUBRIC.md``,
 ``governance/schemas/``). A PR rewriting the gate's rules must route to the
 owner (Quadrant B/D), never auto-approve itself.
+
+ALWAYS-D (the self-containment guarantee). A subset of the critical paths govern
+*enforcement itself* — the operating doctrine (``docs/concepts/``, Tier 3), the
+gate configuration (``config/``), the gate's decision logic (``governance/``),
+the CI runtime + workflow definitions (``.github/workflows/``), the JSON schemas
+(``schemas/``), and the audit/receipt state (``bot-state/``, Tier 5). Per the
+five-tier taxonomy these are "**always Quadrant D regardless of the diff**": a
+MODIFY (not only a delete) must route to the owner. The earlier rule only forced
+D on a *deletion*, so an agent could *rewrite* the rules that constrain it and
+have the change auto-merge as Quadrant B — a self-referential containment breach
+(both the correctness and security review flagged this #1; GPT-5.5 confirmed it
+should block enforce-mode). ALWAYS-D closes it.
+
+Tier 2 (immutable records, ``docs/decisions/`` ADRs + ``docs/meetings/``) is
+append-only: MODIFYING or DELETING an existing record is Quadrant D, while ADDING
+a new record is the legitimate path (falls through to A/B).
 """
 
 from __future__ import annotations
@@ -35,6 +51,23 @@ CRITICAL_PREFIXES = (
     "governance/",  # the gate's own decision logic (scripts, rubric, schemas).
 )
 
+# Paths that govern enforcement itself → ALWAYS Quadrant D when MODIFIED, added,
+# or removed (not merely deleted). Editing any of these reconfigures or weakens
+# the gate, so it must always route to the owner — never auto-merge as A/B.
+ALWAYS_D_PREFIXES = (
+    "docs/concepts/",      # Tier 3 operating doctrine ("always D regardless of diff")
+    "config/",             # gate configuration (required_checks, audit_only, registry)
+    "governance/",         # gate decision logic (scripts, rubric, schemas)
+    ".github/workflows/",  # gate runtime + CI definitions (also blocks PR-introduced CI)
+    "schemas/",            # required-field schema changes are D; conservatively all schema edits
+    "bot-state/",          # Tier 5 audit & receipts (non-bot writes must be owner-gated)
+)
+
+# Tier 2 immutable records: modifying/deleting an EXISTING ADR or meeting record
+# is Quadrant D (append-only); adding a NEW record is legitimate (falls through).
+APPEND_ONLY_PREFIXES = ("docs/decisions/", "docs/meetings/")
+_NON_ADDITIVE = ("modified", "removed", "renamed", "changed")
+
 
 class PathDefaultClassifier:
     name = "classifier_path_default"
@@ -44,6 +77,26 @@ class PathDefaultClassifier:
         if not files:
             # Empty PRs are handled by classifier_empty_pr.
             return ClassifierVote(quadrant="A", reasoning="no file changes")
+
+        # SELF-CONTAINMENT: a change touching the gate's own doctrine / config /
+        # decision logic / CI / schemas / audit state is ALWAYS Quadrant D, even
+        # for a pure modification — an agent must not be able to quietly weaken
+        # the rules that constrain it (five-tier-files.md Tier 3/4/5).
+        always_d = [f.path for f in files if f.path.startswith(ALWAYS_D_PREFIXES)]
+        # Tier 2 append-only: modifying/deleting an existing record (not adding).
+        append_d = [
+            f.path for f in files
+            if f.path.startswith(APPEND_ONLY_PREFIXES) and f.status in _NON_ADDITIVE
+        ]
+        if always_d or append_d:
+            hit = (always_d + append_d)[0]
+            return ClassifierVote(
+                quadrant="D",
+                reasoning=(
+                    f"enforcement-governing or append-only path edited ({hit}) — "
+                    "always owner-gated (Quadrant D) regardless of diff"
+                ),
+            )
 
         is_critical = any(
             f.path.startswith(CRITICAL_PREFIXES) for f in files

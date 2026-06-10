@@ -479,8 +479,17 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
         return PRDecision(
             full, ctx.number, "skipped", "?", "approval receipts unavailable"
         )
-    approved_shas = approval_receipts(pr_comments, runtime.bot_user)
-    receipt_times = approval_receipt_times(pr_comments, runtime.bot_user)
+    # A3: receipts are verified against THIS PR's repo/number (the keyed-MAC
+    # gate in label_provenance) so a leaked App token cannot forge a counting
+    # receipt — and a valid receipt from one PR cannot be replayed onto another.
+    approved_shas = approval_receipts(
+        pr_comments, runtime.bot_user,
+        repo_full_name=full, pr_number=ctx.number,
+    )
+    receipt_times = approval_receipt_times(
+        pr_comments, runtime.bot_user,
+        repo_full_name=full, pr_number=ctx.number,
+    )
     for r in runtime.classifier_rules:
         if r.name == "classifier_auto_revert":
             r.approved_shas = approved_shas
@@ -509,7 +518,10 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
         for label in to_record:
             api.post_comment(
                 ctx.repo_owner, ctx.repo_name, ctx.number,
-                approval_receipt_comment(label, ctx.head_sha),
+                approval_receipt_comment(
+                    label, ctx.head_sha,
+                    repo_full_name=full, pr_number=ctx.number,
+                ),
             )
             approved_shas[label] = ctx.head_sha
 
