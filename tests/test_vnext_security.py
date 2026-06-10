@@ -113,6 +113,38 @@ def test_approval_receipts_requires_both_markers():
     assert approval_receipts([half], BOT_USER) == {}
 
 
+# -- 3. governance/ is a critical path -----------------------------------------
+
+def test_governance_scripts_deletion_classifies_d_not_a(pr_factory):
+    # governance/ holds the gate's own decision logic; deleting from it is
+    # irreversible + critical → Quadrant D (owner), never auto-approved A.
+    from multiagent_protocol.skills.builtin.classifier_path_default import (
+        PathDefaultClassifier,
+    )
+    from multiagent_protocol.types import FileChange
+    pr = pr_factory(files_changed=(
+        FileChange(path="governance/scripts/classify.py", status="removed",
+                   additions=0, deletions=50),
+    ))
+    v = PathDefaultClassifier().evaluate(pr)
+    assert v.quadrant == "D"
+    assert "governance/" in v.reasoning
+
+
+def test_governance_rubric_modification_classifies_b(pr_factory):
+    # Modifying the gate's reversibility rubric is critical (reversible) → B,
+    # i.e. owner-visible audit, not silent Quadrant-A auto-merge.
+    from multiagent_protocol.skills.builtin.classifier_path_default import (
+        PathDefaultClassifier,
+    )
+    from multiagent_protocol.types import FileChange
+    pr = pr_factory(files_changed=(
+        FileChange(path="governance/REVERSIBILITY_RUBRIC.md", status="modified",
+                   additions=3, deletions=1),
+    ))
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+
+
 def test_stale_sha_receipt_blocks_merge_after_backdated_commit_e2e(fake_api, solo_config):
     # The approval was recorded at SHA1 (bot receipt). The agent then pushes
     # SHA2 with a committer date BEFORE the approval event (backdated, so the
