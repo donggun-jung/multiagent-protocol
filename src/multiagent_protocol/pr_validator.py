@@ -80,16 +80,30 @@ def build_pr_context(api: GitHubAPI, pr_payload: dict) -> PRContext:
     commits_data = api.pr_commits(owner, repo, number)
     files_data = api.pr_files(owner, repo, number)
     checks_data = api.check_runs(owner, repo, pr_payload["head"]["sha"])
-    # Label-add events from the timeline API — lets C1 check *who* applied
-    # ``ready-to-merge``, not just that it is present.
+    # Label add/remove events from the timeline API. Provenance needs BOTH so a
+    # present label's effective applier is the most recent ``labeled`` AFTER the
+    # most recent ``unlabeled`` — not any historical trusted ``labeled`` event.
+    # ``event`` defaults to ``"labeled"`` for backward-compatible payloads.
+    raw_label_events = api.label_events(owner, repo, number)
     label_events: tuple[LabelEvent, ...] = tuple(
         LabelEvent(
             label=le["label"],
             actor_login=le["actor"],
             created_at=le.get("created_at", ""),
         )
-        for le in api.label_events(owner, repo, number)
+        for le in raw_label_events
         if le.get("label") and le.get("actor")
+        and le.get("event", "labeled") == "labeled"
+    )
+    unlabel_events: tuple[LabelEvent, ...] = tuple(
+        LabelEvent(
+            label=le["label"],
+            actor_login=le["actor"],
+            created_at=le.get("created_at", ""),
+        )
+        for le in raw_label_events
+        if le.get("label") and le.get("actor")
+        and le.get("event") == "unlabeled"
     )
 
     commits = tuple(
@@ -146,6 +160,7 @@ def build_pr_context(api: GitHubAPI, pr_payload: dict) -> PRContext:
         files_changed=files,
         check_runs=checks,
         label_events=label_events,
+        unlabel_events=unlabel_events,
     )
 
 

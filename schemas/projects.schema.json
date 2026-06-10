@@ -104,6 +104,11 @@
             "description": "Named CI check-runs that MUST each be present + green on a PR head for C2 (and L2) to pass in THIS repo. Overrides the global env.yml required_checks. An explicit empty list [] forces 'no named checks' for this repo (back to the all-completed-checks-succeed behavior) even when a global default is set.",
             "items": { "type": "string", "minLength": 1 },
             "uniqueItems": true
+          },
+          "expected_check_publisher": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The GitHub App slug that must have published a green check-run for it to count toward C2 in THIS repo. Overrides the global env.yml expected_check_publisher. A same-named (or, on the no-named-required path, any) green run from a different App is treated as 'not yet green' (fail closed)."
           }
         }
       }

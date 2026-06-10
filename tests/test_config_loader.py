@@ -42,7 +42,7 @@ def test_inbox_defaults_to_governance(tmp_path: Path):
 
     cfg = load_config(cfg_dir)
     assert cfg.projects.effective_inbox_repository == "alice/protocol"
-    assert cfg.projects.decision_inbox.thresholds.nudge_days == 14
+    assert cfg.projects.decision_inbox.repository is None
     assert cfg.projects.break_glass.adr_deadline_hours == 24
 
 
@@ -54,18 +54,11 @@ governance_repo: alice/protocol
 supervised_repos: []
 decision_inbox:
   repository: alice/inbox
-  thresholds:
-    nudge_days: 7
-    abandon_days: 21
-    auto_close_days: 45
 """)
     _write(cfg_dir, "env.yml", "bot_app_slug: foo\n")
 
     cfg = load_config(cfg_dir)
     assert cfg.projects.effective_inbox_repository == "alice/inbox"
-    assert cfg.projects.decision_inbox.thresholds.nudge_days == 7
-    assert cfg.projects.decision_inbox.thresholds.abandon_days == 21
-    assert cfg.projects.decision_inbox.thresholds.auto_close_days == 45
 
 
 def test_break_glass_deadline_override(tmp_path: Path):
@@ -98,8 +91,6 @@ models:
   claude-code: ["*"]
   codex: ["gpt-5", "gpt-5.5"]
   manual: ["n/a"]
-machines:
-  - laptop
 """)
 
     cfg = load_config(cfg_dir)
@@ -107,12 +98,46 @@ machines:
     assert reg is not None
     assert reg.tools == ("claude-code", "codex", "manual")
     assert reg.models["codex"] == ("gpt-5", "gpt-5.5")
-    assert reg.machines == ("laptop",)
     # Convenience method.
     assert reg.model_allowed("claude-code", "claude-opus-4.7")  # wildcard
     assert reg.model_allowed("codex", "gpt-5")
     assert not reg.model_allowed("codex", "gpt-4")
     assert reg.model_allowed("manual", "n/a")
+
+
+def test_legacy_dead_knobs_tolerated_but_ignored(tmp_path: Path):
+    # Dead-knob cleanup: ``display_name`` (owner.yml), ``decision_inbox.
+    # thresholds`` (projects.yml) and ``machines`` (agent_registry.yml) were
+    # loaded but consumed by nothing. The loader no longer reads them, but a
+    # legacy config that still contains the keys must load fine (ignored).
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\ndisplay_name: Alice\n")
+    _write(cfg_dir, "projects.yml", """\
+governance_repo: alice/protocol
+supervised_repos: []
+decision_inbox:
+  repository: alice/inbox
+  thresholds:
+    nudge_days: 7
+    abandon_days: 21
+    auto_close_days: 45
+""")
+    _write(cfg_dir, "env.yml", "bot_app_slug: foo\n")
+    _write(cfg_dir, "agent_registry.yml", """\
+tools:
+  - manual
+models:
+  manual: ["n/a"]
+machines:
+  - laptop
+""")
+
+    cfg = load_config(cfg_dir)
+    assert not hasattr(cfg.owner, "display_name")
+    assert not hasattr(cfg.projects.decision_inbox, "thresholds")
+    assert not hasattr(cfg.agent_registry, "machines")
+    assert cfg.projects.effective_inbox_repository == "alice/inbox"
+    assert cfg.agent_registry.tools == ("manual",)
 
 
 def test_missing_owner_yml_raises(tmp_path: Path):
@@ -247,6 +272,62 @@ def test_env_schema_accepts_required_checks():
     _jsonschema.validate(instance={"bot_app_slug": "foo"}, schema=schema)
 
 
+# -- C2 publisher trust: expected_check_publisher (env default + per-repo) ----
+
+def test_expected_check_publisher_parsed_env_and_override(tmp_path: Path):
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml", """\
+governance_repo: alice/p
+supervised_repos:
+  - alice/repo-a
+  - alice/repo-b
+repo_overrides:
+  alice/repo-a:
+    expected_check_publisher: custom-ci
+""")
+    _write(cfg_dir, "env.yml",
+           "bot_app_slug: foo\nexpected_check_publisher: org-ci\n")
+    cfg = load_config(cfg_dir)
+    assert cfg.env.expected_check_publisher == "org-ci"
+    assert cfg.projects.repo_overrides["alice/repo-a"].expected_check_publisher == "custom-ci"
+    # Resolution: per-repo override > env default.
+    g = cfg.env.expected_check_publisher
+    assert cfg.projects.effective_expected_check_publisher("alice/repo-a", g) == "custom-ci"
+    assert cfg.projects.effective_expected_check_publisher("alice/repo-b", g) == "org-ci"
+
+
+def test_expected_check_publisher_defaults_unset(tmp_path: Path):
+    # Absent everywhere → None; the runtime then uses the built-in default
+    # publisher (validator_ci_green.DEFAULT_CHECK_PUBLISHER).
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/p\nsupervised_repos:\n  - alice/repo-a\n")
+    _write(cfg_dir, "env.yml", "bot_app_slug: foo\n")
+    cfg = load_config(cfg_dir)
+    assert cfg.env.expected_check_publisher is None
+    assert cfg.projects.effective_expected_check_publisher(
+        "alice/repo-a", cfg.env.expected_check_publisher) is None
+
+
+def test_env_schema_accepts_expected_check_publisher():
+    schema = _load_schema("env.schema.json")
+    _jsonschema.validate(
+        instance={"bot_app_slug": "foo", "expected_check_publisher": "org-ci"},
+        schema=schema,
+    )
+    # Still accepts the previous shape (field absent).
+    _jsonschema.validate(instance={"bot_app_slug": "foo"}, schema=schema)
+    # An empty slug is rejected (minLength 1).
+    import pytest
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={"bot_app_slug": "foo", "expected_check_publisher": ""},
+            schema=schema,
+        )
+
+
 def test_projects_schema_accepts_audit_only_and_repo_overrides():
     schema = _load_schema("projects.schema.json")
     _jsonschema.validate(
@@ -263,6 +344,35 @@ def test_projects_schema_accepts_audit_only_and_repo_overrides():
         instance={"governance_repo": "alice/p", "supervised_repos": []},
         schema=schema,
     )
+
+
+def test_projects_schema_accepts_expected_check_publisher_override():
+    # R1 + C2 publisher trust: a per-repo expected_check_publisher override is
+    # a valid repo_overrides property (string, minLength 1).
+    schema = _load_schema("projects.schema.json")
+    _jsonschema.validate(
+        instance={
+            "governance_repo": "alice/p",
+            "repo_overrides": {
+                "alice/repo-a": {
+                    "required_checks": ["build"],
+                    "expected_check_publisher": "custom-ci",
+                },
+                "alice/repo-b": {"expected_check_publisher": "org-ci"},
+            },
+        },
+        schema=schema,
+    )
+    # An empty slug is rejected (minLength 1), mirroring env.schema.
+    import pytest
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={
+                "governance_repo": "alice/p",
+                "repo_overrides": {"alice/repo-a": {"expected_check_publisher": ""}},
+            },
+            schema=schema,
+        )
 
 
 def test_projects_schema_rejects_unknown_repo_override_key():

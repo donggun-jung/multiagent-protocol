@@ -47,7 +47,22 @@ def _write_config(cfg_dir: Path, *, audit_only: bool) -> None:
         "bot_app_slug: acme-merge-gate\nallow_no_ci: true\n", encoding="utf-8")
 
 
-def _run_main(tmp_path, monkeypatch, fake_api: FakeAPI, *, audit_only: bool) -> int:
+def _activate_watermarks(fake_api: FakeAPI) -> None:
+    """Pre-seed bot-state so the supervised repos are already 'activated'.
+
+    With bootstrap-to-HEAD, a repo with NO watermark sets it to HEAD and scans
+    nothing on its first tick (pre-activation history is out of scope). These
+    tests assert main-scan behavior, so we seed an old watermark (a sha not on
+    main) → bootstrap is skipped and the seeded main commits are scanned."""
+    old = "old" + "0" * 37
+    fake_api.seed_bot_state("acme", "governance", {
+        "acme/governance": old, "acme/governance:l2": old,
+        "acme/app": old, "acme/app:l2": old,
+    })
+
+
+def _run_main(tmp_path, monkeypatch, fake_api: FakeAPI, *, audit_only: bool,
+              activate: bool = True) -> int:
     _write_config(tmp_path / "config", audit_only=audit_only)
     # chdir so main() reads config/ here; no schemas/ dir → schema validation
     # skipped (keeps the fixture minimal — agent_registry.yml omitted).
@@ -57,6 +72,8 @@ def _run_main(tmp_path, monkeypatch, fake_api: FakeAPI, *, audit_only: bool) -> 
     monkeypatch.setattr(main_mod.AppAuth, "from_env",
                         classmethod(lambda cls, *a, **k: _FakeAuth("acme")))
     monkeypatch.setattr(main_mod, "GitHubAPI", lambda auth, inst_id: fake_api)
+    if activate:
+        _activate_watermarks(fake_api)
     return main_mod.main([])
 
 

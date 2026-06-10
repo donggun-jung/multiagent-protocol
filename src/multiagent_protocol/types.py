@@ -89,7 +89,17 @@ class CheckRunStatus:
 
 @dataclass(frozen=True)
 class LabelEvent:
-    """A label-add event on the PR."""
+    """A label add/remove event on the PR timeline.
+
+    Used for BOTH ``labeled`` (carried in :attr:`PRContext.label_events`) and
+    ``unlabeled`` (carried in :attr:`PRContext.unlabel_events`) timeline events;
+    the ``created_at`` is the GitHub-assigned event timestamp (never a commit
+    date). The two streams together let provenance reconstruct a present
+    label's *effective applier* — the add that established its current presence,
+    i.e. the most recent ``labeled`` after the most recent ``unlabeled`` — so a
+    label removed and re-added by an untrusted actor is no longer authenticated
+    by a stale earlier trusted add.
+    """
 
     label: str
     actor_login: str
@@ -121,6 +131,13 @@ class PRContext:
     files_changed: tuple[FileChange, ...]
     check_runs: tuple[CheckRunStatus, ...]
     label_events: tuple[LabelEvent, ...]
+    # ``unlabeled`` timeline events (label removals). Paired with
+    # ``label_events`` so provenance can find a present label's effective
+    # applier — the most recent ``labeled`` after the most recent ``unlabeled``
+    # — rather than any historical trusted ``labeled`` event. Defaulted so the
+    # field is optional for the (few) direct constructions; ``build_context``
+    # always populates it.
+    unlabel_events: tuple[LabelEvent, ...] = ()
 
     @property
     def full_name(self) -> str:

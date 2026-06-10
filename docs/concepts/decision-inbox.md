@@ -67,14 +67,17 @@ Every cron tick, `decision_inbox.py`:
 
 When closed, an Issue has exactly one of these labels (in addition to `decision:pending-owner` which gets removed):
 
-| Label                                       | Meaning                                       |
-|---------------------------------------------|-----------------------------------------------|
-| `decision:approved-A`                       | Owner approved option A — bot merged the PR.  |
-| `decision:approved-B`                       | Owner approved option B (alternate).          |
-| `decision:approved-C` + `decision:deferred` | Owner deferred; Issue stays open until they flip. |
-| `decision:rejected`                         | Owner rejected; PR closed.                    |
-| `decision:abandoned`                        | 30+ days no activity; auto-closed by inbox.   |
-| `decision:auto-resolved-pr-closed`          | PR closed by author or CI; inbox auto-closes. |
+| Label                  | Meaning                                       |
+|------------------------|-----------------------------------------------|
+| `decision:approved-A`  | Owner approved option A — bot merged the PR.  |
+| `decision:approved-B`  | Owner approved option B (alternate).          |
+| `decision:rejected`    | Owner rejected; PR closed.                    |
+
+An open issue may instead carry `decision:deferred` (the owner chose `/approve C`
+— defer; nothing merges and the issue stays open until they flip it) or
+`decision:stale-approval` (the PR head moved after a verdict — the prior approval
+is voided once and the issue waits for a fresh decision). There is **no**
+automated abandon / auto-close lifecycle: an issue stays open until the owner acts.
 
 ## Allowlist enforcement
 
@@ -86,15 +89,14 @@ Only reactions/comments by users in `config/owner.yml` `allowlisted_actors` coun
 
 The allowlist is `config/owner.yml` `allowlisted_actors` — typically `[<owner-github-login>]` for solo operators, plus optional delegated reviewers.
 
-## Rate limiting & nudges
+## Asynchronous by design
 
-Inbox issues are designed for **asynchronous** response, not real-time. The bot does not page the owner. However:
-
-- After **14 days** of no activity on an open issue, the bot posts a nudge comment ("Reminder: this Decision Inbox issue has been open for 14 days").
-- After **30 days**, the bot labels `decision:abandoned`. The Issue stays open (no auto-close), but `decision:abandoned` signals that the linked PR is effectively dead until human action.
-- After **60 days**, the bot closes the linked PR with `decision:auto-resolved-pr-closed` and closes the Issue. The owner can reopen if they want to revive.
-
-These thresholds are configurable in `config/projects.yml` under `decision_inbox.thresholds` (keys: `nudge_days`, `abandon_days`, `auto_close_days`). Defaults: 14 / 30 / 60.
+Inbox issues are designed for **asynchronous** response, not real-time — the bot
+does not page the owner, and there is **no** automated nudge / abandon /
+auto-close timer. An issue stays open until the owner resolves it (approve /
+reject / defer). If the PR head moves while an issue is open, the bot voids the
+prior approval once and labels the issue `decision:stale-approval`, so a stale
+verdict is never applied to unreviewed code.
 
 ## Failure modes
 

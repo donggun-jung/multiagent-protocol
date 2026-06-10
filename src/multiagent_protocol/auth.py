@@ -96,14 +96,16 @@ class AppAuth:
         """Return this App's slug (for building the bot user login).
 
         The merge gate verifies ``decision:approved-*`` labels against the
-        bot's OWN identity (``<slug>[bot]``) rather than operator-typed
-        ``config/env.yml`` ``bot_app_slug`` — so a mistyped slug cannot
-        silently break the approve→merge flow. Cached for the process; returns
-        None if the lookup fails (the caller then falls back to config).
+        bot's OWN identity (``<slug>[bot]``) — the authoritative ``GET /app``
+        answer, never the operator-typed ``config/env.yml`` ``bot_app_slug``.
+        Returns None only when the lookup fails; the caller must then treat
+        the identity as UNAVAILABLE and fail closed (no silent fallback to
+        the config string — see ``runtime._resolve_bot_user``). Only a
+        successful lookup is cached: a transient API hiccup is retried on the
+        next call instead of poisoning the whole process.
         """
         if self._app_slug_fetched:
             return self._app_slug_value
-        self._app_slug_fetched = True
         try:
             token = self.build_app_jwt()
             r = self._session.get(
@@ -116,10 +118,15 @@ class AppAuth:
                 timeout=30,
             )
             r.raise_for_status()
-            self._app_slug_value = r.json().get("slug")
+            slug = r.json().get("slug")
         except Exception as e:
-            logger.warning("could not resolve App slug (using config fallback): %s", e)
-            self._app_slug_value = None
+            logger.warning("could not resolve App slug from GET /app: %s", e)
+            return None  # failure NOT cached — retry on the next call
+        if not slug:
+            logger.warning("GET /app succeeded but returned no slug")
+            return None  # likewise not cached
+        self._app_slug_value = slug
+        self._app_slug_fetched = True
         return self._app_slug_value
 
     def installation_token(self, installation_id: int, now: float | None = None) -> str:

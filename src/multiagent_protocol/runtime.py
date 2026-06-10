@@ -11,11 +11,14 @@ cron tick runs. ``main.py`` owns no enforcement logic itself
 - :func:`build_branch_hooks` adds the per-repo hallucination resolver.
 - :func:`process_pr` runs one PR through classify → L1/L3/L4 → decision and
   performs the resulting GitHub side effect (merge / inbox issue / comment).
+  The merge itself is additionally gated by the ``MERGE_GATE_MERGE_ENABLED``
+  env var (observe-only by default; see :func:`merge_enabled`).
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +30,12 @@ from multiagent_protocol.decision_inbox import (
     parse_pr_ref,
 )
 from multiagent_protocol.github_api import GitHubAPI
+from multiagent_protocol.label_provenance import (
+    approval_receipt_comment,
+    approval_receipt_times,
+    approval_receipts,
+    labels_needing_receipt,
+)
 from multiagent_protocol.pr_validator import (
     build_pr_context,
     evaluate_pr,
@@ -60,7 +69,10 @@ from multiagent_protocol.skills.builtin.validator_agent_registry import (
 from multiagent_protocol.skills.builtin.validator_base_up_to_date import (
     BaseUpToDateValidator,
 )
-from multiagent_protocol.skills.builtin.validator_ci_green import CiGreenValidator
+from multiagent_protocol.skills.builtin.validator_ci_green import (
+    DEFAULT_CHECK_PUBLISHER,
+    CiGreenValidator,
+)
 from multiagent_protocol.skills.builtin.validator_classifier_publisher import (
     ClassifierPublisherValidator,
 )
@@ -77,6 +89,9 @@ logger = logging.getLogger(__name__)
 
 # Built-ins the operator may NOT disable via config/skills.yml. See
 # docs/concepts/general-preferences.md ("not permitted via disabled:").
+# schemas/skills.schema.json rejects these names in `disabled` at config-load
+# time; this set is the belt-and-suspenders runtime enforcement for configs
+# that bypass schema validation.
 NON_DISABLEABLE = frozenset({
     "validator_trailers",
     "validator_classifier_publisher",
@@ -87,6 +102,16 @@ NON_DISABLEABLE = frozenset({
     # protection would have NOTHING watching main for unsanctioned writes — a
     # fail-open. It stays armed regardless of `disabled`.
     "hook_unauthorized_push",
+    # The core L1 gate conditions (C1-C4). Previously only their SEVERITY was
+    # clamped (CORE_L1_VALIDATORS below); a `disabled:` entry could remove
+    # them entirely — letting a PR with red CI or no ready label auto-merge.
+    # They now always run regardless of config. (validator_owner_approval/C3
+    # is also constructed unconditionally per-PR in process_pr, so listing it
+    # here keeps the declared policy complete.)
+    "validator_ready_to_merge",
+    "validator_ci_green",
+    "validator_owner_approval",
+    "validator_base_up_to_date",
 })
 
 # Core L1 validators whose severity must stay blocking (P0/P1). The operator
@@ -110,6 +135,20 @@ AUDIT_LABEL = {
 
 DIAGNOSTIC_PREFIX = "Merge Gate L1"
 
+# Operational kill-switch (mirrors the old bot's toggle of the same name).
+# Unless this env var is explicitly "true", process_pr runs in OBSERVE-ONLY
+# mode: everything up to the merge (classify, L1, owner-approval / inbox
+# routing, diagnostics, the L3 race guard) runs for real, but the merge itself
+# — and with it the post-merge audit issue — is withheld and recorded as an
+# "observe" decision. This lets a production deployment burn in (watch +
+# report) before it is allowed to write to main.
+MERGE_ENABLED_ENV = "MERGE_GATE_MERGE_ENABLED"
+
+
+def merge_enabled() -> bool:
+    """True iff the operator explicitly enabled real merges (default: observe-only)."""
+    return os.environ.get(MERGE_ENABLED_ENV, "false").lower() == "true"
+
 
 @dataclass
 class RuntimeSkills:
@@ -130,7 +169,7 @@ class PRDecision:
 
     full_name: str
     number: int
-    action: str        # "merged" | "inbox" | "blocked" | "race-rebased" | "skipped"
+    action: str        # "merged" | "observe" | "inbox" | "blocked" | "race-rebased" | "skipped"
     quadrant: str
     detail: str = ""
 
@@ -146,15 +185,38 @@ def _main_head_lookup(api: GitHubAPI):
 
 
 def _resolve_bot_user(config: AppConfig, api: GitHubAPI) -> str:
-    """The bot App's user login (``<slug>[bot]``).
+    """The bot App's user login (``<slug>[bot]``) — authoritative only.
 
-    Prefer the App's *actual* slug (authoritative, from ``GET /app``) over the
-    operator-typed ``env.yml`` ``bot_app_slug`` so a typo cannot silently break
-    the approve→merge flow. Falls back to config if the lookup is unavailable
-    (e.g. the FakeAPI in tests has no ``.auth``)."""
+    The approval/identity checks (C3 receipts, label provenance, diagnostic
+    dedupe, R3) trust this login, so it must come from ``GET /app``, never
+    from the operator-typed ``env.yml`` ``bot_app_slug``: a transient API
+    hiccup combined with a stale config value must not silently change which
+    identity the gate trusts. If the authoritative slug is unavailable this
+    **fails closed** (raises; the tick aborts rather than guessing). A
+    mismatch between the authoritative slug and the config value is surfaced
+    loudly but the authoritative one wins.
+
+    Test doubles without App auth (no ``.auth`` attribute, e.g. the FakeAPI)
+    have no authoritative source at all and use the config value directly.
+    """
     auth = getattr(api, "auth", None)
-    app_slug = auth.app_slug() if auth is not None else None
-    return f"{app_slug or config.env.bot_app_slug}[bot]"
+    if auth is None:
+        return f"{config.env.bot_app_slug}[bot]"
+    app_slug = auth.app_slug()
+    if not app_slug:
+        raise RuntimeError(
+            "bot identity unavailable: GET /app did not yield the App slug. "
+            "Refusing to fall back to config env.bot_app_slug — the "
+            "approval/identity path fails closed until the authoritative "
+            "slug can be resolved."
+        )
+    if config.env.bot_app_slug and app_slug != config.env.bot_app_slug:
+        logger.warning(
+            "config env.bot_app_slug=%r does not match the App's actual slug "
+            "%r — using the authoritative slug; fix env.yml.",
+            config.env.bot_app_slug, app_slug,
+        )
+    return f"{app_slug}[bot]"
 
 
 def _adr_finder(api: GitHubAPI, gov_owner: str, gov_repo: str):
@@ -227,6 +289,14 @@ def build_runtime_skills(
         CiGreenValidator(
             required_checks=config.env.required_checks,
             allow_no_checks=config.env.allow_no_ci,
+            # Publisher trust for required checks: only runs published by the
+            # repo's own CI App count as green. Seeded with the GLOBAL
+            # ``env.expected_check_publisher`` (default ``github-actions``);
+            # process_pr patches the per-repo effective value before each PR,
+            # mirroring required_checks.
+            expected_check_publisher=(
+                config.env.expected_check_publisher or DEFAULT_CHECK_PUBLISHER
+            ),
         ),
         TrailersValidator(),
         ClassifierPublisherValidator(
@@ -257,6 +327,10 @@ def build_runtime_skills(
             adr_finder=_adr_finder(api, gov_owner, gov_repo),
             adr_deadline_hours=config.projects.break_glass.adr_deadline_hours,
             clock=clock,
+            # The bot's own squash of a break-glass-TITLED PR (committer = bot)
+            # is not a human break-glass push — wire bot_user so the hook can
+            # short-circuit it, exactly as hook_unauthorized_push does below.
+            bot_user=bot_user,
         ),
         # R3: code-level branch protection — flag non-bot, non-break-glass,
         # non-allowlisted writes to main.
@@ -314,6 +388,29 @@ def _quadrant_reasoning(verdict, quadrant: str) -> str:
     return "; ".join(reasons) or f"Quadrant {quadrant}"
 
 
+def _agent_trailer_block(ctx) -> str | None:
+    """The PR commits' identity trailers as one deduplicated trailer block.
+
+    A squash merge produces a single bot-authored commit, dropping the PR
+    commits' identity trailers. Passing this block as the squash
+    ``commit_message`` keeps the audit trail on ``main``. The full L4
+    identity set is preserved — every ``Agent-*`` trailer AND ``Task-Ref``
+    (the task linkage is part of the audit trail, not an optional extra).
+    Distinct values are all kept (e.g. two agents on one PR → two
+    ``Agent-Session`` lines), in first-seen order. Returns None when no such
+    trailers exist (GitHub then composes its default message).
+    """
+    lines: list[str] = []
+    for commit in ctx.commits:
+        for key, value in commit.trailers.raw.items():
+            if not (key.startswith("Agent-") or key == "Task-Ref"):
+                continue
+            line = f"{key}: {value}"
+            if line not in lines:
+                lines.append(line)
+    return "\n".join(lines) or None
+
+
 def _inbox_issue_exists(api, gov_owner, gov_repo, full_name, number) -> bool:
     for issue in api.list_issues(gov_owner, gov_repo, labels=PENDING_LABEL, state="open"):
         if "pull_request" in issue:
@@ -323,20 +420,29 @@ def _inbox_issue_exists(api, gov_owner, gov_repo, full_name, number) -> bool:
     return False
 
 
-def _post_diagnostic_if_changed(api, ctx, body: str) -> bool:
+def _post_diagnostic_if_changed(api, ctx, body: str, bot_user: str | None) -> bool:
     """Post the L1 diagnostic, unless the bot's last diagnostic is identical.
 
     Keeps the bot from re-commenting the same blocked-reasons on every 5-min
-    tick (the chattiness the stateless design otherwise invites)."""
+    tick (the chattiness the stateless design otherwise invites).
+
+    Only comments **authored by the bot's own identity** count as "the last
+    diagnostic": anyone can post a comment starting with the diagnostic
+    prefix, and an author-blind match would let a third party suppress the
+    bot's real diagnostics. No ``bot_user`` → nothing can be attributed to
+    the bot → always post."""
     try:
         comments = api.list_issue_comments(ctx.repo_owner, ctx.repo_name, ctx.number)
     except Exception:
         comments = []
     last = None
-    for c in comments:
-        cb = c.get("body") or ""
-        if cb.startswith(DIAGNOSTIC_PREFIX):
-            last = cb
+    if bot_user:
+        for c in comments:
+            if ((c.get("user") or {}).get("login")) != bot_user:
+                continue
+            cb = c.get("body") or ""
+            if cb.startswith(DIAGNOSTIC_PREFIX):
+                last = cb
     if last == body:
         return False
     api.post_comment(ctx.repo_owner, ctx.repo_name, ctx.number, body)
@@ -355,38 +461,108 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     # inbox repo (decision_inbox.repository), defaulting to the governance repo.
     gov_owner, _, gov_repo = config.projects.effective_inbox_repository.partition("/")
 
+    # SHA-bound approvals: the bot's own receipt comments bind each recorded
+    # decision label to the exact head SHA it was granted against. Fetched
+    # before classify so the auto-revert rule sees them too. A fetch failure
+    # SKIPS this PR for the tick (fail closed): proceeding with "no receipts"
+    # would let receipt-eligible labels fall through to weaker paths — a label
+    # must never be honoured while its receipt cannot be read. The stateless
+    # tick simply retries on the next run.
+    try:
+        pr_comments = api.list_issue_comments(ctx.repo_owner, ctx.repo_name, ctx.number)
+    except Exception as e:
+        logger.warning(
+            "PR %s#%s: comment fetch failed (%s) — approval receipts "
+            "unavailable; skipping this PR until they can be read.",
+            full, ctx.number, e,
+        )
+        return PRDecision(
+            full, ctx.number, "skipped", "?", "approval receipts unavailable"
+        )
+    approved_shas = approval_receipts(pr_comments, runtime.bot_user)
+    receipt_times = approval_receipt_times(pr_comments, runtime.bot_user)
+    for r in runtime.classifier_rules:
+        if r.name == "classifier_auto_revert":
+            r.approved_shas = approved_shas
+
     verdict = classify(ctx, runtime.classifier_rules, audit_log_path)
 
+    # Receipt writer: receipt-eligible labels (C1 ready-to-merge, C3
+    # decision:approved-*) are honoured ONLY through a bot SHA receipt
+    # (label_provenance), so an allowlisted HAND-applied label is converted
+    # into a receipt binding it to the head observed THIS tick. A label
+    # applied by a non-allowlisted actor never gets a receipt. The receipts
+    # written here are then merged into ``approved_shas`` and honoured the
+    # SAME tick: the head cannot change within a tick's execution, so binding
+    # to and then validating against the just-observed head is atomic and
+    # safe (there is no one-tick deferral). A force-push BETWEEN ticks is
+    # caught because the receipt's SHA then differs from the new head, and the
+    # writer refuses to re-bind an approval (only the Decision Inbox may
+    # supersede an approval receipt). approvals and ready-to-merge behave
+    # identically: receipt-required, honoured same-tick once bound.
+    to_record = labels_needing_receipt(
+        ctx, config.owner.allowlisted_actors, runtime.bot_user,
+        approved_shas=approved_shas, receipt_times=receipt_times,
+    )
+    if to_record:
+        approved_shas = dict(approved_shas)
+        for label in to_record:
+            api.post_comment(
+                ctx.repo_owner, ctx.repo_name, ctx.number,
+                approval_receipt_comment(label, ctx.head_sha),
+            )
+            approved_shas[label] = ctx.head_sha
+
     # R1: resolve this repo's effective required_checks (per-repo override >
-    # global env default > ()) and apply it to the CiGreen validator before L1.
-    # The runtime's CiGreen carries the global default; only the per-repo
-    # override differs, so we patch the one instance for this PR's repo.
+    # global env default > ()) and expected check publisher (per-repo override
+    # > env default > "github-actions"), and apply both to the CiGreen
+    # validator before L1. The runtime's CiGreen carries the global defaults;
+    # only the per-repo overrides differ, so we patch the one instance for
+    # this PR's repo.
     eff_required = config.projects.effective_required_checks(
         full, config.env.required_checks
+    )
+    eff_publisher = (
+        config.projects.effective_expected_check_publisher(
+            full, config.env.expected_check_publisher
+        )
+        or DEFAULT_CHECK_PUBLISHER
     )
     for v in runtime.validators:
         if v.name == "validator_ci_green":
             v.required_checks = eff_required
+            v.expected_check_publisher = eff_publisher
+        elif v.name == "validator_ready_to_merge":
+            # C1 is receipt-required (mirrors C3): the ready label opens C1
+            # only with a bot receipt bound to the current head. This map
+            # includes any receipt written this tick (honoured same-tick); a
+            # moved head voids a stale receipt.
+            v.approved_shas = approved_shas
 
     # Evaluate the L1 conditions *other than* C3 (owner approval). C3 is the
     # owner gate and is handled separately below: a Quadrant-D PR fails C3 by
     # design and is routed to the Decision Inbox, not reported as "blocked".
     outcome = evaluate_pr(ctx, runtime.validators, classifier_quadrant=verdict.quadrant)
     if not outcome.all_passed:
-        _post_diagnostic_if_changed(api, ctx, outcome.diagnostic_comment())
+        _post_diagnostic_if_changed(
+            api, ctx, outcome.diagnostic_comment(), runtime.bot_user
+        )
         return PRDecision(
             full, ctx.number, "blocked", verdict.quadrant,
             "; ".join(outcome.failure_reasons)[:200],
         )
 
     # C3 — owner approval. Passes for Quadrant A/B/C (auto-approval), or for a
-    # Quadrant-D PR whose ``decision:approved-*`` label was applied by the
-    # owner/bot at or after the current head (see OwnerApprovalValidator).
-    # ``runtime.bot_user`` is the App's resolved ``<slug>[bot]`` identity.
+    # Quadrant-D PR whose ``decision:approved-*`` label is owner/bot-applied
+    # and bound to the current head via the bot's SHA receipt (no time
+    # fallback; see OwnerApprovalValidator). ``approved_shas`` includes any
+    # receipt written this tick. ``runtime.bot_user`` is the App's resolved
+    # ``<slug>[bot]`` identity.
     owner_approval = OwnerApprovalValidator(
         classifier_verdict=verdict.quadrant,
         allowlisted_actors=config.owner.allowlisted_actors,
         bot_user=runtime.bot_user,
+        approved_shas=approved_shas,
     )
     _apply_severity([owner_approval], runtime.severity_overrides)
     if not owner_approval.check(ctx).passed:
@@ -404,7 +580,24 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
         api.update_branch(ctx.repo_owner, ctx.repo_name, ctx.number)
         return PRDecision(full, ctx.number, "race-rebased", verdict.quadrant)
 
-    api.merge_pr(ctx.repo_owner, ctx.repo_name, ctx.number, head_sha=ctx.head_sha)
+    # Observe-only kill-switch: every gate above ran for real, but the merge
+    # is allowed only when MERGE_GATE_MERGE_ENABLED=true. In observe mode the
+    # would-be merge is recorded instead, and the post-merge audit issue is
+    # skipped with it (nothing merged, nothing to audit).
+    if not merge_enabled():
+        return PRDecision(
+            full, ctx.number, "observe", verdict.quadrant,
+            f"observe-only: would have merged as Quadrant {verdict.quadrant} "
+            f"(set {MERGE_ENABLED_ENV}=true to enable merging)",
+        )
+
+    # Squash merging collapses the PR into one bot-authored commit; pass the
+    # PR's Agent-* trailers as the commit body so the agent-identity audit
+    # trail survives onto main.
+    api.merge_pr(
+        ctx.repo_owner, ctx.repo_name, ctx.number, head_sha=ctx.head_sha,
+        commit_message=_agent_trailer_block(ctx),
+    )
 
     # Passive audit issue for auto-approved B / C — opened only after a
     # successful merge, so a retried tick never double-opens it.

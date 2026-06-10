@@ -156,7 +156,7 @@ Runs once per cron tick. Enforces that **canonical files** in `<governance_repo>
 ### Mechanism
 
 1. Read `config.mirror_paths` (list of file paths under `<governance_repo>` that are canonical-of-canonical).
-2. For each adopter repo: compute SHA-256 of each canonical path, compare to `<governance_repo>` source-of-truth SHA.
+2. For each adopter repo: compare the git **blob SHA** of each canonical path against the `<governance_repo>` source-of-truth blob SHA (equal blob SHA ⇔ byte-identical content). The SHAs come from one recursive-tree fetch per repo per tick — the governance tree is fetched once and reused across all adopters — with a per-path lookup fallback when a tree is unavailable. The governance repo itself is skipped (comparing the canonical to itself is always clean).
 3. Mismatch → `decision:mirror-drift-incident` Issue with diff summary.
 4. Missing (canonical-required file absent in adopter) → same Issue, with `missing=true` field.
 
@@ -173,14 +173,14 @@ The bot is **stateless across cron ticks**. All state lives in GitHub:
 
 - PR state: GitHub PR object.
 - Decision Inbox: Issues in `<governance_repo>`.
-- Watermarks: a single file `bot-state/branch_supervisor_watermarks.json` in the bot's own repo (the bot pushes a commit to update it; this is the only commit the bot makes to its own repo).
+- Watermarks: a single file `bot-state/branch_supervisor_watermarks.json` persisted to a dedicated **`bot-state` branch** of the governance repo via the App token (the only commits the bot makes to its own repo). Deliberately **not** `main`: the bot's own L2/L5/unauthorized-push scanners read only `main`, so state commits can never self-trigger an incident. The tick loads this file at start (creating the branch on first run), persists incrementally after each repo and again in a `finally` guard, so a timed-out tick still banks its progress. A repo seen for the first time bootstraps its watermark to the current `main` HEAD and scans nothing older — pre-activation history is out of scope, which is what prevents a cold-start incident flood. A corrupt persisted state fails the tick closed (non-zero) instead of silently re-walking history.
 - Audit log: GitHub Actions workflow artifacts (90-day retention) + commit history.
 
 This means each tick re-evaluates from scratch. The drawback is chatty comments on long-running PR failures; the upside is no local DB to corrupt, no migration on bot version upgrade, and disaster recovery is "redeploy the bot" with no state to restore.
 
 ## Per-tick cost (rate-limit budget)
 
-At 6 supervised repos × ~5 open PRs × ~10 API calls per PR + L5 self-scan (~50 calls) + drift_check (~30 calls per adopter) = ~430 calls per tick. At 12 ticks/hour, ~5,160 calls/hour. GitHub installation rate limit is 15,000/hour, so the bot uses about 35% headroom even with growth to 12+ repos.
+At 6 supervised repos × ~5 open PRs × ~10 API calls per PR + the bounded L2/L5 main scans (≤100 commits per repo per tick; a handful of calls when idle) + drift_check (one recursive-tree call per adopter per tick, the governance tree cached) ≈ ~370 calls per tick worst case, ~4,400/hour at 12 ticks/hour. The GitHub App installation rate limit on a personal account is **5,000 requests/hour** (the often-quoted 15,000/hour applies only to installations on GitHub Enterprise Cloud organizations), so the margin is real but thin. The bot therefore watches `X-RateLimit-Remaining` on every response and ends a tick early — after persisting watermarks — when fewer than a reserve threshold of calls remain; a secondary-rate-limit `403`/`429` backs off (honouring `Retry-After`, bounded) and then skips the affected repo for the tick instead of crashing and replaying.
 
 ## Plug-in points
 

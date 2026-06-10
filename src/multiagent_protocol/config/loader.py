@@ -10,8 +10,8 @@ The five config files:
   break-glass deadline overrides.
 - ``config/env.yml`` — runner tier + bot App slug + classifier publisher.
 - ``config/skills.yml`` — enabled/disabled skill names + severity overrides.
-- ``config/agent_registry.yml`` — agent tool names, model identifiers, and
-  machine handles that the L4 identity gate trusts.
+- ``config/agent_registry.yml`` — agent tool names + model identifiers that
+  the L4 identity gate trusts.
 
 Missing optional config files are tolerated (treated as empty); missing
 ``owner.yml`` or ``projects.yml`` is a hard error.
@@ -32,20 +32,11 @@ from jsonschema import validate as jsonschema_validate
 class OwnerConfig:
     github_login: str
     allowlisted_actors: tuple[str, ...]
-    display_name: str | None = None
-
-
-@dataclass(frozen=True)
-class InboxThresholds:
-    nudge_days: int = 14
-    abandon_days: int = 30
-    auto_close_days: int = 60
 
 
 @dataclass(frozen=True)
 class DecisionInboxConfig:
     repository: str | None = None  # falls back to projects.governance_repo
-    thresholds: InboxThresholds = field(default_factory=InboxThresholds)
 
 
 @dataclass(frozen=True)
@@ -57,12 +48,18 @@ class BreakGlassConfig:
 class RepoOverride:
     """Per-repo overrides keyed by ``owner/name`` in ``projects.repo_overrides``.
 
-    Currently only ``required_checks`` (R1): the named CI checks that MUST be
-    present + green on a PR head for C2/L2 to pass in this repo. ``None`` means
-    "no per-repo override" → fall back to the global ``env.required_checks``.
+    - ``required_checks`` (R1): the named CI checks that MUST be present +
+      green on a PR head for C2/L2 to pass in this repo. ``None`` means "no
+      per-repo override" → fall back to the global ``env.required_checks``.
+    - ``expected_check_publisher``: the GitHub App slug that must have
+      published a required check for it to count as green in this repo (C2
+      publisher trust). ``None`` → fall back to the global
+      ``env.expected_check_publisher``, then to the built-in default
+      (``github-actions``).
     """
 
     required_checks: tuple[str, ...] | None = None
+    expected_check_publisher: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +97,19 @@ class ProjectsConfig:
             return override.required_checks
         return global_default
 
+    def effective_expected_check_publisher(
+        self, full_name: str, global_default: str | None = None
+    ) -> str | None:
+        """C2 publisher trust: per-repo override > env default > None.
+
+        ``None`` tells the caller to use the built-in default publisher
+        (``validator_ci_green.DEFAULT_CHECK_PUBLISHER``).
+        """
+        override = self.repo_overrides.get(full_name)
+        if override is not None and override.expected_check_publisher is not None:
+            return override.expected_check_publisher
+        return global_default
+
 
 @dataclass(frozen=True)
 class EnvConfig:
@@ -111,6 +121,11 @@ class EnvConfig:
     # Empty = today's behavior (all completed checks must succeed). A per-repo
     # ``projects.repo_overrides[<repo>].required_checks`` overrides this.
     required_checks: tuple[str, ...] = ()
+    # C2 publisher trust: the GitHub App slug that must have published a
+    # required check for it to count as green. Unset (None) → the built-in
+    # default ``github-actions``. A per-repo
+    # ``projects.repo_overrides[<repo>].expected_check_publisher`` overrides this.
+    expected_check_publisher: str | None = None
 
 
 @dataclass(frozen=True)
@@ -130,7 +145,6 @@ class AgentRegistry:
 
     tools: tuple[str, ...]
     models: dict[str, tuple[str, ...]]   # tool -> accepted models (or ("*",))
-    machines: tuple[str, ...] = ()
 
     def model_allowed(self, tool: str, model: str | None) -> bool:
         """Return True if (tool, model) is in the registry (or wildcard '*')."""
@@ -176,17 +190,12 @@ def _validate(data: dict, schema_path: Path) -> None:
 
 
 def _build_decision_inbox(raw: dict) -> DecisionInboxConfig:
+    """Parse ``projects.decision_inbox``. Only ``repository`` is read; the
+    legacy ``thresholds`` keys (nudge/abandon/auto_close days) configured an
+    inbox lifecycle that was never implemented and are ignored if present."""
     if not raw:
         return DecisionInboxConfig()
-    thresholds_raw = raw.get("thresholds") or {}
-    return DecisionInboxConfig(
-        repository=raw.get("repository"),
-        thresholds=InboxThresholds(
-            nudge_days=int(thresholds_raw.get("nudge_days", 14)),
-            abandon_days=int(thresholds_raw.get("abandon_days", 30)),
-            auto_close_days=int(thresholds_raw.get("auto_close_days", 60)),
-        ),
-    )
+    return DecisionInboxConfig(repository=raw.get("repository"))
 
 
 def _build_break_glass(raw: dict) -> BreakGlassConfig:
@@ -213,11 +222,15 @@ def _build_repo_overrides(raw: dict) -> dict[str, RepoOverride]:
         rc = entry.get("required_checks")
         out[full_name] = RepoOverride(
             required_checks=tuple(rc) if rc is not None else None,
+            expected_check_publisher=entry.get("expected_check_publisher"),
         )
     return out
 
 
 def _build_agent_registry(raw: dict) -> AgentRegistry | None:
+    """Parse ``agent_registry.yml``. The legacy ``machines`` key is ignored if
+    present — it was loaded but never consumed (the L4 gate deliberately does
+    not hard-block unknown machine handles)."""
     if not raw:
         return None
     tools = tuple(raw.get("tools") or ())
@@ -225,8 +238,7 @@ def _build_agent_registry(raw: dict) -> AgentRegistry | None:
     models = {
         tool: tuple(models_raw.get(tool, ("*",))) for tool in tools
     }
-    machines = tuple(raw.get("machines") or ())
-    return AgentRegistry(tools=tools, models=models, machines=machines)
+    return AgentRegistry(tools=tools, models=models)
 
 
 def load_config(
@@ -257,7 +269,6 @@ def load_config(
             allowlisted_actors=tuple(
                 owner_data.get("allowlisted_actors", [owner_data["github_login"]])
             ),
-            display_name=owner_data.get("display_name"),
         ),
         projects=ProjectsConfig(
             governance_repo=projects_data["governance_repo"],
@@ -276,6 +287,7 @@ def load_config(
             bot_app_slug=env_data["bot_app_slug"],
             allow_no_ci=bool(env_data.get("allow_no_ci", False)),
             required_checks=tuple(env_data.get("required_checks", [])),
+            expected_check_publisher=env_data.get("expected_check_publisher"),
         ),
         skills=SkillsConfig(
             enabled=tuple(skills_data.get("enabled", [])),

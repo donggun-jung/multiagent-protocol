@@ -5,5 +5,3 @@ github_login: your-github-login
 # allowlisted_actors:
 #   - your-github-login
 #   - your-trusted-reviewer
-
-display_name: Your Name
