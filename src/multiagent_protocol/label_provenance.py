@@ -8,28 +8,36 @@ unreviewed code. A label is honoured only when it was
   (a) **currently present** on the PR (not since removed),
   (b) **applied by an allowlisted actor or the bot's App user** (via the
       timeline ``labeled`` event — not merely present), and
-  (c) **bound to the current head commit**, established one of two ways:
+  (c) **bound to the current head commit**:
 
-      - **SHA receipt (authoritative).** When the bot applies an approval
-        label it also posts a receipt comment on the PR embedding the exact
-        head SHA the approval was granted against (see
-        :func:`approval_receipt_comment`; the same idea as the inbox issue's
-        ``<!-- decision-inbox-head-sha -->`` marker). When a receipt exists
-        for a label, the label is honoured **only if** the recorded SHA
-        equals the current head SHA — any new commit (including a backdated
-        one) voids the approval until re-approved.
-      - **Freshness by time (fallback, hand-applied labels only).** With no
-        receipt — e.g. the owner applied the label by hand — the label's
-        ``labeled`` event must be at or after the head commit's committer
-        date. Commit timestamps are attacker-controlled, so this path is
-        weaker; as extra safety a head committer date in the future or
-        implausibly far in the past is treated as unverifiable.
+      - **SHA receipt (REQUIRED for the gate-opening labels).** The bot posts
+        a receipt comment on the PR embedding the exact head SHA a label was
+        recorded against (see :func:`approval_receipt_comment`; the same idea
+        as the inbox issue's ``<!-- decision-inbox-head-sha -->`` marker).
+        The labels in :data:`RECEIPT_ELIGIBLE_LABELS` (``decision:approved-A``,
+        ``decision:approved-B``, ``ready-to-merge``) are honoured **only**
+        while a receipt exists whose recorded SHA equals the current head SHA.
+        No receipt → not honoured; any new commit — including one with a
+        backdated committer timestamp — voids the binding. There is NO
+        time-based fallback for these labels: committer dates are
+        client-supplied and a backdated head must never resurrect a stale
+        approval. Receipts are written by the Decision Inbox flow
+        (``decision_inbox.resolve_open_issues``) and by the runtime's receipt
+        writer, which converts an allowlisted hand-applied label into a
+        head-bound receipt (:func:`labels_needing_receipt`).
+      - **Freshness by time (non-receipt labels only).** A label outside the
+        receipt-eligible set (today: ``decision:auto-revert``) falls back to
+        requiring its ``labeled`` event at or after the head commit's
+        committer date. Commit timestamps are attacker-controlled, so this
+        path is weaker; a head committer date in the future, implausibly far
+        in the past, or unparseable is treated as unverifiable.
 
-When freshness cannot be established (no head-commit date, an implausible
-head-commit date, or an event with no timestamp) this fails **closed**
-(returns False). C3 (owner approval), C1's staleness veto, and the
-auto-revert classifier all use this so every "label → gate downgrade" door is
-guarded identically.
+When freshness cannot be established (no head-commit date, an implausible or
+unparseable head-commit date, an event with a missing/garbage timestamp, or a
+missing receipt for a receipt-eligible label) this fails **closed** (returns
+False). C3 (owner approval), C1's staleness veto, and the auto-revert
+classifier all use this so every "label → gate downgrade" door is guarded
+identically.
 """
 
 from __future__ import annotations
@@ -52,6 +60,27 @@ HEAD_DATE_MAX_AGE = timedelta(days=3650)
 # to one head SHA.
 APPROVAL_RECEIPT_LABEL_MARKER = "<!-- merge-gate-approval-label:"
 APPROVAL_RECEIPT_SHA_MARKER = "<!-- merge-gate-approved-head-sha:"
+
+# The gate-opening labels that are honoured ONLY through a bot SHA receipt
+# bound to the current head (no time-based fallback). Mirrors
+# ``validator_owner_approval.APPROVAL_LABELS`` + ``validator_ready_to_merge.
+# READY_LABEL`` (literals duplicated to keep this module dependency-free; a
+# doctrine test pins them equal).
+RECEIPT_ELIGIBLE_LABELS = frozenset({
+    "decision:approved-A",
+    "decision:approved-B",
+    "ready-to-merge",
+})
+
+# Of the receipt-eligible labels, the only one the runtime may RE-bind to a
+# new head after its receipt went stale — and only on proof of fresh owner
+# intent (a trusted ``labeled`` event NEWER than the bot's latest receipt
+# comment; both timestamps are server-assigned, unlike committer dates).
+# ``decision:approved-*`` receipts are deliberately NOT re-bindable here:
+# superseding a stale approval is the Decision Inbox's job, where the owner
+# re-approves against a verified head. Auto-re-binding an approval would be
+# auto-re-approval of unreviewed code.
+REBINDABLE_LABELS = frozenset({"ready-to-merge"})
 
 
 def head_commit_date(pr_context: PRContext) -> str | None:
@@ -124,20 +153,16 @@ def approval_receipt_comment(label: str, head_sha: str) -> str:
     )
 
 
-def approval_receipts(
-    comments: Iterable[dict], bot_user: str | None
-) -> dict[str, str]:
-    """Parse ``{label: approved_head_sha}`` from the bot's receipt comments.
+def _iter_receipt_comments(comments: Iterable[dict], bot_user: str | None):
+    """Yield ``(label, sha, comment_created_at)`` per bot-authored receipt.
 
     Only comments **authored by the bot's own App user** are read — receipts
     are written exclusively by the bot, so a marker in anyone else's comment
-    is a forgery attempt and is ignored. The latest receipt per label wins
-    (re-approval after a head change supersedes the old binding). With no
-    ``bot_user`` no comment can be authenticated → no receipts.
+    is a forgery attempt and is ignored. With no ``bot_user`` no comment can
+    be authenticated → nothing is yielded.
     """
-    receipts: dict[str, str] = {}
     if not bot_user:
-        return receipts
+        return
     for c in comments:
         if ((c.get("user") or {}).get("login")) != bot_user:
             continue
@@ -155,8 +180,37 @@ def approval_receipts(
                     .removesuffix("-->").strip()
                 )
         if label and sha:
-            receipts[label] = sha
-    return receipts
+            yield label, sha, c.get("created_at")
+
+
+def approval_receipts(
+    comments: Iterable[dict], bot_user: str | None
+) -> dict[str, str]:
+    """Parse ``{label: approved_head_sha}`` from the bot's receipt comments.
+
+    The latest receipt per label wins (re-approval after a head change
+    supersedes the old binding). See :func:`_iter_receipt_comments` for the
+    author-authentication rules.
+    """
+    return {label: sha for label, sha, _ in _iter_receipt_comments(comments, bot_user)}
+
+
+def approval_receipt_times(
+    comments: Iterable[dict], bot_user: str | None
+) -> dict[str, str]:
+    """``{label: created_at}`` of the bot's LATEST receipt comment per label.
+
+    The comment's ``created_at`` is **server-assigned** by GitHub (unlike a
+    commit's committer date, it cannot be forged by a PR author). It is used
+    by :func:`labels_needing_receipt` to decide whether the owner re-applied
+    a label AFTER the bot's last binding — the proof of fresh intent a
+    re-bind requires. A receipt comment without a usable timestamp simply
+    yields no entry (the re-bind then fails closed).
+    """
+    times: dict[str, str] = {}
+    for label, _sha, created_at in _iter_receipt_comments(comments, bot_user):
+        times[label] = created_at if isinstance(created_at, str) else ""
+    return times
 
 
 def has_verified_label(
@@ -171,11 +225,16 @@ def has_verified_label(
     """True iff one of ``labels`` is present + trusted-applier + head-bound.
 
     ``approved_shas`` maps label name → the head SHA the bot recorded the
-    approval against (from :func:`approval_receipts`). A label with a receipt
-    is honoured **only** when the recorded SHA equals the current head SHA —
-    the time-based fallback never applies to it (a backdated commit must not
-    resurrect a stale approval). A label without a receipt falls back to the
-    at-or-after-head time check, hardened by :func:`plausible_head_date`.
+    label against (from :func:`approval_receipts`). A label with a receipt is
+    honoured **only** when the recorded SHA equals the current head SHA.
+
+    A label in :data:`RECEIPT_ELIGIBLE_LABELS` is NEVER honoured without a
+    receipt — there is no time-based fallback for the gate-opening labels (a
+    backdated commit must not resurrect a stale approval; the runtime's
+    receipt writer converts a fresh allowlisted hand-applied label into a
+    receipt, honoured from the next tick). Only a non-receipt label (today:
+    ``decision:auto-revert``) falls back to the at-or-after-head time check,
+    hardened by :func:`plausible_head_date` and strict timestamp parsing.
     """
     label_set = set(labels)
     hdate = head_commit_date(pr_context)
@@ -195,6 +254,8 @@ def has_verified_label(
             if bound == pr_context.head_sha:
                 return True
             continue  # recorded against a different head → void until re-approved
+        if event.label in RECEIPT_ELIGIBLE_LABELS:
+            continue  # gate-opening label without a receipt → never honoured
         event_dt = _parse_date(event.created_at)
         if head_dt is None or event_dt is None:
             continue  # freshness unverifiable (absent/garbage timestamp) → fail closed
@@ -202,3 +263,73 @@ def has_verified_label(
             continue  # applied before the current head → force-push voided it
         return True
     return False
+
+
+def labels_needing_receipt(
+    pr_context: PRContext,
+    allowlisted_actors: tuple[str, ...],
+    bot_user: str | None,
+    *,
+    approved_shas: Mapping[str, str],
+    receipt_times: Mapping[str, str] | None = None,
+    now: datetime | None = None,
+) -> tuple[str, ...]:
+    """Receipt-eligible labels the bot should bind to the CURRENT head now.
+
+    Receipt-eligible labels are honoured only through a bot SHA receipt
+    (:func:`has_verified_label`), so a label the owner applied BY HAND would
+    otherwise be dead. This decides which hand-applied labels the runtime
+    converts into receipts; the runtime then posts
+    :func:`approval_receipt_comment` for each and never honours a label on
+    the tick its receipt is first written.
+
+    A label qualifies only when ALL hold (each check fails closed):
+
+    - it is **currently present**, with a timeline ``labeled`` event by an
+      allowlisted actor or the bot (the same trusted-applier rule as
+      :func:`has_verified_label`);
+    - that event is **at or after** the head commit's committer date, with
+      the head date plausible and every timestamp parseable — a label that
+      predates the current head is stale and is never silently bound (for an
+      approval label, C3 then routes the PR to the Decision Inbox instead);
+    - it has **no receipt yet** (first bind), or — for
+      :data:`REBINDABLE_LABELS` only — its receipt is stale (older head) AND
+      the trusted label event is strictly NEWER than the bot's latest receipt
+      comment for it (server-assigned timestamps on both sides), i.e. the
+      owner re-applied the label after the last binding. Approval labels are
+      never re-bound here: a stale approval is superseded only by a fresh
+      Decision Inbox approval against a verified head.
+    """
+    receipt_times = receipt_times or {}
+    hdate = head_commit_date(pr_context)
+    head_dt = _parse_date(hdate)
+    if head_dt is None or not plausible_head_date(hdate, now):
+        return ()  # head unverifiable → bind nothing (fail closed)
+    out: list[str] = []
+    for label in sorted(RECEIPT_ELIGIBLE_LABELS):
+        if label not in pr_context.labels:
+            continue
+        bound = approved_shas.get(label)
+        if bound == pr_context.head_sha:
+            continue  # already bound to the current head
+        min_event_dt = None
+        if bound is not None:  # a stale receipt exists
+            if label not in REBINDABLE_LABELS:
+                continue  # approvals: only the inbox may supersede a receipt
+            min_event_dt = _parse_date(receipt_times.get(label))
+            if min_event_dt is None:
+                continue  # cannot prove a re-apply postdates the binding
+        for event in pr_context.label_events:
+            if event.label != label:
+                continue
+            actor = event.actor_login
+            if actor is None or (actor not in allowlisted_actors and actor != bot_user):
+                continue
+            event_dt = _parse_date(event.created_at)
+            if event_dt is None or event_dt < head_dt:
+                continue
+            if min_event_dt is not None and event_dt <= min_event_dt:
+                continue  # re-bind needs owner intent NEWER than the receipt
+            out.append(label)
+            break
+    return tuple(out)

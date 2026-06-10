@@ -24,12 +24,14 @@ new, unreviewed code). C3 therefore re-derives the approval from the timeline:
 - **Who applied it** — only an allowlisted actor or the bot's own App user
   (``<bot_app_slug>[bot]``). A self-applied label from anyone else is ignored,
   mirroring C1's actor check on ``ready-to-merge``.
-- **Against which head** — when the bot recorded the approval it also posted a
-  SHA receipt (:mod:`multiagent_protocol.label_provenance`); such an approval
-  is honoured only while the recorded SHA **equals the current head SHA**, so
-  any new commit — even one with a backdated committer timestamp — voids it.
-  A hand-applied label without a receipt falls back to the weaker time check
-  (``labeled`` event at or after the head commit, with committer-date sanity).
+- **Against which head** — an approval label is honoured ONLY through the
+  bot's SHA receipt (:mod:`multiagent_protocol.label_provenance`) and only
+  while the recorded SHA **equals the current head SHA**, so any new commit —
+  even one with a backdated committer timestamp — voids it until re-approved
+  via the Decision Inbox. There is NO time-based fallback: a hand-applied
+  label without a receipt is not honoured directly; instead the runtime's
+  receipt writer converts a fresh allowlisted hand-applied label into a
+  head-bound receipt, honoured from the NEXT tick (one-tick confirmation).
 
 The classifier auto-approval path (Quadrant A/B/C) is unconditional and does
 not touch labels.
@@ -93,7 +95,8 @@ class OwnerApprovalValidator:
             f"C3: owner approval missing (quadrant={quadrant_str}). "
             f"Either the classifier must vote A/B/C, or an allowlisted actor "
             f"must approve via the Decision Inbox (👍 / `/approve [A|B]`) "
-            f"against the current head. A bare `decision:approved-*` label is "
-            f"not honoured unless it is bound to the current head commit "
-            f"(bot SHA receipt, or owner-applied at/after the head)."
+            f"against the current head. A `decision:approved-*` label is "
+            f"honoured only via the bot's SHA receipt binding it to the "
+            f"current head commit (a fresh hand-applied label is receipted "
+            f"by the bot and honoured one tick later)."
         )

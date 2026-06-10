@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from multiagent_protocol.label_provenance import has_verified_label
+from multiagent_protocol.label_provenance import (
+    REBINDABLE_LABELS,
+    RECEIPT_ELIGIBLE_LABELS,
+    has_verified_label,
+    labels_needing_receipt,
+)
 from multiagent_protocol.skills.builtin.classifier_auto_revert import (
     AutoRevertClassifier,
 )
@@ -49,13 +54,21 @@ def test_owner_approval_passes_when_classifier_c(pr_factory):
 
 
 # -- Owner approval: Quadrant-D label path (verified) --
+#
+# Receipt-required contract (vNext hardening): an approval label opens C3
+# ONLY together with the bot's SHA receipt binding it to the current head.
+# These two positive tests therefore carry a matching receipt — the old
+# receipt-less variants relied on the removed committer-date fallback.
 
 def test_owner_approval_passes_with_owner_applied_label(pr_factory):
     pr = pr_factory(
         labels=("decision:approved-A",), commits=(_commit(),),
         label_events=(_approval_event(),),
     )
-    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    v = OwnerApprovalValidator(
+        classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:approved-A": "h" * 40},
+    )
     assert v.check(pr).passed
 
 
@@ -64,7 +77,10 @@ def test_owner_approval_passes_with_bot_applied_label(pr_factory):
         labels=("decision:approved-B",), commits=(_commit(),),
         label_events=(_approval_event("decision:approved-B", actor=BOT),),
     )
-    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    v = OwnerApprovalValidator(
+        classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:approved-B": "h" * 40},
+    )
     assert v.check(pr).passed
 
 
@@ -130,8 +146,13 @@ def test_owner_approval_rejects_stale_label_after_forcepush(pr_factory):
     assert not v.check(pr).passed
 
 
-def test_owner_approval_passes_when_approval_after_head(pr_factory):
-    # Approval applied at 00:05, head commit at 00:00 → fresh → valid.
+def test_owner_approval_without_receipt_not_honored_even_when_time_fresh(pr_factory):
+    # THE case that previously slipped through: no receipt, and the head's
+    # committer date (00:00) is BACKDATED to before the approval event
+    # (00:05), so the old time-based fallback saw a "fresh" approval and
+    # honoured it. Committer dates are client-supplied — a force-pushed head
+    # can always be backdated. The receipt-required contract closes this:
+    # an approval label with no receipt is NEVER honoured, dates be damned.
     pr = pr_factory(
         labels=("decision:approved-A",),
         head_sha="h" * 40,
@@ -139,7 +160,13 @@ def test_owner_approval_passes_when_approval_after_head(pr_factory):
         label_events=(_approval_event(at="2026-05-25T00:05:00Z"),),
     )
     v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
-    assert v.check(pr).passed
+    assert not v.check(pr).passed
+    # Same with an explicitly empty receipt map (the runtime always passes one).
+    v2 = OwnerApprovalValidator(
+        classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={},
+    )
+    assert not v2.check(pr).passed
 
 
 def test_owner_approval_rejects_label_present_without_event(pr_factory):
@@ -227,6 +254,11 @@ def test_owner_approval_receipt_does_not_bless_untrusted_applier(pr_factory):
 
 
 # -- Time-path extra safety: head committer-date sanity (vNext hardening) --
+#
+# The time-based path now serves ONLY non-receipt labels (decision:auto-revert);
+# an approval label short-circuits on the missing receipt before any date is
+# read. These tests therefore exercise the auto-revert label so the head-date
+# sanity checks stay covered on the path that actually runs them.
 
 def test_time_path_fails_closed_on_future_head_date(pr_factory):
     # No receipt; the head committer date is in the future (beyond clock
@@ -234,12 +266,12 @@ def test_time_path_fails_closed_on_future_head_date(pr_factory):
     # is garbage → treat as unverifiable → fail closed.
     now = datetime(2026, 5, 25, 0, 10, tzinfo=timezone.utc)
     pr = pr_factory(
-        labels=("decision:approved-A",), head_sha="h" * 40,
+        labels=("decision:auto-revert",), head_sha="h" * 40,
         commits=(_commit(date="2026-05-25T12:00:00Z"),),
-        label_events=(_approval_event(at="2026-05-25T13:00:00Z"),),
+        label_events=(_approval_event("decision:auto-revert", at="2026-05-25T13:00:00Z"),),
     )
     assert not has_verified_label(
-        pr, ("decision:approved-A",), OWNER, BOT, now=now
+        pr, ("decision:auto-revert",), OWNER, BOT, now=now
     )
 
 
@@ -248,22 +280,22 @@ def test_time_path_fails_closed_on_implausibly_old_head_date(pr_factory):
     # epoch-style backdating) → unverifiable → fail closed.
     now = datetime(2026, 5, 25, 0, 0, tzinfo=timezone.utc)
     pr = pr_factory(
-        labels=("decision:approved-A",), head_sha="h" * 40,
+        labels=("decision:auto-revert",), head_sha="h" * 40,
         commits=(_commit(date="2001-01-01T00:00:00Z"),),
-        label_events=(_approval_event(at="2026-05-25T00:05:00Z"),),
+        label_events=(_approval_event("decision:auto-revert", at="2026-05-25T00:05:00Z"),),
     )
     assert not has_verified_label(
-        pr, ("decision:approved-A",), OWNER, BOT, now=now
+        pr, ("decision:auto-revert",), OWNER, BOT, now=now
     )
 
 
 def test_time_path_fails_closed_on_unparseable_head_date(pr_factory):
     pr = pr_factory(
-        labels=("decision:approved-A",), head_sha="h" * 40,
+        labels=("decision:auto-revert",), head_sha="h" * 40,
         commits=(_commit(date="not-a-date"),),
-        label_events=(_approval_event(at="2026-05-25T00:05:00Z"),),
+        label_events=(_approval_event("decision:auto-revert", at="2026-05-25T00:05:00Z"),),
     )
-    assert not has_verified_label(pr, ("decision:approved-A",), OWNER, BOT)
+    assert not has_verified_label(pr, ("decision:auto-revert",), OWNER, BOT)
 
 
 def test_receipt_binding_is_date_independent(pr_factory):
@@ -314,6 +346,130 @@ def test_time_path_fails_closed_on_unparseable_event_timestamp(pr_factory):
         ),
     )
     assert not has_verified_label(pr, ("decision:auto-revert",), OWNER, BOT)
+
+
+# -- Receipt writer decision: labels_needing_receipt (vNext hardening) --
+
+def test_receipt_eligible_set_matches_validator_constants():
+    # The literals in label_provenance must track the validators' constants.
+    from multiagent_protocol.skills.builtin.validator_owner_approval import (
+        APPROVAL_LABELS,
+    )
+    from multiagent_protocol.skills.builtin.validator_ready_to_merge import (
+        READY_LABEL,
+    )
+    assert RECEIPT_ELIGIBLE_LABELS == set(APPROVAL_LABELS) | {READY_LABEL}
+    assert REBINDABLE_LABELS == {READY_LABEL}
+    assert REBINDABLE_LABELS <= RECEIPT_ELIGIBLE_LABELS
+
+
+def _hand_applied_pr(pr_factory, labels, *, actor="owner",
+                     head_date="2026-05-25T00:00:00Z",
+                     event_at="2026-05-25T00:05:00Z"):
+    return pr_factory(
+        labels=labels, head_sha="h" * 40,
+        commits=(_commit(date=head_date),),
+        label_events=tuple(
+            _approval_event(lb, actor=actor, at=event_at) for lb in labels
+        ),
+    )
+
+
+def test_first_bind_for_fresh_allowlisted_labels(pr_factory):
+    pr = _hand_applied_pr(pr_factory, ("decision:approved-A", "ready-to-merge"))
+    out = labels_needing_receipt(pr, OWNER, BOT, approved_shas={})
+    assert out == ("decision:approved-A", "ready-to-merge")  # sorted
+
+
+def test_no_receipt_for_non_allowlisted_applier(pr_factory):
+    pr = _hand_applied_pr(
+        pr_factory, ("decision:approved-A", "ready-to-merge"), actor="mallory")
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
+
+
+def test_no_receipt_for_stale_label_event(pr_factory):
+    # The label PREDATES the current head (force-push after labeling) → the
+    # bot never silently binds it to code the labeler did not see.
+    pr = _hand_applied_pr(
+        pr_factory, ("decision:approved-A",),
+        head_date="2026-05-25T00:10:00Z", event_at="2026-05-25T00:00:00Z")
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
+
+
+def test_no_receipt_when_already_bound_to_current_head(pr_factory):
+    pr = _hand_applied_pr(pr_factory, ("decision:approved-A",))
+    assert labels_needing_receipt(
+        pr, OWNER, BOT, approved_shas={"decision:approved-A": "h" * 40}) == ()
+
+
+def test_stale_approval_receipt_is_never_rebound(pr_factory):
+    # An approval receipt bound to an OLD head is superseded only via the
+    # Decision Inbox — the writer must not auto-re-approve unreviewed code.
+    pr = _hand_applied_pr(pr_factory, ("decision:approved-A",))
+    assert labels_needing_receipt(
+        pr, OWNER, BOT,
+        approved_shas={"decision:approved-A": SHA1},
+        receipt_times={"decision:approved-A": "2026-05-25T00:01:00Z"},
+    ) == ()
+
+
+def test_stale_ready_receipt_rebinds_on_fresh_owner_event(pr_factory):
+    # ready-to-merge re-binds ONLY on proof of fresh owner intent: a trusted
+    # labeled event strictly newer than the bot's last receipt comment.
+    pr = _hand_applied_pr(
+        pr_factory, ("ready-to-merge",), event_at="2026-05-25T00:30:00Z")
+    assert labels_needing_receipt(
+        pr, OWNER, BOT,
+        approved_shas={"ready-to-merge": SHA1},
+        receipt_times={"ready-to-merge": "2026-05-25T00:10:00Z"},
+    ) == ("ready-to-merge",)
+
+
+def test_stale_ready_receipt_not_rebound_without_fresh_event(pr_factory):
+    # The only ready event is at/before the receipt time → no re-apply by the
+    # owner since the binding → fail closed (no silent re-bind).
+    pr = _hand_applied_pr(
+        pr_factory, ("ready-to-merge",), event_at="2026-05-25T00:10:00Z")
+    assert labels_needing_receipt(
+        pr, OWNER, BOT,
+        approved_shas={"ready-to-merge": SHA1},
+        receipt_times={"ready-to-merge": "2026-05-25T00:10:00Z"},
+    ) == ()
+
+
+def test_stale_ready_receipt_not_rebound_without_receipt_time(pr_factory):
+    # The receipt's comment timestamp is missing/garbage → cannot prove the
+    # re-apply postdates the binding → fail closed.
+    pr = _hand_applied_pr(
+        pr_factory, ("ready-to-merge",), event_at="2026-05-25T00:30:00Z")
+    assert labels_needing_receipt(
+        pr, OWNER, BOT, approved_shas={"ready-to-merge": SHA1},
+        receipt_times={},
+    ) == ()
+    assert labels_needing_receipt(
+        pr, OWNER, BOT, approved_shas={"ready-to-merge": SHA1},
+        receipt_times={"ready-to-merge": "garbage"},
+    ) == ()
+
+
+def test_no_receipt_when_head_date_unverifiable(pr_factory):
+    # Unparseable or implausible head committer date → bind nothing.
+    pr = _hand_applied_pr(
+        pr_factory, ("decision:approved-A",), head_date="not-a-date")
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
+    future = _hand_applied_pr(
+        pr_factory, ("decision:approved-A",),
+        head_date="2026-05-25T12:00:00Z", event_at="2026-05-25T13:00:00Z")
+    assert labels_needing_receipt(
+        future, OWNER, BOT, approved_shas={},
+        now=datetime(2026, 5, 25, 0, 0, tzinfo=timezone.utc),
+    ) == ()
+
+
+def test_no_receipt_for_unparseable_event_timestamp(pr_factory):
+    pr = _hand_applied_pr(
+        pr_factory, ("decision:approved-A",), event_at="yesterday")
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
 
 
 # -- Auto-revert classifier (provenance-checked, like C3) --

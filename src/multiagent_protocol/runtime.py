@@ -27,7 +27,12 @@ from multiagent_protocol.decision_inbox import (
     parse_pr_ref,
 )
 from multiagent_protocol.github_api import GitHubAPI
-from multiagent_protocol.label_provenance import approval_receipts
+from multiagent_protocol.label_provenance import (
+    approval_receipt_comment,
+    approval_receipt_times,
+    approval_receipts,
+    labels_needing_receipt,
+)
 from multiagent_protocol.pr_validator import (
     build_pr_context,
     evaluate_pr,
@@ -69,6 +74,7 @@ from multiagent_protocol.skills.builtin.validator_classifier_publisher import (
     ClassifierPublisherValidator,
 )
 from multiagent_protocol.skills.builtin.validator_owner_approval import (
+    APPROVAL_LABELS,
     OwnerApprovalValidator,
 )
 from multiagent_protocol.skills.builtin.validator_ready_to_merge import (
@@ -451,11 +457,40 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
             full, ctx.number, "skipped", "?", "approval receipts unavailable"
         )
     approved_shas = approval_receipts(pr_comments, runtime.bot_user)
+    receipt_times = approval_receipt_times(pr_comments, runtime.bot_user)
     for r in runtime.classifier_rules:
         if r.name == "classifier_auto_revert":
             r.approved_shas = approved_shas
 
     verdict = classify(ctx, runtime.classifier_rules, audit_log_path)
+
+    # Receipt writer: receipt-eligible labels are honoured ONLY through a bot
+    # SHA receipt (label_provenance), so an allowlisted HAND-applied label is
+    # converted into a receipt binding it to the current head. The rest of
+    # this tick keeps evaluating against the receipts as they were at the
+    # START of the tick (``approved_shas`` is not updated), and a freshly
+    # receipted APPROVAL label additionally defers the whole PR one tick — a
+    # label is never honoured on the tick its receipt is first written, which
+    # gives the owner a confirmation window (the receipt comment names the
+    # exact bound SHA) before a hand-applied approval can merge. A label
+    # applied by a non-allowlisted actor never gets a receipt.
+    to_record = labels_needing_receipt(
+        ctx, config.owner.allowlisted_actors, runtime.bot_user,
+        approved_shas=approved_shas, receipt_times=receipt_times,
+    )
+    for label in to_record:
+        api.post_comment(
+            ctx.repo_owner, ctx.repo_name, ctx.number,
+            approval_receipt_comment(label, ctx.head_sha),
+        )
+    newly_receipted_approvals = [lb for lb in to_record if lb in APPROVAL_LABELS]
+    if newly_receipted_approvals:
+        return PRDecision(
+            full, ctx.number, "skipped", verdict.quadrant,
+            f"recorded approval receipt for "
+            f"{', '.join(newly_receipted_approvals)} at the current head; "
+            f"honoured next tick if the head is unchanged",
+        )
 
     # R1: resolve this repo's effective required_checks (per-repo override >
     # global env default > ()) and apply it to the CiGreen validator before L1.

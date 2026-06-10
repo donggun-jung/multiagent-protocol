@@ -7,12 +7,15 @@ The "applied by allowlisted actor" check uses the LabelEvent history attached
 to the PR; the bot reads only label-add events authored by users in
 ``config.owner.allowlisted_actors``.
 
-**SHA staleness veto.** When the bot recorded the ready label it also posted
-a SHA receipt (:mod:`multiagent_protocol.label_provenance`) binding it to the
-exact head commit. If such a receipt exists and the PR head has since moved,
-the label is stale and C1 fails until the label is re-recorded against the
-new head — commit timestamps play no part, so a backdated commit cannot keep
-a stale ready label alive.
+**SHA staleness veto.** When the bot records the ready label it also posts a
+SHA receipt (:mod:`multiagent_protocol.label_provenance`) binding it to the
+exact head commit — the runtime's receipt writer does this the first time it
+sees an allowlisted-applied ready label, so the binding is active for every
+gated PR. If the PR head then moves, the label is stale and C1 fails until
+the label is re-bound against the new head (the owner re-applies
+``ready-to-merge``; the bot re-binds on proof of that fresh intent and
+honours it one tick later) — commit timestamps play no part, so a backdated
+commit cannot keep a stale ready label alive.
 """
 
 from __future__ import annotations
