@@ -26,6 +26,25 @@ logger = logging.getLogger(__name__)
 
 PENDING_LABEL = "decision:pending-owner"
 
+# One-time tamper marker (resolve_open_issues): the "head changed → prior
+# approval is void" comment is posted ONCE, then this label on the inbox
+# issue suppresses re-posting on every subsequent tick.
+STALE_APPROVAL_LABEL = "decision:stale-approval"
+
+# Poison-issue guard (resolve_open_issues): after this many consecutive
+# failures processing the same inbox issue, the issue is labelled and gets
+# one diagnostic comment so the failure surfaces to the owner.
+INBOX_ERROR_LABEL = "decision:inbox-error"
+INBOX_ERROR_THRESHOLD = 3
+
+# Consecutive per-issue failure counts, keyed (inbox owner, inbox repo,
+# issue number). Module-level so the threshold accumulates across
+# resolve_open_issues calls within one process; a stateless cron tick starts
+# fresh each run (the per-issue isolation below still protects every tick —
+# the escalation fires in longer-lived processes, or when the caller passes
+# its own persistent dict).
+_inbox_failure_counts: dict[tuple[str, str, int], int] = {}
+
 # Ballot A/B = approve (merge); C = defer (needs more info, do NOT merge);
 # reject = close. See docs/concepts/four-quadrants.md § "Quadrant D".
 Verdict = Literal["approved-A", "approved-B", "approved-C", "rejected", "deferred"]
@@ -208,11 +227,143 @@ class InboxResolution:
     action: str    # "labeled" | "closed-pr" | "tamper-skip"
 
 
+def _label_names(payload: dict) -> set[str]:
+    """The label names on an issue/PR payload (GitHub's ``labels`` list shape)."""
+    return {lbl.get("name") for lbl in (payload.get("labels") or [])}
+
+
+def _mark_inbox_error(
+    api: GitHubAPI, owner: str, repo: str, issue_number: int,
+    count: int, error: Exception,
+) -> None:
+    """Best-effort escalation for a repeatedly-failing inbox issue.
+
+    Label first (the durable marker that suppresses re-escalation), then ONE
+    diagnostic comment. Either call may itself fail on a poisoned issue —
+    that is logged; the marker is re-attempted on the next failure past the
+    threshold.
+    """
+    try:
+        api.add_label(owner, repo, issue_number, INBOX_ERROR_LABEL)
+        api.post_comment(
+            owner, repo, issue_number,
+            f"⚠️ The bot failed to process this Decision Inbox issue "
+            f"{count} times in a row (last error: `{error}`). Other inbox "
+            f"issues are unaffected; this one is skipped each tick until "
+            f"the underlying problem is fixed.",
+        )
+    except Exception as e:
+        logger.warning(
+            "inbox: could not mark issue %s/%s#%s as %s: %s",
+            owner, repo, issue_number, INBOX_ERROR_LABEL, e,
+        )
+
+
+def _resolve_issue(
+    api: GitHubAPI,
+    governance_owner: str,
+    governance_repo: str,
+    allowlisted_actors: tuple[str, ...],
+    issue: dict,
+) -> InboxResolution | None:
+    """Resolve ONE open inbox issue; ``None`` = nothing to do (yet).
+
+    May raise on an API failure — the per-issue guard in
+    :func:`resolve_open_issues` logs it and moves on to the next issue.
+    """
+    body = issue.get("body") or ""
+    issue_number = issue["number"]
+    _nonce, head_sha = parse_nonce_and_sha(body)
+    pr_ref = parse_pr_ref(body)
+    if pr_ref is None or not head_sha:
+        return None
+    pr_full_name, pr_number = pr_ref
+    pr_owner, _, pr_repo = pr_full_name.partition("/")
+
+    reactions = api.list_issue_reactions(governance_owner, governance_repo, issue_number)
+    comments = api.list_issue_comments(governance_owner, governance_repo, issue_number)
+    verdict = resolve_verdict(reactions, comments, allowlisted_actors)
+    if verdict is None:
+        return None
+
+    # Tamper guard: the PR head must still equal the SHA we asked about.
+    try:
+        pr = api.pr(pr_owner, pr_repo, pr_number)
+    except Exception as e:
+        logger.warning("inbox: could not fetch PR %s: %s", pr_full_name, e)
+        return None
+    current_head = (pr.get("head") or {}).get("sha")
+    if current_head != head_sha:
+        # One-time state transition: explain the void approval ONCE, mark the
+        # issue with the stale-approval label, and stay silent on every later
+        # tick while the marker is present (the stateless tick would otherwise
+        # re-post this comment forever). If the head ever returns to the
+        # recorded SHA, the verdict path below proceeds normally regardless of
+        # the marker.
+        if STALE_APPROVAL_LABEL in _label_names(issue):
+            return None
+        api.post_comment(
+            governance_owner, governance_repo, issue_number,
+            f"⚠️ PR head changed since this decision opened "
+            f"(`{head_sha[:7]}` → `{(current_head or '?')[:7]}`). The prior "
+            f"approval is void; the bot will re-evaluate the new head. "
+            f"Re-approve against the new head if still desired.",
+        )
+        api.add_label(
+            governance_owner, governance_repo, issue_number, STALE_APPROVAL_LABEL
+        )
+        return InboxResolution(
+            issue_number, pr_full_name, pr_number, "tampered", "tamper-skip",
+        )
+
+    if verdict == "rejected":
+        api.post_comment(
+            pr_owner, pr_repo, pr_number,
+            "Closed per Decision Inbox `/reject` (owner rejected this PR).",
+        )
+        api.close_issue(pr_owner, pr_repo, pr_number)  # PRs close via the issues endpoint
+        api.close_issue(governance_owner, governance_repo, issue_number)
+        return InboxResolution(
+            issue_number, pr_full_name, pr_number, verdict, "closed-pr",
+        )
+    if verdict == "deferred":
+        # Ballot C — defer / needs more info. Do NOT merge. Label the PR and
+        # leave the inbox issue OPEN so the owner can later flip to
+        # `/approve A|B` or `/reject`. Idempotent: skip if already deferred.
+        if "decision:deferred" in _label_names(pr):
+            return None
+        api.add_label(pr_owner, pr_repo, pr_number, "decision:deferred")
+        api.post_comment(
+            governance_owner, governance_repo, issue_number,
+            "Deferred per `/approve C` (needs more info). The PR is **not** "
+            "merged; re-decide with 👍 / `/approve [A|B]` / `/reject`.",
+        )
+        return InboxResolution(
+            issue_number, pr_full_name, pr_number, verdict, "deferred",
+        )
+    # approved-A/B → label the PR so owner_approval (C3) passes, and
+    # post the SHA receipt binding the approval to the exact head it
+    # was verified against (head_sha == current_head here). C3 honours
+    # the label only while the PR head still equals this SHA.
+    label = f"decision:{verdict}"
+    api.add_label(pr_owner, pr_repo, pr_number, label)
+    api.post_comment(
+        pr_owner, pr_repo, pr_number,
+        approval_receipt_comment(label, head_sha),
+    )
+    api.close_issue(governance_owner, governance_repo, issue_number)
+    return InboxResolution(
+        issue_number, pr_full_name, pr_number, verdict, "labeled",
+    )
+
+
 def resolve_open_issues(
     api: GitHubAPI,
     governance_owner: str,
     governance_repo: str,
     allowlisted_actors: tuple[str, ...],
+    *,
+    failure_counts: dict[tuple[str, str, int], int] | None = None,
 ) -> list[InboxResolution]:
     """Poll open ``decision:pending-owner`` issues and apply owner verdicts.
 
@@ -222,9 +373,19 @@ def resolve_open_issues(
     (so L1.C3 passes on the next tick and the PR merges) or close the PR on
     ``/reject``. The inbox issue is closed once the verdict is applied.
 
+    Poison-issue guard: each issue is processed inside its own try/except, so
+    one persistently-failing issue cannot abort inbox processing for all the
+    others. Failures are logged and counted per issue (``failure_counts``,
+    defaulting to a module-level map); after ``INBOX_ERROR_THRESHOLD``
+    consecutive failures the issue is labelled ``decision:inbox-error`` and a
+    single diagnostic comment is posted so it surfaces.
+
     Returns the list of resolutions taken (for tick metrics + logging).
     """
+    if failure_counts is None:
+        failure_counts = _inbox_failure_counts
     resolutions: list[InboxResolution] = []
+    inbox_errors = 0
     issues = api.list_issues(
         governance_owner, governance_repo, labels=PENDING_LABEL, state="open"
     )
@@ -232,81 +393,35 @@ def resolve_open_issues(
         # The issues endpoint also returns PRs; skip anything that is a PR.
         if "pull_request" in issue:
             continue
-        body = issue.get("body") or ""
         issue_number = issue["number"]
-        _nonce, head_sha = parse_nonce_and_sha(body)
-        pr_ref = parse_pr_ref(body)
-        if pr_ref is None or not head_sha:
-            continue
-        pr_full_name, pr_number = pr_ref
-        pr_owner, _, pr_repo = pr_full_name.partition("/")
-
-        reactions = api.list_issue_reactions(governance_owner, governance_repo, issue_number)
-        comments = api.list_issue_comments(governance_owner, governance_repo, issue_number)
-        verdict = resolve_verdict(reactions, comments, allowlisted_actors)
-        if verdict is None:
-            continue
-
-        # Tamper guard: the PR head must still equal the SHA we asked about.
+        key = (governance_owner, governance_repo, issue_number)
         try:
-            pr = api.pr(pr_owner, pr_repo, pr_number)
+            resolution = _resolve_issue(
+                api, governance_owner, governance_repo, allowlisted_actors, issue
+            )
         except Exception as e:
-            logger.warning("inbox: could not fetch PR %s: %s", pr_full_name, e)
+            inbox_errors += 1
+            count = failure_counts.get(key, 0) + 1
+            failure_counts[key] = count
+            logger.warning(
+                "inbox: processing issue %s/%s#%s failed (consecutive "
+                "failure %d): %s — continuing with the remaining issues",
+                governance_owner, governance_repo, issue_number, count, e,
+            )
+            if (
+                count >= INBOX_ERROR_THRESHOLD
+                and INBOX_ERROR_LABEL not in _label_names(issue)
+            ):
+                _mark_inbox_error(
+                    api, governance_owner, governance_repo, issue_number, count, e
+                )
             continue
-        current_head = (pr.get("head") or {}).get("sha")
-        if current_head != head_sha:
-            api.post_comment(
-                governance_owner, governance_repo, issue_number,
-                f"⚠️ PR head changed since this decision opened "
-                f"(`{head_sha[:7]}` → `{(current_head or '?')[:7]}`). The prior "
-                f"approval is void; the bot will re-evaluate the new head. "
-                f"Re-approve against the new head if still desired.",
-            )
-            resolutions.append(InboxResolution(
-                issue_number, pr_full_name, pr_number, "tampered", "tamper-skip",
-            ))
-            continue
+        failure_counts.pop(key, None)
+        if resolution is not None:
+            resolutions.append(resolution)
 
-        if verdict == "rejected":
-            api.post_comment(
-                pr_owner, pr_repo, pr_number,
-                "Closed per Decision Inbox `/reject` (owner rejected this PR).",
-            )
-            api.close_issue(pr_owner, pr_repo, pr_number)  # PRs close via the issues endpoint
-            api.close_issue(governance_owner, governance_repo, issue_number)
-            resolutions.append(InboxResolution(
-                issue_number, pr_full_name, pr_number, verdict, "closed-pr",
-            ))
-        elif verdict == "deferred":
-            # Ballot C — defer / needs more info. Do NOT merge. Label the PR and
-            # leave the inbox issue OPEN so the owner can later flip to
-            # `/approve A|B` or `/reject`. Idempotent: skip if already deferred.
-            pr_labels = {(lbl.get("name")) for lbl in (pr.get("labels") or [])}
-            if "decision:deferred" in pr_labels:
-                continue
-            api.add_label(pr_owner, pr_repo, pr_number, "decision:deferred")
-            api.post_comment(
-                governance_owner, governance_repo, issue_number,
-                "Deferred per `/approve C` (needs more info). The PR is **not** "
-                "merged; re-decide with 👍 / `/approve [A|B]` / `/reject`.",
-            )
-            resolutions.append(InboxResolution(
-                issue_number, pr_full_name, pr_number, verdict, "deferred",
-            ))
-        else:
-            # approved-A/B → label the PR so owner_approval (C3) passes, and
-            # post the SHA receipt binding the approval to the exact head it
-            # was verified against (head_sha == current_head here). C3 honours
-            # the label only while the PR head still equals this SHA.
-            label = f"decision:{verdict}"
-            api.add_label(pr_owner, pr_repo, pr_number, label)
-            api.post_comment(
-                pr_owner, pr_repo, pr_number,
-                approval_receipt_comment(label, head_sha),
-            )
-            api.close_issue(governance_owner, governance_repo, issue_number)
-            resolutions.append(InboxResolution(
-                issue_number, pr_full_name, pr_number, verdict, "labeled",
-            ))
-
+    if inbox_errors:
+        # Tick-level signal (greppable; main.py's metrics dict is not in scope
+        # here, so the count is surfaced via the log).
+        logger.warning("inbox: inbox_errors=%d issue(s) failed this tick", inbox_errors)
     return resolutions

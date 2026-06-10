@@ -88,6 +88,17 @@ def make_pr_context(
     )
 
 
+@pytest.fixture(autouse=True)
+def _merge_enabled_env(monkeypatch):
+    """Run the suite with the merge kill-switch ENABLED.
+
+    Production defaults to observe-only (``MERGE_GATE_MERGE_ENABLED`` unset →
+    ``process_pr`` withholds the merge). The behavioral suite predates the
+    kill-switch and asserts real merges, so tests default to enabled;
+    observe-mode tests override this per-test via monkeypatch."""
+    monkeypatch.setenv("MERGE_GATE_MERGE_ENABLED", "true")
+
+
 @pytest.fixture
 def commit_factory():
     return make_commit

@@ -11,11 +11,14 @@ cron tick runs. ``main.py`` owns no enforcement logic itself
 - :func:`build_branch_hooks` adds the per-repo hallucination resolver.
 - :func:`process_pr` runs one PR through classify → L1/L3/L4 → decision and
   performs the resulting GitHub side effect (merge / inbox issue / comment).
+  The merge itself is additionally gated by the ``MERGE_GATE_MERGE_ENABLED``
+  env var (observe-only by default; see :func:`merge_enabled`).
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -132,6 +135,20 @@ AUDIT_LABEL = {
 
 DIAGNOSTIC_PREFIX = "Merge Gate L1"
 
+# Operational kill-switch (mirrors the old bot's toggle of the same name).
+# Unless this env var is explicitly "true", process_pr runs in OBSERVE-ONLY
+# mode: everything up to the merge (classify, L1, owner-approval / inbox
+# routing, diagnostics, the L3 race guard) runs for real, but the merge itself
+# — and with it the post-merge audit issue — is withheld and recorded as an
+# "observe" decision. This lets a production deployment burn in (watch +
+# report) before it is allowed to write to main.
+MERGE_ENABLED_ENV = "MERGE_GATE_MERGE_ENABLED"
+
+
+def merge_enabled() -> bool:
+    """True iff the operator explicitly enabled real merges (default: observe-only)."""
+    return os.environ.get(MERGE_ENABLED_ENV, "false").lower() == "true"
+
 
 @dataclass
 class RuntimeSkills:
@@ -152,7 +169,7 @@ class PRDecision:
 
     full_name: str
     number: int
-    action: str        # "merged" | "inbox" | "blocked" | "race-rebased" | "skipped"
+    action: str        # "merged" | "observe" | "inbox" | "blocked" | "race-rebased" | "skipped"
     quadrant: str
     detail: str = ""
 
@@ -558,6 +575,17 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
         # main advanced past the PR base — rebase the branch, retry next tick.
         api.update_branch(ctx.repo_owner, ctx.repo_name, ctx.number)
         return PRDecision(full, ctx.number, "race-rebased", verdict.quadrant)
+
+    # Observe-only kill-switch: every gate above ran for real, but the merge
+    # is allowed only when MERGE_GATE_MERGE_ENABLED=true. In observe mode the
+    # would-be merge is recorded instead, and the post-merge audit issue is
+    # skipped with it (nothing merged, nothing to audit).
+    if not merge_enabled():
+        return PRDecision(
+            full, ctx.number, "observe", verdict.quadrant,
+            f"observe-only: would have merged as Quadrant {verdict.quadrant} "
+            f"(set {MERGE_ENABLED_ENV}=true to enable merging)",
+        )
 
     # Squash merging collapses the PR into one bot-authored commit; pass the
     # PR's Agent-* trailers as the commit body so the agent-identity audit

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import dataclasses
 
+import pytest
+
 from multiagent_protocol.label_provenance import (
     approval_receipt_comment,
     approval_receipts,
@@ -93,6 +95,72 @@ def test_no_ci_repo_merges_when_allow_no_ci(fake_api, solo_config):
                               files=[changed_file("README.md")], checks=[])
     d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
     assert d.action == "merged"
+
+
+# -- observe-only merge kill-switch (MERGE_GATE_MERGE_ENABLED) -----------------
+#
+# The conftest autouse fixture sets the flag to "true" for the whole suite
+# (the behavioral tests above assert real merges); these tests override it
+# per-test to pin the observe-only default.
+
+def test_observe_mode_default_withholds_merge(fake_api, solo_config, monkeypatch):
+    # Env unset → observe-only (the production default): an otherwise-eligible
+    # Quadrant-A PR is NOT merged; the decision records what WOULD have happened.
+    monkeypatch.delenv("MERGE_GATE_MERGE_ENABLED", raising=False)
+    pr = fake_api.register_pr(number=70, labels=("ready-to-merge",),
+                              files=[changed_file("README.md")])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "observe"
+    assert d.quadrant == "A"
+    assert "would have merged as Quadrant A" in d.detail
+    assert fake_api.merged == []
+
+
+def test_observe_mode_false_withholds_merge_and_audit(fake_api, solo_config, monkeypatch):
+    # Explicit "false" behaves like unset; a Quadrant-B merge is withheld AND
+    # its post-merge passive-audit issue is not opened either.
+    monkeypatch.setenv("MERGE_GATE_MERGE_ENABLED", "false")
+    pr = fake_api.register_pr(number=71, labels=("ready-to-merge",),
+                              files=[changed_file("src/multiagent_protocol/x.py")])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "observe"
+    assert d.quadrant == "B"
+    assert fake_api.merged == []
+    assert fake_api.issues_opened == []   # no audit issue without a merge
+
+
+def test_observe_mode_still_routes_inbox_and_blocks(fake_api, solo_config, monkeypatch):
+    # Everything BEFORE the merge runs identically in observe mode: a
+    # Quadrant-D PR still opens its Decision Inbox issue, and a label-less PR
+    # still blocks with a diagnostic comment.
+    monkeypatch.delenv("MERGE_GATE_MERGE_ENABLED", raising=False)
+    d_pr = fake_api.register_pr(number=72, labels=("ready-to-merge",),
+                                files=[changed_file("src/x.py", status="removed")])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), d_pr)
+    assert d.action == "inbox"
+    assert any("decision:pending-owner" in i["_labels"] for i in fake_api.issues_opened)
+
+    blocked_pr = fake_api.register_pr(number=73, labels=(),
+                                      files=[changed_file("README.md")])
+    d2 = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), blocked_pr)
+    assert d2.action == "blocked"
+    assert any(n == 73 for (_o, _r, n, _b) in fake_api.comments_posted)
+    assert fake_api.merged == []
+
+
+@pytest.mark.parametrize("flag", ["true", "TRUE", "True"])
+def test_merge_enabled_true_merges_and_audits(fake_api, solo_config, monkeypatch, flag):
+    # Flag explicitly true (any case) → exact pre-kill-switch behavior:
+    # merge + the Quadrant-B passive-audit issue.
+    monkeypatch.setenv("MERGE_GATE_MERGE_ENABLED", flag)
+    pr = fake_api.register_pr(number=74, labels=("ready-to-merge",),
+                              files=[changed_file("src/multiagent_protocol/x.py")])
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "merged"
+    assert d.quadrant == "B"
+    assert len(fake_api.merged) == 1
+    assert any("decision:auto-approved-critical-reversible" in i["_labels"]
+               for i in fake_api.issues_opened)
 
 
 # -- R1: required_checks threaded through process_pr (C2) ----------------------
