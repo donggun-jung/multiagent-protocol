@@ -390,6 +390,41 @@ def test_app_slug_missing_field_is_unavailable():
     assert auth.app_slug() is None
 
 
+class _CommentFetchFailsAPI(FakeAPI):
+    """FakeAPI whose PR-comment listing raises (transient API failure)."""
+
+    def list_issue_comments(self, owner, repo, number):
+        raise RuntimeError("transient API error")
+
+
+def test_comment_fetch_failure_fails_closed_no_merge(solo_config):
+    # If the PR's comments cannot be fetched, the receipts cannot be read, so
+    # NO label may be honoured this tick — the PR is skipped (it retries next
+    # tick), never merged. Previously this fell through to approved_shas={}
+    # and the weaker code paths (fail OPEN on a transient API error).
+    api = _CommentFetchFailsAPI()
+    pr = api.register_pr(
+        number=120, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")])  # Quadrant D
+    d = process_pr(api, solo_config, _rt(api, solo_config), pr)
+    assert d.action == "skipped"
+    assert "approval receipts unavailable" in d.detail
+    assert api.merged == []
+    assert api.comments_posted == []   # nothing honoured, nothing written
+    assert api.issues_opened == []     # not even routed to the inbox
+
+
+def test_comment_fetch_failure_skips_even_quadrant_a(solo_config):
+    # Fail-closed is unconditional: even a PR that would merge as Quadrant A
+    # is skipped while the receipt surface is unreadable.
+    api = _CommentFetchFailsAPI()
+    pr = api.register_pr(number=121, labels=("ready-to-merge",),
+                         files=[changed_file("README.md")])
+    d = process_pr(api, solo_config, _rt(api, solo_config), pr)
+    assert d.action == "skipped"
+    assert api.merged == []
+
+
 def test_stale_sha_receipt_blocks_merge_after_backdated_commit_e2e(fake_api, solo_config):
     # The approval was recorded at SHA1 (bot receipt). The agent then pushes
     # SHA2 with a committer date BEFORE the approval event (backdated, so the

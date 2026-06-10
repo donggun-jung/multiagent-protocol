@@ -435,11 +435,21 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     # SHA-bound approvals: the bot's own receipt comments bind each recorded
     # decision label to the exact head SHA it was granted against. Fetched
     # before classify so the auto-revert rule sees them too. A fetch failure
-    # yields no receipts (the affected labels then fail closed, never open).
+    # SKIPS this PR for the tick (fail closed): proceeding with "no receipts"
+    # would let receipt-eligible labels fall through to weaker paths — a label
+    # must never be honoured while its receipt cannot be read. The stateless
+    # tick simply retries on the next run.
     try:
         pr_comments = api.list_issue_comments(ctx.repo_owner, ctx.repo_name, ctx.number)
-    except Exception:
-        pr_comments = []
+    except Exception as e:
+        logger.warning(
+            "PR %s#%s: comment fetch failed (%s) — approval receipts "
+            "unavailable; skipping this PR until they can be read.",
+            full, ctx.number, e,
+        )
+        return PRDecision(
+            full, ctx.number, "skipped", "?", "approval receipts unavailable"
+        )
     approved_shas = approval_receipts(pr_comments, runtime.bot_user)
     for r in runtime.classifier_rules:
         if r.name == "classifier_auto_revert":
