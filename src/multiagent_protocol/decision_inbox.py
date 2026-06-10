@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from multiagent_protocol.github_api import GitHubAPI
+from multiagent_protocol.label_provenance import approval_receipt_comment
 
 logger = logging.getLogger(__name__)
 
@@ -293,8 +294,16 @@ def resolve_open_issues(
                 issue_number, pr_full_name, pr_number, verdict, "deferred",
             ))
         else:
-            # approved-A/B → label the PR so owner_approval (C3) passes.
-            api.add_label(pr_owner, pr_repo, pr_number, f"decision:{verdict}")
+            # approved-A/B → label the PR so owner_approval (C3) passes, and
+            # post the SHA receipt binding the approval to the exact head it
+            # was verified against (head_sha == current_head here). C3 honours
+            # the label only while the PR head still equals this SHA.
+            label = f"decision:{verdict}"
+            api.add_label(pr_owner, pr_repo, pr_number, label)
+            api.post_comment(
+                pr_owner, pr_repo, pr_number,
+                approval_receipt_comment(label, head_sha),
+            )
             api.close_issue(governance_owner, governance_repo, issue_number)
             resolutions.append(InboxResolution(
                 issue_number, pr_full_name, pr_number, verdict, "labeled",

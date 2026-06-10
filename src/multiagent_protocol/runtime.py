@@ -27,6 +27,7 @@ from multiagent_protocol.decision_inbox import (
     parse_pr_ref,
 )
 from multiagent_protocol.github_api import GitHubAPI
+from multiagent_protocol.label_provenance import approval_receipts
 from multiagent_protocol.pr_validator import (
     build_pr_context,
     evaluate_pr,
@@ -365,6 +366,19 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     # inbox repo (decision_inbox.repository), defaulting to the governance repo.
     gov_owner, _, gov_repo = config.projects.effective_inbox_repository.partition("/")
 
+    # SHA-bound approvals: the bot's own receipt comments bind each recorded
+    # decision label to the exact head SHA it was granted against. Fetched
+    # before classify so the auto-revert rule sees them too. A fetch failure
+    # yields no receipts (the affected labels then fail closed, never open).
+    try:
+        pr_comments = api.list_issue_comments(ctx.repo_owner, ctx.repo_name, ctx.number)
+    except Exception:
+        pr_comments = []
+    approved_shas = approval_receipts(pr_comments, runtime.bot_user)
+    for r in runtime.classifier_rules:
+        if r.name == "classifier_auto_revert":
+            r.approved_shas = approved_shas
+
     verdict = classify(ctx, runtime.classifier_rules, audit_log_path)
 
     # R1: resolve this repo's effective required_checks (per-repo override >
@@ -377,6 +391,10 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     for v in runtime.validators:
         if v.name == "validator_ci_green":
             v.required_checks = eff_required
+        elif v.name == "validator_ready_to_merge":
+            # Staleness veto: a bot-recorded ready label is bound to the head
+            # SHA in its receipt; a moved head voids it.
+            v.approved_shas = approved_shas
 
     # Evaluate the L1 conditions *other than* C3 (owner approval). C3 is the
     # owner gate and is handled separately below: a Quadrant-D PR fails C3 by
@@ -390,13 +408,15 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
         )
 
     # C3 — owner approval. Passes for Quadrant A/B/C (auto-approval), or for a
-    # Quadrant-D PR whose ``decision:approved-*`` label was applied by the
-    # owner/bot at or after the current head (see OwnerApprovalValidator).
-    # ``runtime.bot_user`` is the App's resolved ``<slug>[bot]`` identity.
+    # Quadrant-D PR whose ``decision:approved-*`` label is owner/bot-applied
+    # and bound to the current head (SHA receipt, else at-or-after-head; see
+    # OwnerApprovalValidator). ``runtime.bot_user`` is the App's resolved
+    # ``<slug>[bot]`` identity.
     owner_approval = OwnerApprovalValidator(
         classifier_verdict=verdict.quadrant,
         allowlisted_actors=config.owner.allowlisted_actors,
         bot_user=runtime.bot_user,
+        approved_shas=approved_shas,
     )
     _apply_severity([owner_approval], runtime.severity_overrides)
     if not owner_approval.check(ctx).passed:

@@ -6,6 +6,9 @@ absent from the codebase before R2. The tests below pin the contract.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from multiagent_protocol.label_provenance import has_verified_label
 from multiagent_protocol.skills.builtin.classifier_auto_revert import (
     AutoRevertClassifier,
 )
@@ -16,6 +19,8 @@ from multiagent_protocol.types import CommitContext, LabelEvent, TrailerSet
 
 OWNER = ("owner",)
 BOT = "my-bot[bot]"
+SHA1 = "1" * 40
+SHA2 = "2" * 40
 
 
 def _approval_event(label="decision:approved-A", actor="owner", at="2026-05-25T00:00:00Z"):
@@ -169,6 +174,113 @@ def test_owner_approval_ignores_unrelated_labels(pr_factory):
     assert not v.check(pr).passed
 
 
+# -- Owner approval: SHA-bound receipts (vNext hardening) --
+
+def test_owner_approval_rejects_receipt_bound_to_old_head_even_if_time_fresh(pr_factory):
+    # THE backdating exploit the SHA binding closes: the bot recorded the
+    # approval (receipt) at SHA1; the agent then pushes SHA2 with a BACKDATED
+    # committer date (00:00 — BEFORE the 00:05 approval event, i.e. the head
+    # commit predates the approval). The time-only check would honour the
+    # stale approval; the receipt says SHA1 != head SHA2 → void.
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha=SHA2,
+        commits=(
+            _commit(sha=SHA1, date="2026-05-25T00:00:00Z"),
+            _commit(sha=SHA2, date="2026-05-25T00:00:00Z"),  # backdated head
+        ),
+        label_events=(_approval_event(actor=BOT, at="2026-05-25T00:05:00Z"),),
+    )
+    v = OwnerApprovalValidator(
+        classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:approved-A": SHA1},
+    )
+    assert not v.check(pr).passed
+
+
+def test_owner_approval_passes_when_reapproved_at_new_head(pr_factory):
+    # Re-approval at SHA2 (receipt now binds to the current head) → valid.
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha=SHA2,
+        commits=(_commit(sha=SHA2, date="2026-05-25T00:00:00Z"),),
+        label_events=(_approval_event(actor=BOT, at="2026-05-25T00:05:00Z"),),
+    )
+    v = OwnerApprovalValidator(
+        classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:approved-A": SHA2},
+    )
+    assert v.check(pr).passed
+
+
+def test_owner_approval_receipt_does_not_bless_untrusted_applier(pr_factory):
+    # Defense-in-depth ordering: even with a receipt matching the current
+    # head, the labeled event's actor must still be the owner or the bot.
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha=SHA2,
+        commits=(_commit(sha=SHA2, date="2026-05-25T00:00:00Z"),),
+        label_events=(_approval_event(actor="mallory", at="2026-05-25T00:05:00Z"),),
+    )
+    v = OwnerApprovalValidator(
+        classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:approved-A": SHA2},
+    )
+    assert not v.check(pr).passed
+
+
+# -- Time-path extra safety: head committer-date sanity (vNext hardening) --
+
+def test_time_path_fails_closed_on_future_head_date(pr_factory):
+    # No receipt; the head committer date is in the future (beyond clock
+    # skew). The event is "at/after head"-satisfiable only because the date
+    # is garbage → treat as unverifiable → fail closed.
+    now = datetime(2026, 5, 25, 0, 10, tzinfo=timezone.utc)
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(date="2026-05-25T12:00:00Z"),),
+        label_events=(_approval_event(at="2026-05-25T13:00:00Z"),),
+    )
+    assert not has_verified_label(
+        pr, ("decision:approved-A",), OWNER, BOT, now=now
+    )
+
+
+def test_time_path_fails_closed_on_implausibly_old_head_date(pr_factory):
+    # No receipt; the head committer date is decades in the past (garbage /
+    # epoch-style backdating) → unverifiable → fail closed.
+    now = datetime(2026, 5, 25, 0, 0, tzinfo=timezone.utc)
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(date="2001-01-01T00:00:00Z"),),
+        label_events=(_approval_event(at="2026-05-25T00:05:00Z"),),
+    )
+    assert not has_verified_label(
+        pr, ("decision:approved-A",), OWNER, BOT, now=now
+    )
+
+
+def test_time_path_fails_closed_on_unparseable_head_date(pr_factory):
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(date="not-a-date"),),
+        label_events=(_approval_event(at="2026-05-25T00:05:00Z"),),
+    )
+    assert not has_verified_label(pr, ("decision:approved-A",), OWNER, BOT)
+
+
+def test_receipt_binding_is_date_independent(pr_factory):
+    # A receipt matching the current head holds even when the head committer
+    # date is garbage — the binding is by SHA, not by time.
+    now = datetime(2026, 5, 25, 0, 0, tzinfo=timezone.utc)
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha=SHA2,
+        commits=(_commit(sha=SHA2, date="2001-01-01T00:00:00Z"),),
+        label_events=(_approval_event(actor=BOT, at="2026-05-25T00:05:00Z"),),
+    )
+    assert has_verified_label(
+        pr, ("decision:approved-A",), OWNER, BOT,
+        approved_shas={"decision:approved-A": SHA2}, now=now,
+    )
+
+
 # -- Auto-revert classifier (provenance-checked, like C3) --
 
 def test_auto_revert_votes_c_when_owner_applied_fresh(pr_factory):
@@ -214,3 +326,35 @@ def test_auto_revert_zero_arg_is_noop(pr_factory):
         label_events=(_approval_event("decision:auto-revert", actor="owner"),),
     )
     assert AutoRevertClassifier().evaluate(pr).quadrant == "A"
+
+
+def test_auto_revert_votes_a_when_receipt_bound_to_old_head(pr_factory):
+    # SHA binding (vNext): the bot recorded the label at SHA1; head moved to
+    # SHA2 (backdated so the time check alone would pass) → not honoured.
+    pr = pr_factory(
+        labels=("decision:auto-revert",), head_sha=SHA2,
+        commits=(_commit(sha=SHA2, date="2026-05-25T00:00:00Z"),),
+        label_events=(
+            _approval_event("decision:auto-revert", actor=BOT, at="2026-05-25T00:05:00Z"),
+        ),
+    )
+    v = AutoRevertClassifier(
+        allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:auto-revert": SHA1},
+    ).evaluate(pr)
+    assert v.quadrant == "A"
+
+
+def test_auto_revert_votes_c_when_receipt_matches_head(pr_factory):
+    pr = pr_factory(
+        labels=("decision:auto-revert",), head_sha=SHA2,
+        commits=(_commit(sha=SHA2, date="2026-05-25T00:00:00Z"),),
+        label_events=(
+            _approval_event("decision:auto-revert", actor=BOT, at="2026-05-25T00:05:00Z"),
+        ),
+    )
+    v = AutoRevertClassifier(
+        allowlisted_actors=OWNER, bot_user=BOT,
+        approved_shas={"decision:auto-revert": SHA2},
+    ).evaluate(pr)
+    assert v.quadrant == "C"

@@ -24,15 +24,20 @@ new, unreviewed code). C3 therefore re-derives the approval from the timeline:
 - **Who applied it** — only an allowlisted actor or the bot's own App user
   (``<bot_app_slug>[bot]``). A self-applied label from anyone else is ignored,
   mirroring C1's actor check on ``ready-to-merge``.
-- **Against which head** — the approval's ``labeled`` event must be **at or
-  after** the current head commit. A force-push lands a newer commit, so any
-  prior approval is automatically voided and the PR returns to the inbox.
+- **Against which head** — when the bot recorded the approval it also posted a
+  SHA receipt (:mod:`multiagent_protocol.label_provenance`); such an approval
+  is honoured only while the recorded SHA **equals the current head SHA**, so
+  any new commit — even one with a backdated committer timestamp — voids it.
+  A hand-applied label without a receipt falls back to the weaker time check
+  (``labeled`` event at or after the head commit, with committer-date sanity).
 
 The classifier auto-approval path (Quadrant A/B/C) is unconditional and does
 not touch labels.
 """
 
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 from multiagent_protocol.label_provenance import has_verified_label
 from multiagent_protocol.skills.base import (
@@ -56,14 +61,19 @@ class OwnerApprovalValidator:
         classifier_verdict: str | None = None,
         allowlisted_actors: tuple[str, ...] = (),
         bot_user: str | None = None,
+        approved_shas: Mapping[str, str] | None = None,
     ) -> None:
         # ``classifier_verdict``: the PR's quadrant ("A".."D" or None).
         # ``allowlisted_actors``: owner logins permitted to approve.
         # ``bot_user``: the bot App's user login (``<slug>[bot]``) — the bot
         # applies the approval label after verifying an inbox verdict.
+        # ``approved_shas``: label → head SHA from the bot's receipt comments
+        # (``label_provenance.approval_receipts``); binds each bot-recorded
+        # approval to the exact commit it was granted against.
         self.classifier_verdict = classifier_verdict
         self.allowlisted_actors = tuple(allowlisted_actors)
         self.bot_user = bot_user
+        self.approved_shas = approved_shas
 
     def check(self, pr_context: PRContext) -> ValidationResult:
         # Auto-approval path: classifier said A/B/C.
@@ -71,9 +81,10 @@ class OwnerApprovalValidator:
             return ValidationResult.ok()
 
         # Owner-approval path: a *verified* approval label — applied by the
-        # owner/bot at or after the current head (see label_provenance).
+        # owner/bot and bound to the current head (see label_provenance).
         if has_verified_label(
-            pr_context, APPROVAL_LABELS, self.allowlisted_actors, self.bot_user
+            pr_context, APPROVAL_LABELS, self.allowlisted_actors, self.bot_user,
+            approved_shas=self.approved_shas,
         ):
             return ValidationResult.ok()
 
@@ -83,6 +94,6 @@ class OwnerApprovalValidator:
             f"Either the classifier must vote A/B/C, or an allowlisted actor "
             f"must approve via the Decision Inbox (👍 / `/approve [A|B]`) "
             f"against the current head. A bare `decision:approved-*` label is "
-            f"not honoured unless it was applied by the owner/bot at or after "
-            f"the current head commit."
+            f"not honoured unless it is bound to the current head commit "
+            f"(bot SHA receipt, or owner-applied at/after the head)."
         )

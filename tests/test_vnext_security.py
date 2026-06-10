@@ -15,8 +15,13 @@ from __future__ import annotations
 
 import dataclasses
 
+from multiagent_protocol.decision_inbox import resolve_open_issues
+from multiagent_protocol.label_provenance import (
+    approval_receipt_comment,
+    approval_receipts,
+)
 from multiagent_protocol.runtime import build_runtime_skills, process_pr
-from tests.conftest import changed_file, make_check
+from tests.conftest import changed_file, make_check, raw_commit
 
 BOT_USER = "your-merge-gate-bot[bot]"  # solo_config env.bot_app_slug + "[bot]"
 
@@ -50,3 +55,102 @@ def test_required_check_green_from_expected_app_merges_e2e(fake_api, solo_config
         checks=[make_check("ci", "success", slug="github-actions")])
     d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
     assert d.action == "merged"
+
+
+# -- 2. SHA-bound approvals: receipt write + parse + end-to-end ----------------
+
+SHA1 = "1" * 40
+SHA2 = "2" * 40
+
+
+def test_inbox_approval_writes_sha_receipt(fake_api):
+    # When the inbox applies decision:approved-A it must also post a receipt
+    # comment on the PR binding the label to the verified head SHA.
+    body = (
+        "- PR: `example/repo#42` — head `" + "h" * 7 + "`\n"
+        "<!-- decision-inbox-nonce: abc123 -->\n"
+        "<!-- decision-inbox-head-sha: " + "h" * 40 + " -->\n"
+    )
+    fake_api.seed_issue(number=5, labels=("decision:pending-owner",), body=body)
+    fake_api.register_pr(owner="example", repo="repo", number=42, head_sha="h" * 40)
+    fake_api.seed_reaction(5, "owner", "+1")
+
+    resolve_open_issues(fake_api, "gov", "repo", ("owner",))
+
+    assert ("example", "repo", 42, "decision:approved-A") in fake_api.labels_added
+    receipts = [b for (o, r, n, b) in fake_api.comments_posted
+                if (o, r, n) == ("example", "repo", 42)]
+    assert len(receipts) == 1
+    # The written receipt round-trips through the parser (as a bot comment).
+    parsed = approval_receipts(
+        [{"user": {"login": BOT_USER}, "body": receipts[0]}], BOT_USER)
+    assert parsed == {"decision:approved-A": "h" * 40}
+
+
+def test_approval_receipts_ignores_non_bot_authors():
+    forged = approval_receipt_comment("decision:approved-A", SHA2)
+    assert approval_receipts(
+        [{"user": {"login": "mallory"}, "body": forged}], BOT_USER) == {}
+
+
+def test_approval_receipts_requires_bot_user():
+    receipt = approval_receipt_comment("decision:approved-A", SHA2)
+    assert approval_receipts(
+        [{"user": {"login": BOT_USER}, "body": receipt}], None) == {}
+
+
+def test_approval_receipts_latest_receipt_wins():
+    old = {"user": {"login": BOT_USER},
+           "body": approval_receipt_comment("decision:approved-A", SHA1)}
+    new = {"user": {"login": BOT_USER},
+           "body": approval_receipt_comment("decision:approved-A", SHA2)}
+    assert approval_receipts([old, new], BOT_USER) == {"decision:approved-A": SHA2}
+
+
+def test_approval_receipts_requires_both_markers():
+    half = {"user": {"login": BOT_USER},
+            "body": "<!-- merge-gate-approval-label: decision:approved-A -->"}
+    assert approval_receipts([half], BOT_USER) == {}
+
+
+def test_stale_sha_receipt_blocks_merge_after_backdated_commit_e2e(fake_api, solo_config):
+    # The approval was recorded at SHA1 (bot receipt). The agent then pushes
+    # SHA2 with a committer date BEFORE the approval event (backdated, so the
+    # old time-only freshness check would still honour the stale approval).
+    # The SHA binding voids it → back to the inbox, no merge.
+    pr = fake_api.register_pr(
+        number=80, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],  # Quadrant D
+        head_sha=SHA2,
+        commits=[raw_commit(sha=SHA2, date="2026-05-25T00:00:00Z")],  # backdated
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login",
+             "created_at": "2026-05-25T00:05:00Z"},
+            {"label": "decision:approved-A", "actor": BOT_USER,
+             "created_at": "2026-05-25T00:05:00Z"},
+        ])
+    fake_api.seed_comment(
+        80, BOT_USER, approval_receipt_comment("decision:approved-A", SHA1))
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "inbox"
+    assert fake_api.merged == []
+
+
+def test_matching_sha_receipt_merges_e2e(fake_api, solo_config):
+    # Re-approved at the current head (receipt binds SHA2 == head) → merges.
+    pr = fake_api.register_pr(
+        number=81, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],  # Quadrant D
+        head_sha=SHA2,
+        commits=[raw_commit(sha=SHA2, date="2026-05-25T00:00:00Z")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login",
+             "created_at": "2026-05-25T00:05:00Z"},
+            {"label": "decision:approved-A", "actor": BOT_USER,
+             "created_at": "2026-05-25T00:05:00Z"},
+        ])
+    fake_api.seed_comment(
+        81, BOT_USER, approval_receipt_comment("decision:approved-A", SHA2))
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "merged"
+    assert d.quadrant == "D"

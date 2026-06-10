@@ -117,6 +117,46 @@ def test_ready_to_merge_label_applied_by_non_allowlisted_actor(pr_factory):
     assert "allowlisted actor" in r.failure_reason
 
 
+def test_ready_to_merge_stale_sha_bound_label_fails(pr_factory):
+    # SHA binding (vNext): the bot recorded ready-to-merge at SHA1 (receipt);
+    # the head is now SHA2 → the label is stale and C1 fails, regardless of
+    # who applied it or any commit timestamps.
+    pr = pr_factory(
+        labels=("ready-to-merge",), head_sha="2" * 40,
+        label_events=(
+            LabelEvent(label="ready-to-merge", actor_login="owner",
+                       created_at="2026-05-25T00:00:00Z"),
+        ),
+    )
+    v = ReadyToMergeValidator(allowlisted_actors=("owner",),
+                              approved_shas={"ready-to-merge": "1" * 40})
+    r = v.check(pr)
+    assert not r.passed
+    assert "stale" in r.failure_reason
+
+
+def test_ready_to_merge_sha_bound_label_matching_head_passes(pr_factory):
+    # Re-recorded against the current head → the veto does not fire and the
+    # normal allowlisted-actor check decides.
+    pr = pr_factory(
+        labels=("ready-to-merge",), head_sha="2" * 40,
+        label_events=(
+            LabelEvent(label="ready-to-merge", actor_login="owner",
+                       created_at="2026-05-25T00:00:00Z"),
+        ),
+    )
+    v = ReadyToMergeValidator(allowlisted_actors=("owner",),
+                              approved_shas={"ready-to-merge": "2" * 40})
+    assert v.check(pr).passed
+
+
+def test_ready_to_merge_stale_binding_vetoes_even_with_empty_allowlist(pr_factory):
+    # The veto applies before the relaxed empty-allowlist early-pass.
+    pr = pr_factory(labels=("ready-to-merge",), head_sha="2" * 40)
+    v = ReadyToMergeValidator(approved_shas={"ready-to-merge": "1" * 40})
+    assert not v.check(pr).passed
+
+
 # -- CI green --
 
 def test_ci_green_no_required_list_strict(pr_factory):
