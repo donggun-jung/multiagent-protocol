@@ -633,6 +633,14 @@ class GitHubAPI:
         ``GET /commits/{sha}/pulls`` endpoint maps the commit back to its PR;
         ``merged_by.login`` is the actor that performed the merge. Returns None
         if the commit is not associated with a merged PR (e.g. a direct push).
+
+        IMPORTANT: the ``/commits/{sha}/pulls`` LIST response does NOT reliably
+        populate ``merged_by`` (it is frequently ``null`` even for a merged PR).
+        Only the single-PR detail (``GET /pulls/{number}``) carries it. So when
+        the list omits it, we fetch the PR detail. Without this, the L5
+        unauthorized-push false-positive suppression (which trusts a merge by an
+        allowlisted owner) silently fails for every owner-merged PR on an
+        audit-only repo, re-flagging legitimate merges as unsanctioned writes.
         """
         r = self._request(
             "GET",
@@ -643,17 +651,25 @@ class GitHubAPI:
             return None
         r.raise_for_status()
         prs = r.json()
-        if not isinstance(prs, list):
+        if not isinstance(prs, list) or not prs:
             return None
-        for pr in prs:
-            if pr.get("merge_commit_sha") == sha:
-                merged_by = (pr.get("merged_by") or {}).get("login")
-                if merged_by:
-                    return merged_by
-        # Fall back to the first associated PR's merger (older squash commits do
-        # not always echo merge_commit_sha back through this endpoint).
-        for pr in prs:
+        # Prefer the PR whose merge_commit_sha IS this commit (the actual merge);
+        # else fall back to all associated PRs (older squash commits don't always
+        # echo merge_commit_sha back through this endpoint).
+        candidates = [pr for pr in prs if pr.get("merge_commit_sha") == sha] or prs
+        for pr in candidates:
             merged_by = (pr.get("merged_by") or {}).get("login")
+            if merged_by:
+                return merged_by
+            # The LIST omitted merged_by — fetch the PR detail, which carries it.
+            number = pr.get("number")
+            if number is None:
+                continue
+            d = self._request("GET", f"/repos/{owner}/{repo}/pulls/{number}")
+            if d.status_code != 200:
+                continue
+            detail = d.json()
+            merged_by = ((detail or {}).get("merged_by") or {}).get("login")
             if merged_by:
                 return merged_by
         return None

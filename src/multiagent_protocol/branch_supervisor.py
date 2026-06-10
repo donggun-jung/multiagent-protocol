@@ -735,6 +735,12 @@ class BotStateStore:
         # Cached blob SHA of the remote file, used as the update precondition on
         # the next push (avoids a lost-update race + an extra GET).
         self._remote_blob_sha: str | None = None
+        # B2: the canonical payload last known to be on the bot-state branch.
+        # save() skips the remote commit when the new payload is byte-identical,
+        # so a steady-state tick (no watermark advance) does NOT write a commit.
+        # Without this the branch took one commit PER repo PER tick (~1,440/day),
+        # growing unbounded. None = unknown → always write (fail safe).
+        self._last_saved_payload: str | None = None
 
     def load(self) -> dict[str, Any]:
         """Load watermarks from the bot-state branch (source of truth).
@@ -887,6 +893,9 @@ class BotStateStore:
             save_watermarks(data, self.local_path)
         except OSError as e:
             logger.warning("could not seed local watermark cache: %s", e)
+        # B2: remember the exact payload now on the branch (same canonical form
+        # save() produces) so an unchanged tick skips the redundant commit.
+        self._last_saved_payload = json.dumps(data, indent=2, sort_keys=True)
         return data
 
     def save(self, watermarks: dict[str, Any]) -> None:
@@ -909,6 +918,14 @@ class BotStateStore:
             logger.error("local watermark cache write failed: %s", e)
 
         payload = json.dumps(watermarks, indent=2, sort_keys=True)
+        # B2: skip the remote commit when nothing changed. The local cache was
+        # written above (cheap, always); only the durable branch write is
+        # conditional. A steady-state tick (no watermark advance) thus produces
+        # ZERO bot-state commits instead of one per repo — the branch grows with
+        # real activity, not wall-clock. ``None`` (first save on a fresh branch,
+        # or after a dropped precondition) always writes (fail safe).
+        if self._last_saved_payload is not None and payload == self._last_saved_payload:
+            return
         try:
             if self._remote_blob_sha is None:
                 # No cached precondition (first save on a fresh deployment, or a
@@ -931,6 +948,8 @@ class BotStateStore:
                 blob_sha=self._remote_blob_sha,
             )
             self._remote_blob_sha = new_sha or self._remote_blob_sha
+            # B2: the branch now holds this payload — a later unchanged save skips.
+            self._last_saved_payload = payload
         except Exception as e:
             # Drop the cached blob sha so the next save re-reads and retries
             # cleanly regardless of cause.

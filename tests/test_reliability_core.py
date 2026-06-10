@@ -177,10 +177,12 @@ def test_bot_state_save_refreshes_lost_blob_sha(tmp_path):
     api = _RecordingAPI()
     api.seed_bot_state("acme", "governance", {"k": "v"})
     store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
-    loaded = store.load()
-    store.save(loaded)                       # uses the blob sha cached by load()
+    store.load()
+    # Save a CHANGED payload each time so the B2 skip-when-unchanged guard does
+    # not short-circuit the write we are exercising (the blob-SHA re-read).
+    store.save({"k": "v2"})                  # uses the blob sha cached by load()
     store._remote_blob_sha = None            # simulate a dropped precondition
-    store.save(loaded)                       # must re-read, NOT put sha=None
+    store.save({"k": "v3"})                  # must re-read, NOT put sha=None
     assert api.put_blob_shas[0] is not None
     assert api.put_blob_shas[1] is not None  # refreshed from the branch
 
@@ -957,3 +959,59 @@ def test_null_watermark_entry_never_floods_end_to_end(tmp_path, monkeypatch):
     state = _persisted_state(fake_api)
     assert state["acme/governance"] == HEAD              # re-bootstrapped, not walked
     assert state["acme/governance:l2"] == HEAD
+
+
+# ---------------------------------------------------------------------------
+# 10. L5 suppression fix + B2 bot-state dirty-check.
+# ---------------------------------------------------------------------------
+
+
+def test_commit_merged_by_fetches_pr_detail_when_list_omits_merged_by():
+    # The /commits/{sha}/pulls LIST returns the PR but merged_by=null; only the
+    # /pulls/{n} DETAIL carries it. commit_merged_by must fetch the detail —
+    # else owner-merge suppression silently fails and CO's own PRs re-flag as
+    # unauthorized-push (the audit-only false positive).
+    class _R:
+        def __init__(self, code, payload):
+            self.status_code = code
+            self._p = payload
+
+        def json(self):
+            return self._p
+
+        def raise_for_status(self):
+            return None
+
+    class _API(GitHubAPI):
+        def __init__(self):
+            self.calls: list = []
+
+        def _request(self, method, path, *, params=None, json=None):
+            self.calls.append(path)
+            if path.endswith("/pulls") and "/commits/" in path:
+                return _R(200, [{"number": 7, "merge_commit_sha": "s" * 40,
+                                 "merged_by": None}])  # LIST omits merged_by
+            if path.endswith("/pulls/7"):
+                return _R(200, {"number": 7, "merged_by": {"login": "owner"}})
+            return _R(404, {})
+
+    api = _API()
+    assert api.commit_merged_by("o", "r", "s" * 40) == "owner"
+    assert any(p.endswith("/pulls/7") for p in api.calls)  # fetched the detail
+
+
+def test_bot_state_save_skips_remote_commit_when_unchanged(tmp_path):
+    # B2: an unchanged payload skips the durable commit (the local cache is still
+    # written) so a steady-state tick adds ZERO commits to the bot-state branch;
+    # a changed payload writes.
+    api = FakeAPI(main_head=HEAD)
+    api.seed_bot_state("acme", "governance", {"acme/app": "f" * 40})
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    loaded = store.load()
+    n0 = len(api.bot_state_writes)
+    store.save(loaded)                          # unchanged → skip remote
+    assert len(api.bot_state_writes) == n0
+    store.save({"acme/app": "g" * 40})          # changed → write
+    assert len(api.bot_state_writes) == n0 + 1
+    store.save({"acme/app": "g" * 40})          # unchanged again → skip
+    assert len(api.bot_state_writes) == n0 + 1
