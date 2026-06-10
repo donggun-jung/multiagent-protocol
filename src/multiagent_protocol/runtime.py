@@ -60,7 +60,10 @@ from multiagent_protocol.skills.builtin.validator_agent_registry import (
 from multiagent_protocol.skills.builtin.validator_base_up_to_date import (
     BaseUpToDateValidator,
 )
-from multiagent_protocol.skills.builtin.validator_ci_green import CiGreenValidator
+from multiagent_protocol.skills.builtin.validator_ci_green import (
+    DEFAULT_CHECK_PUBLISHER,
+    CiGreenValidator,
+)
 from multiagent_protocol.skills.builtin.validator_classifier_publisher import (
     ClassifierPublisherValidator,
 )
@@ -227,6 +230,13 @@ def build_runtime_skills(
         CiGreenValidator(
             required_checks=config.env.required_checks,
             allow_no_checks=config.env.allow_no_ci,
+            # Publisher trust for required checks: only runs published by the
+            # repo's own CI App count as green. ``env.expected_check_publisher``
+            # (when the config grows it) overrides; default ``github-actions``.
+            expected_check_publisher=(
+                getattr(config.env, "expected_check_publisher", None)
+                or DEFAULT_CHECK_PUBLISHER
+            ),
         ),
         TrailersValidator(),
         ClassifierPublisherValidator(

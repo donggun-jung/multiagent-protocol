@@ -257,6 +257,76 @@ def test_ci_green_no_required_checks_unchanged_by_fix(pr_factory):
     assert "build" in r.failure_reason
 
 
+# -- Publisher trust for required checks (C2) ---------------------------------
+
+def _check_from(name: str, conclusion: str, slug: str | None) -> CheckRunStatus:
+    return CheckRunStatus(
+        name=name, status="completed", conclusion=conclusion,
+        started_at=None, completed_at=None, app_slug=slug, output_summary=None,
+    )
+
+
+def test_ci_green_required_green_from_unexpected_publisher_fails(pr_factory):
+    # A green run named like the required check but published by a DIFFERENT
+    # App must not satisfy C2 — treated as "not yet green" (fail closed).
+    pr = pr_factory(check_runs=(_check_from("test", "success", "attacker-app"),))
+    v = CiGreenValidator(required_checks=("test",),
+                         expected_check_publisher="github-actions")
+    r = v.check(pr)
+    assert not r.passed
+    assert "expected app 'github-actions'" in r.failure_reason
+    assert "attacker-app" in r.failure_reason
+
+
+def test_ci_green_required_green_from_expected_publisher_passes(pr_factory):
+    pr = pr_factory(check_runs=(_check_from("test", "success", "github-actions"),))
+    v = CiGreenValidator(required_checks=("test",),
+                         expected_check_publisher="github-actions")
+    assert v.check(pr).passed
+
+
+def test_ci_green_required_missing_app_slug_fails_when_publisher_expected(pr_factory):
+    # Mirrors validator_classifier_publisher: a run with no 'app' field cannot
+    # prove its publisher identity → untrusted → fail closed.
+    pr = pr_factory(check_runs=(_check_from("test", "success", None),))
+    v = CiGreenValidator(required_checks=("test",),
+                         expected_check_publisher="github-actions")
+    r = v.check(pr)
+    assert not r.passed
+    assert "<missing app>" in r.failure_reason
+
+
+def test_ci_green_required_expected_plus_foreign_green_passes(pr_factory):
+    # One green run from the expected publisher satisfies C2; an extra green
+    # run from a foreign app neither helps nor hurts.
+    pr = pr_factory(check_runs=(
+        _check_from("test", "success", "github-actions"),
+        _check_from("test", "success", "some-other-app"),
+    ))
+    v = CiGreenValidator(required_checks=("test",),
+                         expected_check_publisher="github-actions")
+    assert v.check(pr).passed
+
+
+def test_ci_green_required_foreign_failure_still_blocks(pr_factory):
+    # The publisher gate only restricts who can SATISFY a required check; a
+    # same-named failing run from any publisher still blocks (never relaxed).
+    pr = pr_factory(check_runs=(
+        _check_from("test", "success", "github-actions"),
+        _check_from("test", "failure", "attacker-app"),
+    ))
+    v = CiGreenValidator(required_checks=("test",),
+                         expected_check_publisher="github-actions")
+    assert not v.check(pr).passed
+
+
+def test_ci_green_no_expected_publisher_keeps_legacy_behavior(pr_factory):
+    # Direct construction without expected_check_publisher: a green required
+    # check passes regardless of publisher (pre-hardening behavior).
+    pr = pr_factory(check_runs=(_check_from("test", "success", "whatever-app"),))
+    assert CiGreenValidator(required_checks=("test",)).check(pr).passed
+
+
 # -- Base up-to-date --
 
 def test_base_up_to_date_matches(pr_factory):
