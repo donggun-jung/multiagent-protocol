@@ -218,6 +218,42 @@ def test_governance_rubric_modification_classifies_b(pr_factory):
     assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
 
 
+# -- 7. Diagnostic dedupe only trusts the bot's own comments --------------------
+
+def _blocked_pr(fake_api, number):
+    return fake_api.register_pr(
+        number=number, labels=(), files=[changed_file("README.md")])
+
+
+def test_bot_identical_diagnostic_suppresses_repost(fake_api, solo_config):
+    # Tick 1 posts the diagnostic; replaying it as a BOT-authored comment
+    # suppresses tick 2's identical re-post (the intended dedupe).
+    pr = _blocked_pr(fake_api, 100)
+    rt = _rt(fake_api, solo_config)
+    process_pr(fake_api, solo_config, rt, pr)
+    assert len(fake_api.comments_posted) == 1
+    diagnostic = fake_api.comments_posted[0][3]
+    fake_api.seed_comment(100, BOT_USER, diagnostic)
+
+    process_pr(fake_api, solo_config, rt, pr)
+    assert len(fake_api.comments_posted) == 1  # deduped, no second post
+
+
+def test_non_bot_identical_comment_does_not_suppress_diagnostic(fake_api, solo_config):
+    # The same diagnostic text authored by a NON-bot user must not suppress
+    # the bot's own diagnostic (author-blind dedupe let third parties mute
+    # the gate's explanations).
+    pr = _blocked_pr(fake_api, 101)
+    rt = _rt(fake_api, solo_config)
+    process_pr(fake_api, solo_config, rt, pr)
+    assert len(fake_api.comments_posted) == 1
+    diagnostic = fake_api.comments_posted[0][3]
+    fake_api.seed_comment(101, "mallory", diagnostic)
+
+    process_pr(fake_api, solo_config, rt, pr)
+    assert len(fake_api.comments_posted) == 2  # the bot still posts its own
+
+
 # -- 6. Bot identity: authoritative source only, fail closed --------------------
 
 class _FakeAuthSlug:

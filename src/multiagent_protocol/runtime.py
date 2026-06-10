@@ -370,20 +370,29 @@ def _inbox_issue_exists(api, gov_owner, gov_repo, full_name, number) -> bool:
     return False
 
 
-def _post_diagnostic_if_changed(api, ctx, body: str) -> bool:
+def _post_diagnostic_if_changed(api, ctx, body: str, bot_user: str | None) -> bool:
     """Post the L1 diagnostic, unless the bot's last diagnostic is identical.
 
     Keeps the bot from re-commenting the same blocked-reasons on every 5-min
-    tick (the chattiness the stateless design otherwise invites)."""
+    tick (the chattiness the stateless design otherwise invites).
+
+    Only comments **authored by the bot's own identity** count as "the last
+    diagnostic": anyone can post a comment starting with the diagnostic
+    prefix, and an author-blind match would let a third party suppress the
+    bot's real diagnostics. No ``bot_user`` → nothing can be attributed to
+    the bot → always post."""
     try:
         comments = api.list_issue_comments(ctx.repo_owner, ctx.repo_name, ctx.number)
     except Exception:
         comments = []
     last = None
-    for c in comments:
-        cb = c.get("body") or ""
-        if cb.startswith(DIAGNOSTIC_PREFIX):
-            last = cb
+    if bot_user:
+        for c in comments:
+            if ((c.get("user") or {}).get("login")) != bot_user:
+                continue
+            cb = c.get("body") or ""
+            if cb.startswith(DIAGNOSTIC_PREFIX):
+                last = cb
     if last == body:
         return False
     api.post_comment(ctx.repo_owner, ctx.repo_name, ctx.number, body)
@@ -437,7 +446,9 @@ def process_pr(api, config, runtime: RuntimeSkills, pr_payload, *, audit_log_pat
     # design and is routed to the Decision Inbox, not reported as "blocked".
     outcome = evaluate_pr(ctx, runtime.validators, classifier_quadrant=verdict.quadrant)
     if not outcome.all_passed:
-        _post_diagnostic_if_changed(api, ctx, outcome.diagnostic_comment())
+        _post_diagnostic_if_changed(
+            api, ctx, outcome.diagnostic_comment(), runtime.bot_user
+        )
         return PRDecision(
             full, ctx.number, "blocked", verdict.quadrant,
             "; ".join(outcome.failure_reasons)[:200],
