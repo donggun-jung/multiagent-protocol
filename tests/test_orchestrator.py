@@ -9,9 +9,15 @@ from __future__ import annotations
 
 import dataclasses
 
+from multiagent_protocol.label_provenance import (
+    approval_receipt_comment,
+    approval_receipts,
+)
 from multiagent_protocol.main import main
 from multiagent_protocol.runtime import build_runtime_skills, process_pr
 from tests.conftest import changed_file, make_check, raw_commit
+
+BOT_USER = "your-merge-gate-bot[bot]"  # solo_config env.bot_app_slug + "[bot]"
 
 
 def _rt(api, cfg):
@@ -142,6 +148,73 @@ def test_per_repo_required_overrides_global(fake_api, solo_config):
     assert d.action == "merged"
 
 
+# -- C2 publisher trust: expected_check_publisher threaded through process_pr --
+
+def test_per_repo_expected_publisher_override_used(fake_api, solo_config):
+    # The repo's CI runs under a non-default App ('custom-ci'). With the
+    # per-repo override set, a green required check published by custom-ci
+    # satisfies C2 → merges.
+    from multiagent_protocol.config.loader import RepoOverride
+    cfg = dataclasses.replace(
+        solo_config,
+        projects=dataclasses.replace(
+            solo_config.projects,
+            repo_overrides={"example/repo": RepoOverride(
+                required_checks=("ci",), expected_check_publisher="custom-ci")},
+        ),
+    )
+    pr = fake_api.register_pr(
+        number=54, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="custom-ci")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "merged"
+
+
+def test_per_repo_expected_publisher_rejects_other_publishers(fake_api, solo_config):
+    # Same override; the only green 'ci' run comes from the DEFAULT publisher
+    # (github-actions), which is NOT this repo's CI App → fail closed →
+    # blocked. Proves the per-PR patch actually swaps the expected publisher
+    # (without it, github-actions would have passed).
+    from multiagent_protocol.config.loader import RepoOverride
+    cfg = dataclasses.replace(
+        solo_config,
+        projects=dataclasses.replace(
+            solo_config.projects,
+            repo_overrides={"example/repo": RepoOverride(
+                required_checks=("ci",), expected_check_publisher="custom-ci")},
+        ),
+    )
+    pr = fake_api.register_pr(
+        number=55, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="github-actions")])
+    d = process_pr(fake_api, cfg, _rt(fake_api, cfg), pr)
+    assert d.action == "blocked"
+    assert "custom-ci" in d.detail
+    assert fake_api.merged == []
+
+
+def test_env_expected_publisher_is_global_default(fake_api, solo_config):
+    # env.expected_check_publisher applies to every repo without a per-repo
+    # override: green from org-ci merges, green from github-actions does not.
+    cfg = dataclasses.replace(
+        solo_config,
+        env=dataclasses.replace(
+            solo_config.env, required_checks=("ci",),
+            expected_check_publisher="org-ci"),
+    )
+    ok = fake_api.register_pr(
+        number=56, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="org-ci")])
+    rt = _rt(fake_api, cfg)
+    assert process_pr(fake_api, cfg, rt, ok).action == "merged"
+
+    not_ours = fake_api.register_pr(
+        number=57, labels=("ready-to-merge",), files=[changed_file("README.md")],
+        checks=[make_check("ci", "success", slug="github-actions")],
+        head_sha="x" * 40, commits=[raw_commit(sha="x" * 40)])
+    assert process_pr(fake_api, cfg, rt, not_ours).action == "blocked"
+
+
 def test_quadrant_d_inbox_is_idempotent(fake_api, solo_config):
     pr = fake_api.register_pr(
         number=6, labels=("ready-to-merge",),
@@ -164,12 +237,18 @@ def test_c1_fails_when_label_by_non_allowlisted(fake_api, solo_config):
     assert fake_api.merged == []
 
 
-def test_quadrant_d_with_owner_approval_label_merges(fake_api, solo_config):
-    # Owner (your-github-login) applied the approval label, fresh vs head → merges.
+def test_quadrant_d_with_owner_approval_label_merges_same_tick(fake_api, solo_config):
+    # Owner (your-github-login) hand-applied the approval label. Receipt-
+    # required contract with NO one-tick deferral: the bot converts the label
+    # into a current-head SHA receipt and honours it the SAME tick (the head
+    # cannot change within a tick's execution), so the Quadrant-D PR merges
+    # immediately.
     pr = fake_api.register_pr(
         number=9, labels=("ready-to-merge", "decision:approved-A"),
         files=[changed_file("src/x.py", status="removed")])
-    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    rt = _rt(fake_api, solo_config)
+
+    d = process_pr(fake_api, solo_config, rt, pr)
     assert d.action == "merged"
     assert d.quadrant == "D"
     assert len(fake_api.merged) == 1
@@ -190,21 +269,37 @@ def test_exploit_a_self_applied_approval_does_not_merge(fake_api, solo_config):
     assert fake_api.merged == []
 
 
-def test_exploit_b_stale_approval_after_forcepush_does_not_merge(fake_api, solo_config):
-    # Owner approved at 00:00; a force-push then landed head at 00:10. The
-    # stale approval must not merge unreviewed code.
+def test_exploit_b_forcepush_with_existing_receipt_does_not_merge(fake_api, solo_config):
+    # Exploit B (force-push past an approval) is defeated by the SHA receipt,
+    # NOT by committer dates. The bot already observed + receipted the
+    # approval at "h"*40 on a prior tick; a force-push then landed a NEW head
+    # ("f"*40) with a committer date BACKDATED to 00:00 (before the approval
+    # event) so the old time-only guard would have honoured it. C3 voids the
+    # stale receipt (recorded "h" != head "f") and the writer never re-binds
+    # an approval → routed to the inbox for re-approval. (The old writer-side
+    # committer-date check was forgeable and has been removed; the receipt is
+    # the real guard.)
+    head = "f" * 40
     pr = fake_api.register_pr(
         number=21, labels=("ready-to-merge", "decision:approved-A"),
         files=[changed_file("src/x.py", status="removed")],
-        head_sha="h" * 40,
-        commits=[raw_commit(sha="h" * 40, date="2026-05-25T00:10:00Z")],
+        head_sha=head,
+        commits=[raw_commit(sha=head, date="2026-05-25T00:00:00Z")],  # backdated
         label_events=[
             {"label": "ready-to-merge", "actor": "your-github-login", "created_at": "2026-05-25T00:11:00Z"},
-            {"label": "decision:approved-A", "actor": "your-github-login", "created_at": "2026-05-25T00:00:00Z"},
+            {"label": "decision:approved-A", "actor": "your-github-login", "created_at": "2026-05-25T00:11:00Z"},
         ])
+    fake_api.seed_comment(
+        21, BOT_USER, approval_receipt_comment("decision:approved-A", "h" * 40))
     d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
-    assert d.action == "inbox"        # stale approval voided
+    assert d.action == "inbox"        # stale approval voided by the receipt
     assert fake_api.merged == []
+    # The bot wrote NO new approval receipt this tick — it never silently
+    # re-binds an approval to the new head (only the inbox may supersede it).
+    written = approval_receipts(
+        [{"user": {"login": BOT_USER}, "body": b}
+         for (*_, b) in fake_api.comments_posted], BOT_USER)
+    assert "decision:approved-A" not in written
 
 
 def test_self_applied_auto_revert_label_does_not_merge_quadrant_d(fake_api, solo_config):

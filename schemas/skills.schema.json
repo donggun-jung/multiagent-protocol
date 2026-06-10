@@ -15,8 +15,25 @@
     },
     "disabled": {
       "type": "array",
-      "description": "Skill names to skip even if loaded. Built-in L1 validators (C1-C5) and other core security skills cannot be disabled or downgraded below blocking.",
-      "items": {"type": "string", "minLength": 1, "maxLength": 100},
+      "description": "Skill names to skip even if loaded. The core security skills cannot be disabled: the built-in L1 validators C1-C4 (ready-to-merge, ci-green, owner-approval, base-up-to-date), C5 trailers, the classifier-publisher gate, bot-self-repo, break-glass audit, and unauthorized-push. Naming one of them here is rejected by this schema AND ignored at runtime (runtime.NON_DISABLEABLE).",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100,
+        "not": {
+          "enum": [
+            "validator_ready_to_merge",
+            "validator_ci_green",
+            "validator_owner_approval",
+            "validator_base_up_to_date",
+            "validator_trailers",
+            "validator_classifier_publisher",
+            "classifier_bot_self_repo",
+            "hook_break_glass_audit",
+            "hook_unauthorized_push"
+          ]
+        }
+      },
       "uniqueItems": true,
       "default": []
     },

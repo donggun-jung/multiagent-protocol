@@ -57,12 +57,18 @@ class BreakGlassConfig:
 class RepoOverride:
     """Per-repo overrides keyed by ``owner/name`` in ``projects.repo_overrides``.
 
-    Currently only ``required_checks`` (R1): the named CI checks that MUST be
-    present + green on a PR head for C2/L2 to pass in this repo. ``None`` means
-    "no per-repo override" → fall back to the global ``env.required_checks``.
+    - ``required_checks`` (R1): the named CI checks that MUST be present +
+      green on a PR head for C2/L2 to pass in this repo. ``None`` means "no
+      per-repo override" → fall back to the global ``env.required_checks``.
+    - ``expected_check_publisher``: the GitHub App slug that must have
+      published a required check for it to count as green in this repo (C2
+      publisher trust). ``None`` → fall back to the global
+      ``env.expected_check_publisher``, then to the built-in default
+      (``github-actions``).
     """
 
     required_checks: tuple[str, ...] | None = None
+    expected_check_publisher: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +106,19 @@ class ProjectsConfig:
             return override.required_checks
         return global_default
 
+    def effective_expected_check_publisher(
+        self, full_name: str, global_default: str | None = None
+    ) -> str | None:
+        """C2 publisher trust: per-repo override > env default > None.
+
+        ``None`` tells the caller to use the built-in default publisher
+        (``validator_ci_green.DEFAULT_CHECK_PUBLISHER``).
+        """
+        override = self.repo_overrides.get(full_name)
+        if override is not None and override.expected_check_publisher is not None:
+            return override.expected_check_publisher
+        return global_default
+
 
 @dataclass(frozen=True)
 class EnvConfig:
@@ -111,6 +130,11 @@ class EnvConfig:
     # Empty = today's behavior (all completed checks must succeed). A per-repo
     # ``projects.repo_overrides[<repo>].required_checks`` overrides this.
     required_checks: tuple[str, ...] = ()
+    # C2 publisher trust: the GitHub App slug that must have published a
+    # required check for it to count as green. Unset (None) → the built-in
+    # default ``github-actions``. A per-repo
+    # ``projects.repo_overrides[<repo>].expected_check_publisher`` overrides this.
+    expected_check_publisher: str | None = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +237,7 @@ def _build_repo_overrides(raw: dict) -> dict[str, RepoOverride]:
         rc = entry.get("required_checks")
         out[full_name] = RepoOverride(
             required_checks=tuple(rc) if rc is not None else None,
+            expected_check_publisher=entry.get("expected_check_publisher"),
         )
     return out
 
@@ -276,6 +301,7 @@ def load_config(
             bot_app_slug=env_data["bot_app_slug"],
             allow_no_ci=bool(env_data.get("allow_no_ci", False)),
             required_checks=tuple(env_data.get("required_checks", [])),
+            expected_check_publisher=env_data.get("expected_check_publisher"),
         ),
         skills=SkillsConfig(
             enabled=tuple(skills_data.get("enabled", [])),

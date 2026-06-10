@@ -247,6 +247,62 @@ def test_env_schema_accepts_required_checks():
     _jsonschema.validate(instance={"bot_app_slug": "foo"}, schema=schema)
 
 
+# -- C2 publisher trust: expected_check_publisher (env default + per-repo) ----
+
+def test_expected_check_publisher_parsed_env_and_override(tmp_path: Path):
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml", """\
+governance_repo: alice/p
+supervised_repos:
+  - alice/repo-a
+  - alice/repo-b
+repo_overrides:
+  alice/repo-a:
+    expected_check_publisher: custom-ci
+""")
+    _write(cfg_dir, "env.yml",
+           "bot_app_slug: foo\nexpected_check_publisher: org-ci\n")
+    cfg = load_config(cfg_dir)
+    assert cfg.env.expected_check_publisher == "org-ci"
+    assert cfg.projects.repo_overrides["alice/repo-a"].expected_check_publisher == "custom-ci"
+    # Resolution: per-repo override > env default.
+    g = cfg.env.expected_check_publisher
+    assert cfg.projects.effective_expected_check_publisher("alice/repo-a", g) == "custom-ci"
+    assert cfg.projects.effective_expected_check_publisher("alice/repo-b", g) == "org-ci"
+
+
+def test_expected_check_publisher_defaults_unset(tmp_path: Path):
+    # Absent everywhere → None; the runtime then uses the built-in default
+    # publisher (validator_ci_green.DEFAULT_CHECK_PUBLISHER).
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/p\nsupervised_repos:\n  - alice/repo-a\n")
+    _write(cfg_dir, "env.yml", "bot_app_slug: foo\n")
+    cfg = load_config(cfg_dir)
+    assert cfg.env.expected_check_publisher is None
+    assert cfg.projects.effective_expected_check_publisher(
+        "alice/repo-a", cfg.env.expected_check_publisher) is None
+
+
+def test_env_schema_accepts_expected_check_publisher():
+    schema = _load_schema("env.schema.json")
+    _jsonschema.validate(
+        instance={"bot_app_slug": "foo", "expected_check_publisher": "org-ci"},
+        schema=schema,
+    )
+    # Still accepts the previous shape (field absent).
+    _jsonschema.validate(instance={"bot_app_slug": "foo"}, schema=schema)
+    # An empty slug is rejected (minLength 1).
+    import pytest
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={"bot_app_slug": "foo", "expected_check_publisher": ""},
+            schema=schema,
+        )
+
+
 def test_projects_schema_accepts_audit_only_and_repo_overrides():
     schema = _load_schema("projects.schema.json")
     _jsonschema.validate(
@@ -263,6 +319,35 @@ def test_projects_schema_accepts_audit_only_and_repo_overrides():
         instance={"governance_repo": "alice/p", "supervised_repos": []},
         schema=schema,
     )
+
+
+def test_projects_schema_accepts_expected_check_publisher_override():
+    # R1 + C2 publisher trust: a per-repo expected_check_publisher override is
+    # a valid repo_overrides property (string, minLength 1).
+    schema = _load_schema("projects.schema.json")
+    _jsonschema.validate(
+        instance={
+            "governance_repo": "alice/p",
+            "repo_overrides": {
+                "alice/repo-a": {
+                    "required_checks": ["build"],
+                    "expected_check_publisher": "custom-ci",
+                },
+                "alice/repo-b": {"expected_check_publisher": "org-ci"},
+            },
+        },
+        schema=schema,
+    )
+    # An empty slug is rejected (minLength 1), mirroring env.schema.
+    import pytest
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={
+                "governance_repo": "alice/p",
+                "repo_overrides": {"alice/repo-a": {"expected_check_publisher": ""}},
+            },
+            schema=schema,
+        )
 
 
 def test_projects_schema_rejects_unknown_repo_override_key():
