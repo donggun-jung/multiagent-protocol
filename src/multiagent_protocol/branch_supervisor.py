@@ -754,28 +754,57 @@ class BotStateStore:
             except Exception as e:
                 # Tolerate ONLY a genuine race: a concurrent tick created the
                 # branch between our check and create, so the ref now resolves.
-                # Anything else — most importantly a 403 because the App lacks
-                # ``contents: write`` — means durable persistence can NEVER
-                # work, so EVERY tick would cold-start and re-flood incidents
+                # Anything else means durable persistence did not happen this
+                # tick, so EVERY tick would cold-start and re-flood incidents
                 # (the exact production failure). Swallowing it here as a "race"
                 # is what hid that breakage; fail the tick LOUDLY instead.
-                raced_sha = self.api.get_ref_sha(self.owner, self.repo, self.branch)
-                if raced_sha is None:
+                # The re-check is itself best-effort: a flaky re-check must not
+                # mask the original create failure, so treat its error as "still
+                # absent" and surface the create cause.
+                try:
+                    raced_sha = self.api.get_ref_sha(
+                        self.owner, self.repo, self.branch
+                    )
+                except Exception:
+                    raced_sha = None
+                if raced_sha is not None:
+                    # Genuine race: the branch exists now but was NOT there
+                    # before this tick, so it is still morally a first run
+                    # (branch_existed stays False → start empty below, and this
+                    # tick writes the file).
+                    logger.warning(
+                        "bot-state branch create raced (now exists at %s): %s",
+                        raced_sha[:7], e,
+                    )
+                elif isinstance(e, SecondaryRateLimitError):
+                    # Transient throttle — fail the tick (it retries next cron);
+                    # do NOT mis-blame permissions. Propagate the typed error.
+                    raise
+                elif getattr(getattr(e, "response", None), "status_code", None) == 403:
+                    # A real missing-scope 403 (not a rate-limit 403, which
+                    # ``_request`` would have raised as SecondaryRateLimitError):
+                    # the App lacks ``contents: write`` so persistence can NEVER
+                    # work. This never succeeds on retry — say so precisely.
                     raise RuntimeError(
                         f"cannot create the bot-state branch "
-                        f"{self.owner}/{self.repo}@{self.branch}: durable "
-                        f"watermark persistence is impossible, so the engine "
-                        f"would cold-start (and re-flood incidents) every tick. "
-                        f"Grant the App `contents: write` on "
-                        f"{self.owner}/{self.repo}. Failing closed. Cause: {e}"
+                        f"{self.owner}/{self.repo}@{self.branch}: the App "
+                        f"appears to lack `contents: write`, so durable watermark "
+                        f"persistence is impossible and the engine would "
+                        f"cold-start (and re-flood incidents) every tick. Grant "
+                        f"the App `contents: write` on {self.owner}/{self.repo}. "
+                        f"Failing closed. Cause: {e}"
                     ) from e
-                # Genuine race: the branch exists now but was NOT there before
-                # this tick, so it is still morally a first run (branch_existed
-                # stays False → start empty below, and this tick writes the file).
-                logger.warning(
-                    "bot-state branch create raced (now exists at %s): %s",
-                    raced_sha[:7], e,
-                )
+                else:
+                    # Other failure (transient 5xx/network, or an unexpected
+                    # status). Fail closed; the next cron tick retries. If it
+                    # persists, the App's contents:write / the ref API is the
+                    # first thing to check.
+                    raise RuntimeError(
+                        f"cannot create the bot-state branch "
+                        f"{self.owner}/{self.repo}@{self.branch} (failing closed; "
+                        f"the tick retries next cron). If this persists, verify "
+                        f"the App's `contents: write` permission. Cause: {e}"
+                    ) from e
             self._remote_blob_sha = None
 
         found = self.api.get_file_on_ref(

@@ -841,6 +841,53 @@ def test_create_ref_permission_failure_fails_closed(tmp_path):
     assert api.refs_created == []
 
 
+def test_create_ref_transient_failure_fails_closed_without_blaming_permission(tmp_path):
+    # A TRANSIENT create_ref failure (e.g. 5xx) must also fail the tick closed
+    # (it retries next cron) — but NOT mis-blame permissions. The message says
+    # "retries next cron", not "lacks contents: write".
+    class _FlakyCreateAPI(FakeAPI):
+        def create_ref(self, owner, repo, ref, sha):
+            raise _PushError(503)
+
+    api = _FlakyCreateAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    with pytest.raises(RuntimeError, match="retries next cron"):
+        store.load()
+    assert api.bot_state_writes == []
+
+
+def test_create_ref_rate_limited_propagates_typed_error(tmp_path):
+    # A secondary-rate-limit on create_ref is transient and already typed — it
+    # propagates as SecondaryRateLimitError (the tick fails + retries), never
+    # wrapped into a misleading permission error.
+    class _ThrottledCreateAPI(FakeAPI):
+        def create_ref(self, owner, repo, ref, sha):
+            raise SecondaryRateLimitError("create_ref throttled")
+
+    api = _ThrottledCreateAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    with pytest.raises(SecondaryRateLimitError):
+        store.load()
+
+
+def test_create_ref_race_is_tolerated_even_if_recheck_flaky(tmp_path):
+    # The genuine-race path: create_ref raised because a concurrent tick already
+    # created the branch. Even if the re-check is momentarily flaky, a present
+    # ref must be tolerated (start empty, write the file this tick) — never a
+    # spurious fail-closed.
+    class _RacedCreateAPI(FakeAPI):
+        def create_ref(self, owner, repo, ref, sha):
+            # Simulate the concurrent tick: the ref now exists, then raise the
+            # "already exists" error our create observed.
+            self._refs[(owner, repo, ref)] = "race" + "0" * 36
+            raise _PushError(422)
+
+    api = _RacedCreateAPI(main_head=HEAD)
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    assert store.load() == {}            # tolerated → empty first run
+    assert api.bot_state_writes == []    # nothing written during load itself
+
+
 def test_first_run_does_not_seed_from_stale_local_cache(tmp_path):
     # On a reused (self-hosted) workspace the local cache can hold stale state
     # from a prior run whose durable push failed. On a genuine first run (no
