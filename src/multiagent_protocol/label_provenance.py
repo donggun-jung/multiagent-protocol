@@ -483,8 +483,17 @@ def labels_needing_receipt(
     A label qualifies only when ALL hold (each check fails closed):
 
     - it is **currently present**, with a timeline ``labeled`` event by an
-      allowlisted actor or the bot (the same trusted-applier rule as
-      :func:`has_verified_label`);
+      **owner-allowlisted (human) actor** — NOT the bot. Minting a first-sight
+      receipt for a BOT-applied label would let a leaked installation token
+      apply ``decision:approved-*`` / ``ready-to-merge`` *as the bot* and have
+      the bot self-mint a valid signed receipt for it next tick (label
+      laundering — the App-token bypass A3's receipt MAC otherwise leaves open).
+      The bot's *legitimate* ``approved-*`` applications are receipted by the
+      Decision Inbox resolution path (which binds the owner's signal), so they
+      never need first-sight minting here. The read side
+      (:func:`has_verified_label`) still honours a bot-authored receipt — but,
+      post-fix, the only valid receipts for a bot-applied approval come from the
+      inbox path, never from a bare bot-applied label;
     - it has **no receipt yet** (first bind), or — for
       :data:`REBINDABLE_LABELS` only — its receipt is stale (older head) AND
       the trusted label event is strictly NEWER than the bot's latest receipt
@@ -533,7 +542,12 @@ def labels_needing_receipt(
         if event is None:
             continue
         actor = event.actor_login
-        if actor is None or (actor not in allowlisted_actors and actor != bot_user):
+        # MINT only for an owner-allowlisted (human) applier. The bot itself is
+        # EXCLUDED here (even if it were ever allowlisted): a leaked App token
+        # could otherwise apply a gate-opening label as the bot and have the bot
+        # self-mint a valid receipt for it (label laundering). The bot's
+        # legitimate approved-* receipts come from the Decision Inbox path.
+        if actor is None or actor == bot_user or actor not in allowlisted_actors:
             continue
         if min_event_dt is not None:
             # Re-bind needs proof of fresh owner intent: the establishing label

@@ -164,3 +164,24 @@ def test_bot_self_repo_a_when_not_configured(pr_factory):
     pr = pr_factory()
     v = BotSelfRepoClassifier()
     assert v.evaluate(pr).quadrant == "A"
+
+
+def test_path_default_rename_out_of_governed_dir_is_d(pr_factory):
+    # A1 rename-out (GPT-5.5): renaming a file OUT of a governed dir to a benign
+    # path must still be Quadrant D — checked via previous_filename, so it cannot
+    # escape by being classified on the new name alone.
+    pr = pr_factory(files_changed=(
+        FileChange(path="docs/notes.md", status="renamed", additions=0,
+                   deletions=0, previous_filename="config/projects.yml"),
+    ))
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
+
+
+def test_path_default_github_scripts_modify_is_d(pr_factory):
+    # A1 (GPT-5.5): .github/scripts/* are executed BY the CI workflows, so they
+    # are enforcement-governing — the always-D prefix is the whole .github/ dir.
+    pr = pr_factory(files_changed=(
+        FileChange(path=".github/scripts/scan_no_personal_data.py",
+                   status="modified", additions=2, deletions=0),
+    ))
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "D"

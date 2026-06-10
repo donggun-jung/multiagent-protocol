@@ -55,12 +55,14 @@ CRITICAL_PREFIXES = (
 # or removed (not merely deleted). Editing any of these reconfigures or weakens
 # the gate, so it must always route to the owner — never auto-merge as A/B.
 ALWAYS_D_PREFIXES = (
-    "docs/concepts/",      # Tier 3 operating doctrine ("always D regardless of diff")
-    "config/",             # gate configuration (required_checks, audit_only, registry)
-    "governance/",         # gate decision logic (scripts, rubric, schemas)
-    ".github/workflows/",  # gate runtime + CI definitions (also blocks PR-introduced CI)
-    "schemas/",            # required-field schema changes are D; conservatively all schema edits
-    "bot-state/",          # Tier 5 audit & receipts (non-bot writes must be owner-gated)
+    "docs/concepts/",  # Tier 3 operating doctrine ("always D regardless of diff")
+    "config/",         # gate configuration (required_checks, audit_only, registry)
+    "governance/",     # gate decision logic (scripts, rubric, schemas)
+    ".github/",        # CI runtime: workflows AND the scripts/actions they invoke
+                       #   (workflows execute .github/scripts/*; both can forge a
+                       #    CI signal, so the whole dir is owner-gated)
+    "schemas/",        # required-field schema changes are D; conservatively all schema edits
+    "bot-state/",      # Tier 5 audit & receipts (non-bot writes must be owner-gated)
 )
 
 # Tier 2 immutable records: modifying/deleting an EXISTING ADR or meeting record
@@ -82,11 +84,24 @@ class PathDefaultClassifier:
         # decision logic / CI / schemas / audit state is ALWAYS Quadrant D, even
         # for a pure modification — an agent must not be able to quietly weaken
         # the rules that constrain it (five-tier-files.md Tier 3/4/5).
-        always_d = [f.path for f in files if f.path.startswith(ALWAYS_D_PREFIXES)]
-        # Tier 2 append-only: modifying/deleting an existing record (not adding).
+        # BOTH the new path AND (for a rename) the OLD path are checked, so
+        # renaming a file OUT of a governed dir (config/x.yml → docs/x.md) cannot
+        # escape D by being classified on the new name alone.
+        def _paths(f):
+            yield f.path
+            if f.previous_filename:
+                yield f.previous_filename
+
+        always_d = [
+            f.path for f in files
+            if any(p.startswith(ALWAYS_D_PREFIXES) for p in _paths(f))
+        ]
+        # Tier 2 append-only: modifying/deleting/renaming an existing record
+        # (not a pure add). A rename of an existing ADR/meeting is non-additive.
         append_d = [
             f.path for f in files
-            if f.path.startswith(APPEND_ONLY_PREFIXES) and f.status in _NON_ADDITIVE
+            if f.status in _NON_ADDITIVE
+            and any(p.startswith(APPEND_ONLY_PREFIXES) for p in _paths(f))
         ]
         if always_d or append_d:
             hit = (always_d + append_d)[0]

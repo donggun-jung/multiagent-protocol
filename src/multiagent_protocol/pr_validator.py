@@ -126,6 +126,7 @@ def build_pr_context(api: GitHubAPI, pr_payload: dict) -> PRContext:
             status=_normalize_file_status(f.get("status", "modified")),
             additions=f.get("additions", 0),
             deletions=f.get("deletions", 0),
+            previous_filename=f.get("previous_filename"),
         )
         for f in files_data
     )

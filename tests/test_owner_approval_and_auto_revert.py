@@ -803,3 +803,13 @@ def test_auto_revert_rejects_untrusted_readd_after_removal(pr_factory):
         approved_shas={"decision:auto-revert": "h" * 40},
     ).evaluate(pr)
     assert v.quadrant == "A"
+
+
+def test_no_receipt_for_bot_applied_label_laundering_guard(pr_factory):
+    # A3 laundering (GPT-5.5): a gate-opening label applied AS THE BOT (e.g. via
+    # a leaked App token) must NOT be self-minted into a valid receipt — only an
+    # owner-allowlisted (human) applier mints a first-sight receipt here. The
+    # bot's legitimate approved-* receipts come from the Decision Inbox path.
+    pr = _hand_applied_pr(
+        pr_factory, ("decision:approved-A", "ready-to-merge"), actor=BOT)
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()
