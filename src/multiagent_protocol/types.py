@@ -69,6 +69,11 @@ class FileChange:
     status: Literal["added", "modified", "removed", "renamed"]
     additions: int
     deletions: int
+    # For a rename, GitHub's files API also returns ``previous_filename`` (the
+    # OLD path). The classifier must consider it too: renaming a file OUT of an
+    # enforcement-governing dir (e.g. config/projects.yml → docs/x.md) would
+    # otherwise be classified on the new path alone and escape Quadrant D.
+    previous_filename: str | None = None
 
 
 @dataclass(frozen=True)

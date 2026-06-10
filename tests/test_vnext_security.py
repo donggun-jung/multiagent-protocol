@@ -124,6 +124,43 @@ def test_inbox_approval_writes_sha_receipt(fake_api):
     assert parsed == {"decision:approved-A": "h" * 40}
 
 
+def test_inbox_approval_writes_SIGNED_receipt_bound_to_pr(fake_api, monkeypatch):
+    # A3 + inbox: under a set key the inbox writer threads the PR ref/number, so
+    # the receipt it posts carries a valid MAC and verifies for THAT PR — and
+    # is not replayable to another PR.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "go-live-key")
+    body = (
+        "- PR: `example/repo#42` — head `" + "h" * 7 + "`\n"
+        "<!-- decision-inbox-nonce: abc123 -->\n"
+        "<!-- decision-inbox-head-sha: " + "h" * 40 + " -->\n"
+    )  # an unsigned body still resolves here (the head-SHA tamper guard
+    #     plus the signed receipt are what protect the PR); A6 body-signing is
+    #     covered separately. We only assert the WRITTEN receipt is signed.
+    fake_api.seed_issue(number=15, labels=("decision:pending-owner",), body=body)
+    fake_api.register_pr(owner="example", repo="repo", number=42, head_sha="h" * 40)
+    fake_api.seed_reaction(15, "owner", "+1")
+    # Build the issue body THROUGH issue_body so it carries a valid MAC, so the
+    # A6 resolver guard passes and we reach the receipt-writing branch.
+    from multiagent_protocol.decision_inbox import issue_body
+    signed_body = issue_body("example/repo", 42, "h" * 40, "r", nonce="abc123")
+    issue = next(i for i in fake_api._issues if i["number"] == 15)
+    issue["body"] = signed_body
+
+    resolve_open_issues(fake_api, "gov", "repo", ("owner",))
+
+    receipts = [b for (o, r, n, b) in fake_api.comments_posted
+                if (o, r, n) == ("example", "repo", 42)]
+    assert len(receipts) == 1
+    bot_c = [{"user": {"login": BOT_USER}, "body": receipts[0]}]
+    # Verifies for PR #42 (the bound PR) ...
+    assert approval_receipts(
+        bot_c, BOT_USER, repo_full_name="example/repo", pr_number=42) == {
+        "decision:approved-A": "h" * 40}
+    # ... and is rejected for a different PR (the MAC binds the PR number).
+    assert approval_receipts(
+        bot_c, BOT_USER, repo_full_name="example/repo", pr_number=99) == {}
+
+
 def test_approval_receipts_ignores_non_bot_authors():
     forged = approval_receipt_comment("decision:approved-A", SHA2)
     assert approval_receipts(
@@ -233,9 +270,11 @@ def test_governance_scripts_deletion_classifies_d_not_a(pr_factory):
     assert "governance/" in v.reasoning
 
 
-def test_governance_rubric_modification_classifies_b(pr_factory):
-    # Modifying the gate's reversibility rubric is critical (reversible) → B,
-    # i.e. owner-visible audit, not silent Quadrant-A auto-merge.
+def test_governance_rubric_modification_classifies_d(pr_factory):
+    # A1 hardening: the reversibility rubric IS the gate's own decision logic
+    # (governance/), so modifying it is always Quadrant D (owner APPROVAL), not
+    # merely a Quadrant-B audit — an agent must not be able to weaken the rubric
+    # that classifies its own PRs and have it auto-merge.
     from multiagent_protocol.skills.builtin.classifier_path_default import (
         PathDefaultClassifier,
     )
@@ -244,7 +283,7 @@ def test_governance_rubric_modification_classifies_b(pr_factory):
         FileChange(path="governance/REVERSIBILITY_RUBRIC.md", status="modified",
                    additions=3, deletions=1),
     ))
-    assert PathDefaultClassifier().evaluate(pr).quadrant == "B"
+    assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
 
 
 # -- 8. Squash merge keeps the Agent-* identity trailers ------------------------
@@ -529,10 +568,11 @@ def test_matching_sha_receipt_merges_e2e(fake_api, solo_config):
 # re-binds an approval (only the Decision Inbox may supersede one).
 
 
-def _written_receipts(fake_api):
+def _written_receipts(fake_api, *, repo_full_name=None, pr_number=None):
     return approval_receipts(
         [{"user": {"login": BOT_USER}, "body": b}
-         for (*_, b) in fake_api.comments_posted], BOT_USER)
+         for (*_, b) in fake_api.comments_posted], BOT_USER,
+        repo_full_name=repo_full_name, pr_number=pr_number)
 
 
 def test_hand_applied_approval_receipted_and_honored_same_tick(fake_api, solo_config):
@@ -761,3 +801,189 @@ def test_unlabel_then_untrusted_readd_blocks_quadrant_d_approval_e2e(fake_api, s
     d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
     assert d.action == "inbox"
     assert fake_api.merged == []
+
+
+# -- A3: HMAC-signed receipts (MERGE_GATE_RECEIPT_KEY set) ---------------------
+#
+# With the key set, a receipt counts ONLY if it carries a valid MAC over
+# (repo_full_name, pr_number, label, head_sha). A leaked App token can post a
+# bot-authored receipt comment but cannot mint a correct MAC, so a forged
+# receipt no longer satisfies C3/C1. The unset-key fallback is the rest of this
+# file (it runs author-only and is unchanged).
+
+REPO = "example/repo"
+
+
+def _signed_receipt(label, head_sha, *, repo_full_name=REPO, pr_number):
+    return approval_receipt_comment(
+        label, head_sha, repo_full_name=repo_full_name, pr_number=pr_number)
+
+
+def test_signed_receipts_written_carry_valid_mac_and_merge_e2e(
+        fake_api, solo_config, monkeypatch):
+    # Key set: the receipt writer signs the receipts it mints for hand-applied
+    # labels, and honours them the same tick → a Quadrant-D PR with fresh
+    # owner-applied ready + approval merges, and the written receipts verify.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "go-live-key")
+    pr = fake_api.register_pr(
+        number=150, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")])  # Quadrant D
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "merged"
+    assert d.quadrant == "D"
+    # The receipts the bot wrote this tick verify under the key + this PR's ref.
+    written = _written_receipts(fake_api, repo_full_name=REPO, pr_number=150)
+    assert written.get("decision:approved-A") == "h" * 40
+    assert written.get("ready-to-merge") == "h" * 40
+    # Every receipt comment the bot posted carries a MAC marker.
+    from multiagent_protocol.receipt_mac import extract_mac
+    receipts = [b for (*_, b) in fake_api.comments_posted
+                if "merge-gate-approval-label" in b]
+    assert receipts and all(extract_mac(b) is not None for b in receipts)
+
+
+def test_signed_receipt_with_valid_mac_honored_e2e(
+        fake_api, solo_config, monkeypatch):
+    # A pre-existing, correctly-signed receipt at the current head satisfies C3
+    # for a Quadrant-D PR (here the approval label is bot-applied at the head).
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "go-live-key")
+    pr = fake_api.register_pr(
+        number=151, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login",
+             "created_at": "2026-05-25T00:05:00Z"},
+            {"label": "decision:approved-A", "actor": BOT_USER,
+             "created_at": "2026-05-25T00:05:00Z"},
+        ])
+    fake_api.seed_comment(151, BOT_USER, _signed_receipt(
+        "decision:approved-A", "h" * 40, pr_number=151))
+    fake_api.seed_comment(151, BOT_USER, _signed_receipt(
+        "ready-to-merge", "h" * 40, pr_number=151))
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "merged"
+    assert d.quadrant == "D"
+
+
+def _forge_pr(fake_api, number):
+    # A Quadrant-D PR force-pushed to the current head SHA2. The
+    # decision:approved-A label was applied by the BOT (the inbox flow) so the
+    # applier check is not the decisive factor — the SHA binding is. The
+    # approval is NOT rebindable, so even when its receipt is stale the bot
+    # will not mint a fresh SHA2 receipt; the only thing that could open C3 is
+    # a receipt bound to SHA2 — exactly what a leaked token forges. C1
+    # (ready-to-merge) is given a genuine current-head binding in each test so
+    # the decision reaches C3 and the test turns on the approval receipt.
+    return fake_api.register_pr(
+        number=number, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],  # Quadrant D
+        head_sha=SHA2,
+        commits=[raw_commit(sha=SHA2, date="2026-05-25T00:10:00Z")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login",
+             "created_at": "2026-05-25T00:30:00Z"},  # fresh re-apply (post-receipt)
+            {"label": "decision:approved-A", "actor": BOT_USER,
+             "created_at": "2026-05-25T00:00:00Z"},
+        ])
+
+
+def _seed_stale_legit(fake_api, number, *, sign):
+    # Pre-existing LEGIT receipts the real bot wrote at the OLD head SHA1, for
+    # BOTH gate-opening labels. They are stale (SHA1 != current head SHA2).
+    #
+    # Crucially the approval's stale SHA1 receipt must be the binding of record
+    # so that — when a forged SHA2 receipt is rejected — the writer sees
+    # ``bound`` is SHA1 (not None) and does NOT first-sight-mint a fresh SHA2
+    # receipt (approvals are not rebindable). ``sign`` controls whether these
+    # legit SHA1 receipts carry a valid MAC (the real bot wrote them under the
+    # key). The ready receipt's owner re-apply (event 00:30 > receipt 00:10)
+    # lets the bot legitimately re-bind ready to SHA2 so C1 passes and the
+    # decision reaches C3.
+    def legit(label, sha):
+        return (_signed_receipt(label, sha, pr_number=number) if sign
+                else approval_receipt_comment(label, sha))
+    fake_api.seed_comment(number, BOT_USER, legit("decision:approved-A", SHA1),
+                          created_at="2026-05-25T00:10:00Z")
+    fake_api.seed_comment(number, BOT_USER, legit("ready-to-merge", SHA1),
+                          created_at="2026-05-25T00:10:00Z")
+
+
+def test_forged_approval_receipt_merges_UNSIGNED_blocked_SIGNED_e2e(
+        solo_config, monkeypatch):
+    # THE A3 forge demonstration, isolated to the C3 (approval) door. A leaked
+    # App token posts a bot-authored receipt binding decision:approved-A to the
+    # CURRENT head SHA2. It is the LATEST approval receipt, so it overrides the
+    # legit stale SHA1 binding. The approval is not rebindable AND a stale
+    # binding already exists, so the bot mints no SHA2 approval receipt of its
+    # own. C1 passes (ready legitimately re-bound to SHA2 this tick).
+    #
+    # (1) Key UNSET (today's author-only world): the forged SHA2 approval
+    #     receipt counts (author-only) and overrides the stale binding → the PR
+    #     MERGES at unreviewed code. The A3 hole.
+    monkeypatch.delenv("MERGE_GATE_RECEIPT_KEY", raising=False)
+    api = FakeAPI()
+    pr = _forge_pr(api, 152)
+    _seed_stale_legit(api, 152, sign=False)
+    api.seed_comment(152, BOT_USER, approval_receipt_comment(
+        "decision:approved-A", SHA2))                       # FORGED at head
+    d = process_pr(api, solo_config, _rt(api, solo_config), pr)
+    assert d.action == "merged"          # forge succeeds when unsigned
+
+    # (2) Key SET: the forged SHA2 approval receipt carries no valid MAC →
+    #     rejected. Only the legit signed SHA1 approval receipt survives →
+    #     bound SHA1 != head SHA2 → C3 fails, and the writer does not mint a
+    #     fresh receipt (stale binding present, approval not rebindable) →
+    #     routed to the inbox, never merged.
+    api2 = FakeAPI()
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "go-live-key")
+    pr2 = _forge_pr(api2, 152)
+    _seed_stale_legit(api2, 152, sign=True)
+    api2.seed_comment(152, BOT_USER, approval_receipt_comment(
+        "decision:approved-A", SHA2))                       # forged, unsigned
+    d2 = process_pr(api2, solo_config, _rt(api2, solo_config), pr2)
+    assert d2.action == "inbox"          # forge rejected when signed
+    assert api2.merged == []
+    # The approval is never auto-re-bound → no valid SHA2 approval receipt.
+    written = _written_receipts(api2, repo_full_name=REPO, pr_number=152)
+    assert written.get("decision:approved-A") != SHA2
+
+
+def test_signed_approval_receipt_from_other_pr_not_replayable_e2e(
+        solo_config, monkeypatch):
+    # Replay across PRs: an approval receipt validly signed for a DIFFERENT PR
+    # (#99) at the current head SHA2 is replayed onto PR 153, alongside the
+    # legit signed stale SHA1 receipts for THIS PR. The MAC binds the PR
+    # number, so the #99 receipt fails the check for PR 153 → it does not count
+    # → only the stale SHA1 binding survives → C3 fails → inbox. (C1 passes.)
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "go-live-key")
+    api = FakeAPI()
+    pr = _forge_pr(api, 153)
+    _seed_stale_legit(api, 153, sign=True)
+    # Validly signed approval at the current head SHA2, but for PR #99.
+    api.seed_comment(153, BOT_USER, _signed_receipt(
+        "decision:approved-A", SHA2, pr_number=99))
+    d = process_pr(api, solo_config, _rt(api, solo_config), pr)
+    assert d.action == "inbox"
+    assert api.merged == []
+
+
+def test_unset_key_falls_back_to_author_only_e2e(fake_api, solo_config, monkeypatch):
+    # Fallback: with the key UNSET, an unsigned bot receipt is honoured exactly
+    # as before (author-only). Quadrant-D PR with a bot-applied approval label +
+    # an unsigned receipt at the head merges — proving the hardening does not
+    # break unsigned deployments.
+    monkeypatch.delenv("MERGE_GATE_RECEIPT_KEY", raising=False)
+    pr = fake_api.register_pr(
+        number=154, labels=("ready-to-merge", "decision:approved-A"),
+        files=[changed_file("src/x.py", status="removed")],
+        label_events=[
+            {"label": "ready-to-merge", "actor": "your-github-login",
+             "created_at": "2026-05-25T00:05:00Z"},
+            {"label": "decision:approved-A", "actor": BOT_USER,
+             "created_at": "2026-05-25T00:05:00Z"},
+        ])
+    fake_api.seed_comment(
+        154, BOT_USER, approval_receipt_comment("decision:approved-A", "h" * 40))
+    d = process_pr(fake_api, solo_config, _rt(fake_api, solo_config), pr)
+    assert d.action == "merged"
+    assert d.quadrant == "D"

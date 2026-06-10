@@ -9,7 +9,9 @@ from __future__ import annotations
 from multiagent_protocol.decision_inbox import (
     INBOX_ERROR_LABEL,
     INBOX_ERROR_THRESHOLD,
+    INBOX_INTEGRITY_LABEL,
     STALE_APPROVAL_LABEL,
+    issue_body,
     parse_pr_ref,
     resolve_open_issues,
 )
@@ -199,3 +201,138 @@ def test_failure_count_resets_on_success():
     assert res[0].action == "labeled"
     assert counts == {}                       # reset on success
     assert ("gov", "repo", 16, INBOX_ERROR_LABEL) not in api.labels_added
+
+
+# -- A6: Decision Inbox body integrity (MERGE_GATE_RECEIPT_KEY set) ------------
+#
+# The resolver reads the authoritative PR ref + head SHA from the (mutable)
+# issue body. With the key set, the body carries a MAC over (pr_full_name,
+# pr_number, head_sha, nonce); a verdict is honoured ONLY if the body verifies.
+# An edit that redirects the PR ref/head fails the MAC and is refused. The
+# unset-key fallback resolves as before.
+
+KEY = "go-live-key"
+
+
+def _seed_signed_pending(fake_api, *, issue_number, pr_number, head_sha,
+                         pr_full_name="example/repo"):
+    """Seed a pending inbox issue whose body is correctly MAC-signed.
+
+    The env key must already be set (via monkeypatch) when this is called so
+    issue_body() embeds a valid marker. Returns the signed body string.
+    """
+    body = issue_body(
+        pr_full_name=pr_full_name, pr_number=pr_number, head_sha=head_sha,
+        classifier_reasoning="r", nonce="nonce-" + str(issue_number),
+    )
+    fake_api.seed_issue(number=issue_number, labels=("decision:pending-owner",),
+                        body=body)
+    owner, _, repo = pr_full_name.partition("/")
+    fake_api.register_pr(owner=owner, repo=repo, number=pr_number, head_sha=head_sha)
+    return body
+
+
+def _replace_issue_body(fake_api, issue_number, new_body):
+    issue = next(i for i in fake_api._issues if i["number"] == issue_number)
+    issue["body"] = new_body
+
+
+def test_signed_body_valid_mac_resolves(fake_api, monkeypatch):
+    # Control: a correctly-signed body resolves the owner verdict normally.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", KEY)
+    _seed_signed_pending(fake_api, issue_number=20, pr_number=60, head_sha="h" * 40)
+    fake_api.seed_reaction(20, "owner", "+1")
+    res = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res[0].action == "labeled" and res[0].verdict == "approved-A"
+    assert ("example", "repo", 60, "decision:approved-A") in fake_api.labels_added
+
+
+def test_signed_body_pr_ref_tamper_refused(fake_api, monkeypatch):
+    # A6 redirect: the body is signed for example/repo#61, then an editor
+    # rewrites the PR ref to evil/repo#61 to redirect the owner's approval.
+    # The MAC fails → verdict NOT honoured; integrity comment + marker posted;
+    # NO approval label on any PR.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", KEY)
+    _seed_signed_pending(fake_api, issue_number=21, pr_number=61, head_sha="h" * 40)
+    fake_api.seed_reaction(21, "owner", "+1")
+    issue = next(i for i in fake_api._issues if i["number"] == 21)
+    _replace_issue_body(fake_api, 21, issue["body"].replace(
+        "example/repo#61", "evil/repo#61"))
+    res = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res[0].action == "integrity-skip"
+    assert res[0].verdict == "integrity-failed"
+    assert not any(lbl.startswith("decision:approved")
+                   for *_, lbl in fake_api.labels_added)
+    assert ("gov", "repo", 21, INBOX_INTEGRITY_LABEL) in fake_api.labels_added
+    integ = [c for c in fake_api.comments_posted if c[2] == 21]
+    assert len(integ) == 1 and "integrity check failed" in integ[0][3]
+
+
+def test_signed_body_head_sha_tamper_refused(fake_api, monkeypatch):
+    # Rewriting the recorded head SHA in the body (to point the approval at a
+    # different, unreviewed head) also fails the MAC → refused.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", KEY)
+    _seed_signed_pending(fake_api, issue_number=22, pr_number=62, head_sha="a" * 40)
+    fake_api.seed_reaction(22, "owner", "+1")
+    issue = next(i for i in fake_api._issues if i["number"] == 22)
+    # Change BOTH the short and full head SHA in the body to a different value.
+    tampered = issue["body"].replace("a" * 40, "b" * 40).replace("a" * 7, "b" * 7)
+    _replace_issue_body(fake_api, 22, tampered)
+    res = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res[0].action == "integrity-skip"
+    assert not fake_api.merged
+    assert not any(lbl.startswith("decision:approved")
+                   for *_, lbl in fake_api.labels_added)
+
+
+def test_signed_body_missing_mac_refused(fake_api, monkeypatch):
+    # A body with the PR ref + head SHA but NO MAC marker (e.g. an attacker
+    # opened the issue by hand, or stripped the marker) is refused under a set
+    # key — fail closed.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", KEY)
+    body = (
+        "- PR: `example/repo#63` — head `" + "h" * 7 + "`\n"
+        "<!-- decision-inbox-nonce: n -->\n"
+        "<!-- decision-inbox-head-sha: " + "h" * 40 + " -->\n"
+    )  # no merge-gate-mac marker
+    fake_api.seed_issue(number=23, labels=("decision:pending-owner",), body=body)
+    fake_api.register_pr(owner="example", repo="repo", number=63, head_sha="h" * 40)
+    fake_api.seed_reaction(23, "owner", "+1")
+    res = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res[0].action == "integrity-skip"
+    assert not any(lbl.startswith("decision:approved")
+                   for *_, lbl in fake_api.labels_added)
+
+
+def test_integrity_comment_posted_once_then_suppressed(fake_api, monkeypatch):
+    # Like the head-SHA tamper path: the integrity comment is posted ONCE, then
+    # the marker label suppresses re-posting on every later tick.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", KEY)
+    _seed_signed_pending(fake_api, issue_number=24, pr_number=64, head_sha="h" * 40)
+    fake_api.seed_reaction(24, "owner", "+1")
+    issue = next(i for i in fake_api._issues if i["number"] == 24)
+    _replace_issue_body(fake_api, 24, issue["body"].replace(
+        "example/repo#64", "evil/repo#64"))
+
+    res1 = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res1[0].action == "integrity-skip"
+    assert len([c for c in fake_api.comments_posted if c[2] == 24]) == 1
+    # Emulate GitHub state after the marker label was added.
+    issue["labels"].append({"name": INBOX_INTEGRITY_LABEL})
+    issue["_labels"].add(INBOX_INTEGRITY_LABEL)
+
+    res2 = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res2 == []
+    assert len([c for c in fake_api.comments_posted if c[2] == 24]) == 1  # not re-posted
+
+
+def test_unset_key_unsigned_body_resolves_fallback(fake_api, monkeypatch):
+    # Fallback: with the key UNSET, an UNSIGNED body resolves exactly as before
+    # (the prior behaviour the whole suite already pins) — the hardening does
+    # not break unsigned deployments.
+    monkeypatch.delenv("MERGE_GATE_RECEIPT_KEY", raising=False)
+    _seed_pending(fake_api, issue_number=25, pr_number=65, head_sha="h" * 40)
+    fake_api.seed_reaction(25, "owner", "+1")
+    res = resolve_open_issues(fake_api, "gov", "repo", ALLOW)
+    assert res[0].action == "labeled" and res[0].verdict == "approved-A"
+    assert ("example", "repo", 65, "decision:approved-A") in fake_api.labels_added

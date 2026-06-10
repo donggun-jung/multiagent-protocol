@@ -13,8 +13,10 @@ from __future__ import annotations
 from multiagent_protocol.decision_inbox import (
     APPROVE_RE,
     REJECT_RE,
+    _inbox_mac_parts,
     issue_body,
     parse_nonce_and_sha,
+    parse_pr_ref,
     resolve_verdict,
 )
 
@@ -35,6 +37,38 @@ def test_issue_body_contains_head_sha_and_nonce():
     assert "Quadrant D" in body
     # Reasoning surfaced.
     assert "touches src/multiagent_protocol/foo.py" in body
+
+
+# ---- A6: issue-body MAC (signed vs unsigned) -------------------------------
+
+def test_issue_body_unsigned_when_key_unset(monkeypatch):
+    from multiagent_protocol.receipt_mac import extract_mac
+    monkeypatch.delenv("MERGE_GATE_RECEIPT_KEY", raising=False)
+    body = issue_body("o/r", 1, "a" * 40, "r", nonce="n")
+    assert extract_mac(body) is None      # no MAC marker in the fallback body
+
+
+def test_issue_body_signed_when_key_set_and_verifies(monkeypatch):
+    from multiagent_protocol.receipt_mac import extract_mac, verify_mac
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "k")
+    body = issue_body("o/r", 1, "a" * 40, "r", nonce="n")
+    digest = extract_mac(body)
+    assert digest is not None
+    # The embedded MAC verifies over the body's own authoritative fields.
+    nonce, sha = parse_nonce_and_sha(body)
+    pf, pn = parse_pr_ref(body)
+    assert verify_mac("k", digest, *_inbox_mac_parts(pf, pn, sha, nonce))
+
+
+def test_issue_body_mac_fails_after_pr_ref_edit(monkeypatch):
+    from multiagent_protocol.receipt_mac import extract_mac, verify_mac
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "k")
+    body = issue_body("o/r", 1, "a" * 40, "r", nonce="n")
+    tampered = body.replace("o/r#1", "evil/r#2")
+    nonce, sha = parse_nonce_and_sha(tampered)
+    pf, pn = parse_pr_ref(tampered)
+    assert not verify_mac("k", extract_mac(tampered),
+                          *_inbox_mac_parts(pf, pn, sha, nonce))
 
 
 def test_parse_nonce_and_sha_roundtrip():

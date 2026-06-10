@@ -203,6 +203,109 @@ def test_owner_approval_ignores_unrelated_labels(pr_factory):
     assert not v.check(pr).passed
 
 
+# -- A3: HMAC-signed receipts (MERGE_GATE_RECEIPT_KEY) ------------------------
+#
+# With the key set, a receipt counts ONLY if it carries a valid MAC over
+# (repo_full_name, pr_number, label, head_sha). A leaked App token can post a
+# bot-authored receipt comment but cannot mint a correct MAC. Unset key →
+# author-only fallback (unchanged).
+
+from multiagent_protocol.label_provenance import (  # noqa: E402
+    approval_receipt_comment,
+    approval_receipts,
+)
+
+A3_REPO = "example/repo"
+A3_PR = 42
+
+
+def _bot_comment(body):
+    return {"user": {"login": BOT}, "body": body}
+
+
+def test_signed_receipt_honored_when_key_set(monkeypatch):
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "k")
+    body = approval_receipt_comment(
+        "decision:approved-A", "h" * 40, repo_full_name=A3_REPO, pr_number=A3_PR)
+    parsed = approval_receipts(
+        [_bot_comment(body)], BOT, repo_full_name=A3_REPO, pr_number=A3_PR)
+    assert parsed == {"decision:approved-A": "h" * 40}
+
+
+def test_unsigned_receipt_rejected_when_key_set(monkeypatch):
+    # A bot-authored receipt with NO MAC marker (the forge: a leaked token
+    # lacks the key) does not count under a set key.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "k")
+    forged = approval_receipt_comment("decision:approved-A", "h" * 40)  # no ctx → no MAC
+    assert approval_receipts(
+        [_bot_comment(forged)], BOT, repo_full_name=A3_REPO, pr_number=A3_PR) == {}
+
+
+def test_receipt_with_wrong_mac_rejected_when_key_set(monkeypatch):
+    # A receipt signed under a DIFFERENT key (attacker's own MAC) is rejected.
+    # Build the body under the attacker key, then verify under the real key.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "attacker-key")
+    forged = approval_receipt_comment(
+        "decision:approved-A", "h" * 40, repo_full_name=A3_REPO, pr_number=A3_PR)
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "real-key")
+    assert approval_receipts(
+        [_bot_comment(forged)], BOT, repo_full_name=A3_REPO, pr_number=A3_PR) == {}
+
+
+def test_signed_receipt_not_replayable_to_other_pr(monkeypatch):
+    # A valid receipt for pr_number=42 does not count for pr_number=99.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "k")
+    body = approval_receipt_comment(
+        "decision:approved-A", "h" * 40, repo_full_name=A3_REPO, pr_number=42)
+    assert approval_receipts(
+        [_bot_comment(body)], BOT, repo_full_name=A3_REPO, pr_number=99) == {}
+
+
+def test_unsigned_receipt_honored_when_key_unset(monkeypatch):
+    # Fallback: with no key, the unsigned receipt is honoured author-only,
+    # exactly as before (this is what the rest of the suite already pins).
+    monkeypatch.delenv("MERGE_GATE_RECEIPT_KEY", raising=False)
+    body = approval_receipt_comment("decision:approved-A", "h" * 40)
+    assert approval_receipts([_bot_comment(body)], BOT) == {"decision:approved-A": "h" * 40}
+
+
+def test_signed_receipt_honored_through_has_verified_label(pr_factory, monkeypatch):
+    # End-to-end through the gate predicate: a signed receipt for the current
+    # head, fed via approval_receipts → has_verified_label, opens C3.
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "k")
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(),),
+        label_events=(_approval_event(actor=BOT),),
+    )
+    body = approval_receipt_comment(
+        "decision:approved-A", "h" * 40,
+        repo_full_name=pr.full_name, pr_number=pr.number)
+    approved = approval_receipts(
+        [_bot_comment(body)], BOT,
+        repo_full_name=pr.full_name, pr_number=pr.number)
+    assert has_verified_label(
+        pr, ("decision:approved-A",), OWNER, BOT, approved_shas=approved)
+
+
+def test_forged_receipt_blocks_has_verified_label_when_key_set(pr_factory, monkeypatch):
+    # The forge with no MAC: approval_receipts drops it → empty map → C3 not
+    # opened (the Quadrant-D PR would route to the inbox in process_pr).
+    monkeypatch.setenv("MERGE_GATE_RECEIPT_KEY", "k")
+    pr = pr_factory(
+        labels=("decision:approved-A",), head_sha="h" * 40,
+        commits=(_commit(),),
+        label_events=(_approval_event(actor=BOT),),
+    )
+    forged = approval_receipt_comment("decision:approved-A", "h" * 40)  # no MAC
+    approved = approval_receipts(
+        [_bot_comment(forged)], BOT,
+        repo_full_name=pr.full_name, pr_number=pr.number)
+    assert approved == {}
+    assert not has_verified_label(
+        pr, ("decision:approved-A",), OWNER, BOT, approved_shas=approved)
+
+
 # -- Owner approval: SHA-bound receipts (vNext hardening) --
 
 def test_owner_approval_rejects_receipt_bound_to_old_head_even_if_time_fresh(pr_factory):
@@ -700,3 +803,13 @@ def test_auto_revert_rejects_untrusted_readd_after_removal(pr_factory):
         approved_shas={"decision:auto-revert": "h" * 40},
     ).evaluate(pr)
     assert v.quadrant == "A"
+
+
+def test_no_receipt_for_bot_applied_label_laundering_guard(pr_factory):
+    # A3 laundering (GPT-5.5): a gate-opening label applied AS THE BOT (e.g. via
+    # a leaked App token) must NOT be self-minted into a valid receipt — only an
+    # owner-allowlisted (human) applier mints a first-sight receipt here. The
+    # bot's legitimate approved-* receipts come from the Decision Inbox path.
+    pr = _hand_applied_pr(
+        pr_factory, ("decision:approved-A", "ready-to-merge"), actor=BOT)
+    assert labels_needing_receipt(pr, OWNER, BOT, approved_shas={}) == ()

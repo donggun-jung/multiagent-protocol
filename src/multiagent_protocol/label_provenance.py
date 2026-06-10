@@ -57,6 +57,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 
+from multiagent_protocol.receipt_mac import (
+    compute_mac,
+    extract_mac,
+    mac_key,
+    mac_marker,
+    verify_mac,
+    warn_unsigned_once,
+)
 from multiagent_protocol.types import LabelEvent, PRContext
 
 # Sanity window for the head commit's committer date (the time-based fallback
@@ -92,6 +100,15 @@ RECEIPT_ELIGIBLE_LABELS = frozenset({
 # superseding a stale approval is the Decision Inbox's job, where the owner
 # re-approves against a verified head. Auto-re-binding an approval would be
 # auto-re-approval of unreviewed code.
+#
+# NOTE: ``ready-to-merge`` stays re-bindable on purpose. The re-bind is NOT a
+# "bare re-apply" auto-rebind — :func:`labels_needing_receipt` requires a
+# trusted ``labeled`` event strictly newer than the bot's last receipt comment
+# (server-assigned timestamps on both sides) before re-binding. Removing it
+# would brick the legitimate "owner pushes a fix, then re-applies
+# ready-to-merge" flow: once any receipt exists for the label the writer's
+# first-sight branch (``bound is None``) no longer applies, so with no re-bind
+# path the stale receipt could never be refreshed and C1 would fail forever.
 REBINDABLE_LABELS = frozenset({"ready-to-merge"})
 
 
@@ -218,14 +235,40 @@ def plausible_head_date(hdate: str, now: datetime | None = None) -> bool:
     return True
 
 
-def approval_receipt_comment(label: str, head_sha: str) -> str:
+def _receipt_mac_parts(repo_full_name: str, pr_number: int, label: str, head_sha: str):
+    """Authoritative fields a receipt MAC covers, in a FIXED order.
+
+    A3: the receipt binds ``label`` to ``head_sha`` *for one PR*. Binding the
+    repo + PR number into the MAC stops a valid receipt from one PR being
+    replayed onto another (the marker is recomputed against THIS PR's
+    repo/number at read time). ``head_sha`` is already bound by the SHA marker;
+    including it here makes the MAC cover the full assertion.
+    """
+    return (repo_full_name, str(pr_number), label, head_sha)
+
+
+def approval_receipt_comment(
+    label: str,
+    head_sha: str,
+    *,
+    repo_full_name: str | None = None,
+    pr_number: int | None = None,
+) -> str:
     """Body of the bot's label-application receipt comment on the PR.
 
     Posted alongside the label write (``decision_inbox.resolve_open_issues``)
     so the gate can later verify the approval against the exact head SHA it
     was granted for. Parsed back by :func:`approval_receipts`.
+
+    A3 hardening: when ``MERGE_GATE_RECEIPT_KEY`` is set AND the repo/PR
+    context is supplied, a keyed MAC over ``(repo_full_name, pr_number, label,
+    head_sha)`` is appended in a ``<!-- merge-gate-mac: ... -->`` marker. The
+    reader then rejects any receipt without a valid MAC, so a leaked App token
+    can no longer forge a *counting* receipt (it can post a comment, but not
+    one carrying a correct MAC). With no key set, the receipt is unsigned and
+    the reader keeps the prior author-only behaviour (one loud warning).
     """
-    return (
+    body = (
         f"Merge Gate: recorded `{label}` for head `{head_sha[:7]}`.\n\n"
         f"This approval is bound to that exact commit. It becomes void as "
         f"soon as the PR head changes (new commit, amend, or force-push) — "
@@ -233,23 +276,56 @@ def approval_receipt_comment(label: str, head_sha: str) -> str:
         f"{APPROVAL_RECEIPT_LABEL_MARKER} {label} -->\n"
         f"{APPROVAL_RECEIPT_SHA_MARKER} {head_sha} -->\n"
     )
+    key = mac_key()
+    if key is None:
+        warn_unsigned_once()
+        return body
+    if repo_full_name is None or pr_number is None:
+        # No repo/PR context to bind the MAC to. The reader is given the same
+        # context, so an unbound receipt could never verify anyway — emit it
+        # unsigned (the reader fails it closed) rather than minting a MAC the
+        # reader cannot reproduce.
+        return body
+    digest = compute_mac(
+        key, *_receipt_mac_parts(repo_full_name, pr_number, label, head_sha)
+    )
+    return body + mac_marker(digest) + "\n"
 
 
-def _iter_receipt_comments(comments: Iterable[dict], bot_user: str | None):
+def _iter_receipt_comments(
+    comments: Iterable[dict],
+    bot_user: str | None,
+    *,
+    repo_full_name: str | None = None,
+    pr_number: int | None = None,
+):
     """Yield ``(label, sha, comment_created_at)`` per bot-authored receipt.
 
     Only comments **authored by the bot's own App user** are read — receipts
     are written exclusively by the bot, so a marker in anyone else's comment
     is a forgery attempt and is ignored. With no ``bot_user`` no comment can
     be authenticated → nothing is yielded.
+
+    A3 hardening: when ``MERGE_GATE_RECEIPT_KEY`` is set, a receipt is yielded
+    ONLY if it carries a ``<!-- merge-gate-mac: ... -->`` marker that
+    recomputes over ``(repo_full_name, pr_number, label, sha)`` — i.e. a
+    leaked App token cannot forge a counting receipt without the key. A
+    missing or wrong MAC, or absent repo/PR context, fails **closed** (that
+    receipt is skipped, so C1/C3 cannot pass on it). With no key set, the
+    one-time unsigned-fallback warning fires and every author-matching receipt
+    is yielded as before (author-only auth).
     """
     if not bot_user:
         return
+    key = mac_key()
+    if key is None:
+        warn_unsigned_once()
     for c in comments:
         if ((c.get("user") or {}).get("login")) != bot_user:
             continue
+        body = c.get("body") or ""
         label = sha = None
-        for line in (c.get("body") or "").split("\n"):
+        for line in body.split("\n"):
             s = line.strip()
             if s.startswith(APPROVAL_RECEIPT_LABEL_MARKER) and s.endswith("-->"):
                 label = (
@@ -261,24 +337,53 @@ def _iter_receipt_comments(comments: Iterable[dict], bot_user: str | None):
                     s.removeprefix(APPROVAL_RECEIPT_SHA_MARKER)
                     .removesuffix("-->").strip()
                 )
-        if label and sha:
-            yield label, sha, c.get("created_at")
+        if not (label and sha):
+            continue
+        if key is not None:
+            # Fail closed: a signed deployment honours only receipts whose MAC
+            # recomputes over THIS PR's authoritative fields. No repo/PR
+            # context → nothing can verify → skip all.
+            if repo_full_name is None or pr_number is None:
+                continue
+            expected = extract_mac(body)
+            if expected is None or not verify_mac(
+                key, expected,
+                *_receipt_mac_parts(repo_full_name, pr_number, label, sha),
+            ):
+                continue
+        yield label, sha, c.get("created_at")
 
 
 def approval_receipts(
-    comments: Iterable[dict], bot_user: str | None
+    comments: Iterable[dict],
+    bot_user: str | None,
+    *,
+    repo_full_name: str | None = None,
+    pr_number: int | None = None,
 ) -> dict[str, str]:
     """Parse ``{label: approved_head_sha}`` from the bot's receipt comments.
 
     The latest receipt per label wins (re-approval after a head change
     supersedes the old binding). See :func:`_iter_receipt_comments` for the
-    author-authentication rules.
+    author-authentication AND (A3) keyed-MAC rules. ``repo_full_name`` /
+    ``pr_number`` are the PR the comments belong to; supplying them lets a
+    signed deployment reject any receipt whose MAC does not bind to THIS PR.
     """
-    return {label: sha for label, sha, _ in _iter_receipt_comments(comments, bot_user)}
+    return {
+        label: sha
+        for label, sha, _ in _iter_receipt_comments(
+            comments, bot_user,
+            repo_full_name=repo_full_name, pr_number=pr_number,
+        )
+    }
 
 
 def approval_receipt_times(
-    comments: Iterable[dict], bot_user: str | None
+    comments: Iterable[dict],
+    bot_user: str | None,
+    *,
+    repo_full_name: str | None = None,
+    pr_number: int | None = None,
 ) -> dict[str, str]:
     """``{label: created_at}`` of the bot's LATEST receipt comment per label.
 
@@ -287,10 +392,15 @@ def approval_receipt_times(
     by :func:`labels_needing_receipt` to decide whether the owner re-applied
     a label AFTER the bot's last binding — the proof of fresh intent a
     re-bind requires. A receipt comment without a usable timestamp simply
-    yields no entry (the re-bind then fails closed).
+    yields no entry (the re-bind then fails closed). Honours the same (A3)
+    keyed-MAC gate as :func:`approval_receipts` when ``repo_full_name`` /
+    ``pr_number`` are supplied and a key is set.
     """
     times: dict[str, str] = {}
-    for label, _sha, created_at in _iter_receipt_comments(comments, bot_user):
+    for label, _sha, created_at in _iter_receipt_comments(
+        comments, bot_user,
+        repo_full_name=repo_full_name, pr_number=pr_number,
+    ):
         times[label] = created_at if isinstance(created_at, str) else ""
     return times
 
@@ -373,8 +483,17 @@ def labels_needing_receipt(
     A label qualifies only when ALL hold (each check fails closed):
 
     - it is **currently present**, with a timeline ``labeled`` event by an
-      allowlisted actor or the bot (the same trusted-applier rule as
-      :func:`has_verified_label`);
+      **owner-allowlisted (human) actor** — NOT the bot. Minting a first-sight
+      receipt for a BOT-applied label would let a leaked installation token
+      apply ``decision:approved-*`` / ``ready-to-merge`` *as the bot* and have
+      the bot self-mint a valid signed receipt for it next tick (label
+      laundering — the App-token bypass A3's receipt MAC otherwise leaves open).
+      The bot's *legitimate* ``approved-*`` applications are receipted by the
+      Decision Inbox resolution path (which binds the owner's signal), so they
+      never need first-sight minting here. The read side
+      (:func:`has_verified_label`) still honours a bot-authored receipt — but,
+      post-fix, the only valid receipts for a bot-applied approval come from the
+      inbox path, never from a bare bot-applied label;
     - it has **no receipt yet** (first bind), or — for
       :data:`REBINDABLE_LABELS` only — its receipt is stale (older head) AND
       the trusted label event is strictly NEWER than the bot's latest receipt
@@ -423,7 +542,12 @@ def labels_needing_receipt(
         if event is None:
             continue
         actor = event.actor_login
-        if actor is None or (actor not in allowlisted_actors and actor != bot_user):
+        # MINT only for an owner-allowlisted (human) applier. The bot itself is
+        # EXCLUDED here (even if it were ever allowlisted): a leaked App token
+        # could otherwise apply a gate-opening label as the bot and have the bot
+        # self-mint a valid receipt for it (label laundering). The bot's
+        # legitimate approved-* receipts come from the Decision Inbox path.
+        if actor is None or actor == bot_user or actor not in allowlisted_actors:
             continue
         if min_event_dt is not None:
             # Re-bind needs proof of fresh owner intent: the establishing label
