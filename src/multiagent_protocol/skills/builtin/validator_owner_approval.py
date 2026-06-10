@@ -4,9 +4,15 @@ The L1.C3 condition documented in ``docs/concepts/architecture.md``:
 a PR may pass only if **either**
 
   (a) the classifier returned Quadrant A, B, or C (auto-approval), **or**
-  (b) the PR carries a ``decision:approved-{A,B,C}`` label that the bot wrote
+  (b) the PR carries a ``decision:approved-{A,B}`` label that the bot wrote
       after an allowlisted owner approved it in the Decision Inbox (or that an
       allowlisted owner applied directly).
+
+``decision:approved-C`` is deliberately **not** a merge-granting label: ballot
+option C means "defer / needs more info" (``decision_inbox``,
+``docs/concepts/four-quadrants.md``) and the inbox records it as
+``decision:deferred``. An owner hand-applying ``decision:approved-C`` to note
+"I choose C" must not accidentally unlock the merge.
 
 Built-in, P0 severity.
 
@@ -37,7 +43,7 @@ from multiagent_protocol.skills.base import (
 APPROVAL_LABELS = (
     "decision:approved-A",
     "decision:approved-B",
-    "decision:approved-C",
+    # NOT "decision:approved-C": option C = defer, never a merge grant.
 )
 
 

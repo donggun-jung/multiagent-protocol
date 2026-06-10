@@ -91,6 +91,17 @@ def test_owner_approval_fails_closed_when_head_sha_absent_from_commits(pr_factor
     assert not v.check(pr).passed
 
 
+def test_owner_approval_approved_c_label_does_not_satisfy_c3(pr_factory):
+    # Option C = "defer / needs more info" (Decision Inbox doctrine) — it must
+    # NEVER grant a merge, even when applied fresh by the owner themselves.
+    pr = pr_factory(
+        labels=("decision:approved-C",), commits=(_commit(),),
+        label_events=(_approval_event("decision:approved-C"),),
+    )
+    v = OwnerApprovalValidator(classifier_verdict="D", allowlisted_actors=OWNER, bot_user=BOT)
+    assert not v.check(pr).passed
+
+
 def test_owner_approval_rejects_self_applied_label(pr_factory):
     # Exploit A: a non-allowlisted collaborator self-applies the approval label.
     pr = pr_factory(
