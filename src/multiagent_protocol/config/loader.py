@@ -10,8 +10,8 @@ The five config files:
   break-glass deadline overrides.
 - ``config/env.yml`` — runner tier + bot App slug + classifier publisher.
 - ``config/skills.yml`` — enabled/disabled skill names + severity overrides.
-- ``config/agent_registry.yml`` — agent tool names, model identifiers, and
-  machine handles that the L4 identity gate trusts.
+- ``config/agent_registry.yml`` — agent tool names + model identifiers that
+  the L4 identity gate trusts.
 
 Missing optional config files are tolerated (treated as empty); missing
 ``owner.yml`` or ``projects.yml`` is a hard error.
@@ -32,20 +32,11 @@ from jsonschema import validate as jsonschema_validate
 class OwnerConfig:
     github_login: str
     allowlisted_actors: tuple[str, ...]
-    display_name: str | None = None
-
-
-@dataclass(frozen=True)
-class InboxThresholds:
-    nudge_days: int = 14
-    abandon_days: int = 30
-    auto_close_days: int = 60
 
 
 @dataclass(frozen=True)
 class DecisionInboxConfig:
     repository: str | None = None  # falls back to projects.governance_repo
-    thresholds: InboxThresholds = field(default_factory=InboxThresholds)
 
 
 @dataclass(frozen=True)
@@ -154,7 +145,6 @@ class AgentRegistry:
 
     tools: tuple[str, ...]
     models: dict[str, tuple[str, ...]]   # tool -> accepted models (or ("*",))
-    machines: tuple[str, ...] = ()
 
     def model_allowed(self, tool: str, model: str | None) -> bool:
         """Return True if (tool, model) is in the registry (or wildcard '*')."""
@@ -200,17 +190,12 @@ def _validate(data: dict, schema_path: Path) -> None:
 
 
 def _build_decision_inbox(raw: dict) -> DecisionInboxConfig:
+    """Parse ``projects.decision_inbox``. Only ``repository`` is read; the
+    legacy ``thresholds`` keys (nudge/abandon/auto_close days) configured an
+    inbox lifecycle that was never implemented and are ignored if present."""
     if not raw:
         return DecisionInboxConfig()
-    thresholds_raw = raw.get("thresholds") or {}
-    return DecisionInboxConfig(
-        repository=raw.get("repository"),
-        thresholds=InboxThresholds(
-            nudge_days=int(thresholds_raw.get("nudge_days", 14)),
-            abandon_days=int(thresholds_raw.get("abandon_days", 30)),
-            auto_close_days=int(thresholds_raw.get("auto_close_days", 60)),
-        ),
-    )
+    return DecisionInboxConfig(repository=raw.get("repository"))
 
 
 def _build_break_glass(raw: dict) -> BreakGlassConfig:
@@ -243,6 +228,9 @@ def _build_repo_overrides(raw: dict) -> dict[str, RepoOverride]:
 
 
 def _build_agent_registry(raw: dict) -> AgentRegistry | None:
+    """Parse ``agent_registry.yml``. The legacy ``machines`` key is ignored if
+    present — it was loaded but never consumed (the L4 gate deliberately does
+    not hard-block unknown machine handles)."""
     if not raw:
         return None
     tools = tuple(raw.get("tools") or ())
@@ -250,8 +238,7 @@ def _build_agent_registry(raw: dict) -> AgentRegistry | None:
     models = {
         tool: tuple(models_raw.get(tool, ("*",))) for tool in tools
     }
-    machines = tuple(raw.get("machines") or ())
-    return AgentRegistry(tools=tools, models=models, machines=machines)
+    return AgentRegistry(tools=tools, models=models)
 
 
 def load_config(
@@ -282,7 +269,6 @@ def load_config(
             allowlisted_actors=tuple(
                 owner_data.get("allowlisted_actors", [owner_data["github_login"]])
             ),
-            display_name=owner_data.get("display_name"),
         ),
         projects=ProjectsConfig(
             governance_repo=projects_data["governance_repo"],
