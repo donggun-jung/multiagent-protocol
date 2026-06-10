@@ -68,7 +68,7 @@ Everything that has effect on a machine: code, JSON schemas, GitHub Actions work
 
 Auto-generated, never edited by humans.
 
-- `bot-state/branch_supervisor_watermarks.json` — the bot's own state file (the only writable file the bot maintains in its own repo).
+- `bot-state/branch_supervisor_watermarks.json` — the bot's per-repo scan watermarks, persisted by the App to a dedicated `bot-state` **branch** of the governance repo (never `main`, so the bot's own scanners can't self-trigger; see `architecture.md`). The only state the bot writes back.
 - `bot-state/classifier_audit.jsonl` — append-only classifier decisions.
 - Commit trailers (`Agent-Tool`, `Agent-Session`, etc.) — embedded in every commit message; the bot reads them, never writes them.
 - GitHub Actions workflow artifacts — the per-tick `metrics_summary.json` upload, 90-day retention by default.
