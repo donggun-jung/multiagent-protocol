@@ -12,9 +12,10 @@ together but contains no enforcement logic of its own:
    Decision Inbox poll (apply owner verdicts).
 4. Persist watermarks; log tick metrics.
 
-Incidents are opened idempotently (an open issue referencing the same commit
-is not re-opened), so the tick is safe to run every 5 minutes even though the
-bot is stateless across ticks.
+Incidents are opened idempotently (any issue — open OR closed — referencing
+the same dedupe key is not re-created, so a human-closed diagnostic stays
+closed), so the tick is safe to run every 5 minutes even though the bot is
+stateless across ticks.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from multiagent_protocol.branch_supervisor import (
 from multiagent_protocol.config.loader import load_config
 from multiagent_protocol.decision_inbox import resolve_open_issues
 from multiagent_protocol.drift_check import (
+    DriftIncident,
     check_repo_against_canonical,
     incidents_to_issue_body,
     load_mirror_config,
@@ -188,6 +190,56 @@ def _rollup_incidents(
     return out
 
 
+def _drift_dedupe_key(drift: list[DriftIncident]) -> str:
+    """Content-derived dedupe key for one tick's drift findings.
+
+    The key must change when the drift STATE changes. With ``state="all"``
+    dedupe, a constant key (the old ``"mirror-drift"``) would mean the first
+    closed drift issue suppresses every future drift report forever — a silent
+    loss. Keying on the sorted findings set keeps the closed-stays-closed
+    property for the *same* unresolved state while letting any new/changed
+    drift open a fresh issue."""
+    canon = "\n".join(sorted(
+        f"{i.adopter_full_name}|{i.path}|{i.kind}|{i.canonical_sha}|{i.adopter_sha}"
+        for i in drift
+    ))
+    return "mirror-drift-" + hashlib.sha256(canon.encode()).hexdigest()[:12]
+
+
+class _DriftTreeAPI:
+    """Drift-scoped read façade: one tree fetch per repo per tick, blob-SHA equality.
+
+    ``check_repo_against_canonical`` asks for ``get_file_sha256(owner, repo,
+    path)`` once per canonical path per adopter — with the governance repo
+    re-hashed for EVERY adopter, the dominant drift cost. This façade answers
+    those calls from a single ``git/trees?recursive=1`` fetch per repo, cached
+    for the tick (so canonical hashes are computed once, not per-adopter), and
+    compares git blob SHAs instead of downloading file bodies. When a tree is
+    unavailable (404 / truncated giant repo) it falls back to the real per-path
+    lookup — which now returns the SAME blob-SHA value kind, so the fast path
+    and the fallback can never disagree about equality."""
+
+    def __init__(self, api: GitHubAPI) -> None:
+        self._api = api
+        self._trees: dict[tuple[str, str], dict[str, str] | None] = {}
+
+    def get_file_sha256(self, owner: str, repo: str, path: str) -> str | None:
+        key = (owner, repo)
+        if key not in self._trees:
+            try:
+                self._trees[key] = self._api.get_tree_blob_shas(owner, repo)
+            except Exception as e:
+                logger.warning(
+                    "tree fetch failed for %s/%s (per-path fallback): %s",
+                    owner, repo, e,
+                )
+                self._trees[key] = None
+        tree = self._trees[key]
+        if tree is None:
+            return self._api.get_file_sha256(owner, repo, path)
+        return tree.get(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -298,17 +350,25 @@ def main(argv: list[str] | None = None) -> int:
     # is not advanced past an un-surfaced incident, so it is re-attempted later.
     issue_budget = [MAX_ISSUES_PER_TICK]
 
-    def _open_capped(label: str, body: str, dedupe_key: str, metric: str) -> None:
+    def _open_capped(label: str, body: str, dedupe_key: str, metric: str) -> bool:
+        """Open via dedupe within the per-tick budget.
+
+        Returns False ONLY when the cap deferred a new issue — the caller must
+        then hold the repo's watermark so the incident is regenerated and
+        re-attempted next tick (already-opened ones dedupe) instead of being
+        silently lost. A deduped incident returns True: it is already
+        surfaced; there is nothing to re-attempt."""
         if issue_budget[0] <= 0:
             metrics["issues_deferred"] += 1
             logger.warning(
                 "per-tick issue cap (%d) reached — deferring %s %s",
                 MAX_ISSUES_PER_TICK, label, dedupe_key,
             )
-            return
+            return False
         if _open_incident_if_new(gov_api, gov_owner, gov_repo, label, body, dedupe_key):
             issue_budget[0] -= 1
             metrics[metric] += 1
+        return True
 
     try:
         for inst in installations:
@@ -374,9 +434,14 @@ def main(argv: list[str] | None = None) -> int:
                         incidents = _suppress_false_unauthorized(
                             api, owner, name, incidents, allowlisted
                         )
+                        l5_deferred = False
                         for label, key, body in _rollup_incidents(owner, name, incidents):
-                            _open_capped(label, body, key, "l5_incidents")
-                        if wm:
+                            if not _open_capped(label, body, key, "l5_incidents"):
+                                l5_deferred = True
+                        # A deferred (capped) incident must not be lost: hold the
+                        # watermark so next tick re-scans this span and re-attempts
+                        # it; already-opened issues dedupe by their stable keys.
+                        if wm and not l5_deferred:
                             watermarks[f"{owner}/{name}"] = wm
 
                     # L2 post-merge re-validation (R1 effective required_checks).
@@ -385,11 +450,16 @@ def main(argv: list[str] | None = None) -> int:
                             api, owner, name, l2_required, watermarks,
                             allow_no_ci=config.env.allow_no_ci,
                         )
+                        l2_deferred = False
                         for inc in l2_incidents:
-                            _open_capped(
+                            if not _open_capped(
                                 inc.label, inc.body, inc.commit_sha[:7], "l2_incidents"
-                            )
-                        if l2_wm:
+                            ):
+                                l2_deferred = True
+                        # Same hold-on-deferral rule. (Corner: a deferred STALL
+                        # incident re-tracks with a fresh first-seen next tick —
+                        # an extra grace period, never a lost incident.)
+                        if l2_wm and not l2_deferred:
                             watermarks[f"{owner}/{name}:l2"] = l2_wm
                 except SecondaryRateLimitError as e:
                     # One throttled repo must not abort the whole tick and replay
@@ -440,7 +510,11 @@ def _run_governance_work(
     if MIRROR_PATHS.exists():
         try:
             mirror = load_mirror_config(MIRROR_PATHS)
-            drift = []
+            # Per-tick tree cache: the governance (canonical) tree is fetched
+            # ONCE and reused for every adopter; comparisons are git blob SHAs,
+            # not downloaded file bodies.
+            drift_api = _DriftTreeAPI(api)
+            drift: list[DriftIncident] = []
             for full in [r for r in supervised if r.split("/")[0] == gov_owner]:
                 a_owner, _, a_repo = full.partition("/")
                 # Skip the governance/source repo: it IS the canonical, so
@@ -459,12 +533,13 @@ def _run_governance_work(
                     )
                     break
                 drift += check_repo_against_canonical(
-                    api, gov_owner, gov_repo, a_owner, a_repo, mirror
+                    drift_api, gov_owner, gov_repo, a_owner, a_repo, mirror
                 )
             if drift:
                 open_capped(
                     "decision:mirror-drift-incident",
-                    incidents_to_issue_body(drift), "mirror-drift", "drift_incidents",
+                    incidents_to_issue_body(drift),
+                    _drift_dedupe_key(drift), "drift_incidents",
                 )
         except Exception as e:
             logger.error("drift check failed: %s", e)

@@ -3,10 +3,13 @@
 Runs L2 (post-merge re-validation) + L5 (break-glass auditor) per supervised
 repo per cron tick. Operates on ``main`` HEAD, not on open PRs.
 
-Watermarks: a single file ``bot-state/branch_supervisor_watermarks.json`` in
-the bot's own repo tracks the last commit each supervised repo has been
-processed up to. Re-processing the same commit on every tick would be O(N)
-on commit count; the watermark makes it O(delta).
+Watermarks: ``bot-state/branch_supervisor_watermarks.json`` tracks the last
+commit each supervised repo has been processed up to. It is persisted durably
+on a dedicated ``bot-state`` branch of the governance repo (see
+:class:`BotStateStore`) — never on ``main``, so the bot's own main-scans can
+never observe its state commits — with an atomic local-file cache per run.
+Re-processing the same commit on every tick would be O(N) on commit count;
+the watermark makes it O(delta).
 
 Both run here: L5 break-glass detection and L2 post-merge re-validation
 (``revalidate_main`` below — detection + incident; automatic revert-PR
@@ -19,6 +22,7 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -434,7 +438,7 @@ def revalidate_main(
     allow_no_ci: bool = False,
     max_commits: int = MAX_COMMITS_PER_TICK,
     stall_deadline_hours: int = L2_STALL_DEADLINE_HOURS,
-    clock: callable | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> tuple[list[SupervisorIncident], str | None]:
     """L2: re-validate merged commits on ``main`` since the L2 watermark.
 
@@ -607,10 +611,12 @@ class BotStateStore:
     def load(self) -> dict[str, Any]:
         """Load watermarks from the bot-state branch (source of truth).
 
-        Ensures the branch exists (creates it from ``main`` HEAD if absent).
-        Falls back to the local cache only if the remote read fails for a
-        transient reason. A *corrupt* remote payload fails closed (raises) — it
-        must not degrade into an empty re-bootstrap."""
+        Ensures the branch exists (creates it from ``main`` HEAD if absent). A
+        remote state FILE that does not exist yet (fresh deployment) seeds from
+        the local cache when present, else starts empty — that is the only
+        "empty is fine" case. A transient remote error raises (the tick fails
+        non-zero and retries next cron) and a *corrupt* remote payload likewise
+        fails closed — neither may degrade into an empty re-bootstrap."""
         branch_sha = self.api.get_ref_sha(self.owner, self.repo, self.branch)
         if branch_sha is None:
             # First ever run for this deployment: create the dedicated branch
@@ -672,6 +678,17 @@ class BotStateStore:
 
         payload = json.dumps(watermarks, indent=2, sort_keys=True)
         try:
+            if self._remote_blob_sha is None:
+                # No cached precondition (first save on a fresh deployment, or a
+                # prior failed/raced push dropped it). Re-read the current blob
+                # SHA: updating an EXISTING file without ``sha`` is a guaranteed
+                # 422, which would otherwise wedge every save for the rest of
+                # the tick. This is the re-read the failure path below relies on.
+                found = self.api.get_file_on_ref(
+                    self.owner, self.repo, self.path, self.branch
+                )
+                if found is not None:
+                    self._remote_blob_sha = found[1]
             new_sha = self.api.put_file_on_ref(
                 self.owner,
                 self.repo,

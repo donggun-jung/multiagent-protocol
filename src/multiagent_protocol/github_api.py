@@ -302,10 +302,12 @@ class GitHubAPI:
 
         GitHub has no "since SHA" query, so we page newest-first and stop at
         ``since_sha``. The page walk is BOUNDED (``max_pages`` × 100): if
-        ``since_sha`` is not reached within that window, ``main`` was almost
-        certainly rewritten out from under the watermark — we return
-        :data:`SINCE_NOT_FOUND` so the caller re-bootstraps to HEAD rather than
-        replaying the whole history (which both re-floods and blows the tick
+        ``since_sha`` is not reached within that window — or the history is
+        exhausted without ever meeting it (the small-repo twin: a force-push
+        removed the anchor from a repo whose whole history fits inside the
+        cap) — ``main`` was rewritten out from under the watermark and we
+        return :data:`SINCE_NOT_FOUND` so the caller re-bootstraps to HEAD
+        rather than replaying history (which both re-floods and blows the tick
         budget). With ``since_sha=None`` the walk is still bounded but always
         returns the (capped) list — a cold scan has no anchor to miss.
         """
@@ -324,6 +326,12 @@ class GitHubAPI:
                         # Walked the cap and never hit the anchor → history lost.
                         return SINCE_NOT_FOUND
                     return results
+        if since_sha is not None:
+            # Walked main's ENTIRE history and never met the anchor: the
+            # watermark is definitively unreachable (rewritten/reset), not
+            # merely beyond the cap. Returning the full list here would BE the
+            # full replay this bound exists to prevent.
+            return SINCE_NOT_FOUND
         return results
 
     def merge_pr(
@@ -440,21 +448,53 @@ class GitHubAPI:
         return False  # unreachable
 
     def get_file_sha256(self, owner: str, repo: str, path: str, ref: str = "main") -> str | None:
-        """Return SHA-256 of a file's content at ``ref``, or None if absent."""
+        """Return the content-addressed hash of a file at ``ref``, or None if absent.
+
+        The value is GitHub's **git blob SHA** (the ``sha`` field of the
+        contents response): equal blob SHA ⇔ byte-identical content, exactly
+        the equality drift_check needs — without base64-decoding and re-hashing
+        the body. It also matches :meth:`get_tree_blob_shas` values, so the
+        per-path fallback and the tree fast path can never disagree on "same".
+        (Method name kept for the existing drift_check call surface. Caveat:
+        blob SHAs are only comparable across repos using the same git object
+        format; github.com repos are SHA-1 today.)
+        """
         r = self._request(
             "GET", f"/repos/{owner}/{repo}/contents/{path}", params={"ref": ref}
         )
         if r.status_code == 404:
             return None
         r.raise_for_status()
-        import base64
-        import hashlib
-
         data = r.json()
-        if data.get("encoding") != "base64":
+        if not isinstance(data, dict):
+            return None  # a directory listing, not a file
+        return data.get("sha")
+
+    def get_tree_blob_shas(
+        self, owner: str, repo: str, ref: str = "main"
+    ) -> dict[str, str] | None:
+        """Map of every blob ``path -> git blob SHA`` on ``ref``, or None.
+
+        ONE recursive-tree call replaces N per-path content fetches when
+        comparing canonical files for drift. Returns None when the tree cannot
+        serve as a *complete* map — repo/ref missing (404) or GitHub truncated
+        the recursive listing (giant repo) — so callers fall back to per-path
+        lookups instead of misreading an absent entry as a missing file.
+        """
+        r = self._request(
+            "GET", f"/repos/{owner}/{repo}/git/trees/{ref}", params={"recursive": "1"}
+        )
+        if r.status_code == 404:
             return None
-        content = base64.b64decode(data["content"])
-        return hashlib.sha256(content).hexdigest()
+        r.raise_for_status()
+        data = r.json()
+        if not isinstance(data, dict) or data.get("truncated"):
+            return None
+        return {
+            e["path"]: e["sha"]
+            for e in data.get("tree", [])
+            if e.get("type") == "blob" and "path" in e and "sha" in e
+        }
 
     def get_contents(self, owner: str, repo: str, path: str, ref: str = "main"):
         """Return GitHub's ``contents`` JSON for a file or directory.
