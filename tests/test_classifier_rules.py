@@ -185,3 +185,20 @@ def test_path_default_github_scripts_modify_is_d(pr_factory):
                    status="modified", additions=2, deletions=0),
     ))
     assert PathDefaultClassifier().evaluate(pr).quadrant == "D"
+
+
+def test_path_default_github_actions_dir_is_d_but_issue_template_is_not(pr_factory):
+    # A1 (GPT-5.5 #4): the always-D .github surface is the CI-EXECUTABLE set
+    # (workflows/scripts/actions), NOT all of .github/. A composite action → D;
+    # a benign ISSUE_TEMPLATE edit is NOT force-routed to D (no over-reach /
+    # doctrine drift).
+    action = pr_factory(files_changed=(
+        FileChange(path=".github/actions/setup/action.yml",
+                   status="modified", additions=1, deletions=0),
+    ))
+    assert PathDefaultClassifier().evaluate(action).quadrant == "D"
+    tmpl = pr_factory(files_changed=(
+        FileChange(path=".github/ISSUE_TEMPLATE/bug.md",
+                   status="modified", additions=1, deletions=0),
+    ))
+    assert PathDefaultClassifier().evaluate(tmpl).quadrant != "D"

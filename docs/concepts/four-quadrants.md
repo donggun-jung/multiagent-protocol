@@ -43,7 +43,7 @@ A change is **critical** if it touches any of:
 - Doctrine documents (`docs/concepts/*`).
 - Schemas (`schemas/*.json`).
 - Config schemas (the structure, not the values).
-- `.github/workflows/*.yml` (CI definitions).
+- `.github/workflows/*.yml`, `.github/scripts/*`, `.github/actions/*` (CI definitions + the scripts/actions they execute — **always Quadrant D**: a workflow can publish the green check C2 trusts, or run arbitrary code in CI).
 - `LICENSE`, `SECURITY.md`, `MAINTAINERS.md`.
 
 A change is **non-critical** if it touches only:

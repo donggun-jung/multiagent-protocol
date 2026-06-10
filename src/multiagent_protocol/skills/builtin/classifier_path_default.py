@@ -58,9 +58,10 @@ ALWAYS_D_PREFIXES = (
     "docs/concepts/",  # Tier 3 operating doctrine ("always D regardless of diff")
     "config/",         # gate configuration (required_checks, audit_only, registry)
     "governance/",     # gate decision logic (scripts, rubric, schemas)
-    ".github/",        # CI runtime: workflows AND the scripts/actions they invoke
-                       #   (workflows execute .github/scripts/*; both can forge a
-                       #    CI signal, so the whole dir is owner-gated)
+    ".github/workflows/",  # CI definitions — any workflow can publish a check-run
+    ".github/scripts/",    #   under the trusted github-actions slug (forging C2's
+    ".github/actions/",    #   green) or run arbitrary code in CI. NOT all of
+                           #   .github/ (ISSUE_TEMPLATE etc. are benign → A/B).
     "schemas/",        # required-field schema changes are D; conservatively all schema edits
     "bot-state/",      # Tier 5 audit & receipts (non-bot writes must be owner-gated)
 )

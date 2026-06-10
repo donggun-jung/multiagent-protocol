@@ -59,7 +59,7 @@ Everything that has effect on a machine: code, JSON schemas, GitHub Actions work
 
 - `src/multiagent_protocol/` — bot source. Quadrant B (reversible + critical) for normal refactors; Quadrant D for changes to `pr_validator.py`'s merge logic, classifier, or auth.
 - `schemas/*.json` — JSON Schema files. Changes to required fields → Quadrant D. Additive optional fields → Quadrant B.
-- `.github/workflows/*.yml` — CI workflows. Quadrant D for changes that affect the gate's runtime (the workflow that runs `pr_validator.py`). Quadrant B for tests-only workflow.
+- `.github/workflows/*.yml`, `.github/scripts/*`, `.github/actions/*` — CI definitions plus the scripts/composite-actions they execute. **Always Quadrant D.** Any workflow change can publish a check-run under the trusted `github-actions` publisher — a forged green CI signal C2 would otherwise honour (see `four-quadrants.md` § "Classifier rule composition") — and scripts/actions run arbitrary code inside CI. The earlier "tests-only workflow → Quadrant B" carve-out is **removed**: a tests-only workflow can still forge the green signal the gate trusts, so workflow edits are owner-gated regardless of intent. (Other `.github/` files — `ISSUE_TEMPLATE/`, `dependabot.yml`, `CODEOWNERS` — are not CI-executable and follow the normal A/B path.)
 - `pyproject.toml` — dependency manifest. Adding a runtime dep → Quadrant D. Adding a dev dep → Quadrant B.
 
 **Edit policy**: classifier path-rule + file-content heuristics decide. See `docs/concepts/four-quadrants.md` § "Classifier rule composition".
