@@ -28,7 +28,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from multiagent_protocol.github_api import SINCE_NOT_FOUND, GitHubAPI
+from multiagent_protocol.github_api import (
+    SINCE_NOT_FOUND,
+    GitHubAPI,
+    SecondaryRateLimitError,
+)
 from multiagent_protocol.skills.base import BranchHook
 from multiagent_protocol.skills.builtin.validator_ci_green import (
     DEFAULT_CHECK_PUBLISHER,
@@ -443,6 +447,12 @@ def _classify_commit_checks(
     infra = False
     for c in relevant:
         if c.get("status") != "completed":
+            # Present but still running (queued/in_progress) → UNSETTLED, exactly
+            # as the named-required path treats it above. Do NOT pass + advance
+            # the watermark while a check is still running, or a check that later
+            # fails would be permanently missed (it landed before CI finished).
+            # Mark infra so the tick retries this commit next time.
+            infra = True
             continue
         if c.get("conclusion") in _PASSING_CONCLUSIONS:
             continue
@@ -492,11 +502,10 @@ def revalidate_main(
     re-validation: a named required check is satisfied only by a same-named run
     from that App; a foreign-published green required check is treated as
     not-satisfied → the normal L2 incident path. It defaults to
-    ``"github-actions"``. FOLLOW-UP (one line, in the protected ``main.py``):
-    pass ``config.projects.effective_expected_check_publisher(full,
-    config.env.expected_check_publisher) or DEFAULT_CHECK_PUBLISHER`` here so
-    per-repo / env overrides apply to L2 exactly as they do to C2; until then
-    L2 uses the ``"github-actions"`` default.
+    ``"github-actions"``. The caller (``main.py``) passes the effective per-repo
+    / env publisher (``config.projects.effective_expected_check_publisher(full,
+    config.env.expected_check_publisher) or DEFAULT_CHECK_PUBLISHER``), so
+    per-repo / env overrides apply to L2 exactly as they do to C2.
     """
     now = (clock or _utcnow)()
     deadline = timedelta(hours=stall_deadline_hours)
@@ -627,6 +636,28 @@ def _l2_incident_body(owner: str, repo: str, sha: str, failing: list[str]) -> st
 # ---------------------------------------------------------------------------
 
 
+def _is_transient_push_error(e: BaseException) -> bool:
+    """True iff a bot-state push failure is a survivable transient / race.
+
+    Only two cases are survivable (skip this push, retry next tick):
+
+    * a stale-precondition **422** — a concurrent tick advanced the file
+      between our blob-SHA re-read and our PUT (its newer state already
+      persisted, so losing this push is harmless), and
+    * a secondary-rate-limit — inherently transient, already retried at the
+      repo level next tick.
+
+    Everything else — a **403** (missing ``contents:write``), any other 4xx,
+    an exhausted-retry 5xx, or a non-HTTP error — is a hard failure that would
+    never succeed on retry, so the caller fails the tick closed rather than
+    cold-start L2/L5 forever.
+    """
+    if isinstance(e, SecondaryRateLimitError):
+        return True
+    status = getattr(getattr(e, "response", None), "status_code", None)
+    return status == 422
+
+
 class BotStateStore:
     """Loads/persists watermarks to a dedicated ``bot-state`` branch + local cache."""
 
@@ -653,13 +684,18 @@ class BotStateStore:
     def load(self) -> dict[str, Any]:
         """Load watermarks from the bot-state branch (source of truth).
 
-        Ensures the branch exists (creates it from ``main`` HEAD if absent). A
-        remote state FILE that does not exist yet (fresh deployment) seeds from
-        the local cache when present, else starts empty — that is the only
-        "empty is fine" case. A transient remote error raises (the tick fails
-        non-zero and retries next cron) and a *corrupt* remote payload likewise
-        fails closed — neither may degrade into an empty re-bootstrap."""
+        Ensures the branch exists (creates it from ``main`` HEAD if absent).
+        Only ONE case is "empty is fine": the bot-state branch did **not** exist
+        before this tick (a legitimate first-ever run) — then it is created and
+        the state seeds from the local cache when present, else empty. If the
+        branch ALREADY existed but the state file cannot be read (genuinely
+        absent / unreadable as base64), that is **not** a fresh deployment — it
+        is a misconfiguration that would silently disable L2/L5 by re-bootstrap,
+        so it fails closed (raises). A transient remote error raises (the tick
+        fails non-zero and retries next cron) and a *corrupt* remote payload
+        likewise fails closed — none may degrade into an empty re-bootstrap."""
         branch_sha = self.api.get_ref_sha(self.owner, self.repo, self.branch)
+        branch_existed = branch_sha is not None
         if branch_sha is None:
             # First ever run for this deployment: create the dedicated branch
             # off main HEAD so subsequent saves have a ref to write to.
@@ -672,7 +708,9 @@ class BotStateStore:
                 )
             except Exception as e:
                 # A concurrent tick may have created it between our check and
-                # create — tolerate and fall through to the read below.
+                # create — tolerate and fall through to the read below. (If that
+                # racing tick has already written the state file, the read finds
+                # it; if not, both ticks legitimately start empty.)
                 logger.warning("bot-state branch create raced/failed: %s", e)
             self._remote_blob_sha = None
 
@@ -680,8 +718,19 @@ class BotStateStore:
             self.owner, self.repo, self.path, self.branch
         )
         if found is None:
-            # Branch exists but no state file yet (fresh deployment). Seed from
-            # the local cache if present; else empty.
+            if branch_existed:
+                # The bot-state branch was already there, but the state file is
+                # missing / unreadable — NOT a fresh deployment. Re-bootstrapping
+                # to HEAD here would silently disable L2/L5 every tick, so fail
+                # the tick closed instead of returning empty.
+                raise RuntimeError(
+                    f"bot-state branch {self.owner}/{self.repo}@{self.branch} "
+                    f"exists but its state file {self.path} is missing or "
+                    f"unreadable (fail-closed): refusing to re-bootstrap to "
+                    f"HEAD, which would disable L2/L5 post-merge re-validation."
+                )
+            # Branch did not exist before this tick (genuine first run). Seed
+            # from the local cache if present; else empty.
             self._remote_blob_sha = None
             return load_watermarks(self.local_path)
 
@@ -709,10 +758,16 @@ class BotStateStore:
         """Persist to the local cache (always) and the bot-state branch.
 
         The local write is atomic and best-effort-first so a remote failure
-        still leaves the freshest state on disk for the upload artifact. A
-        remote failure is logged, not raised: losing one incremental push is
-        survivable (the next push re-sends the full state), whereas crashing the
-        tick on a transient write error is not."""
+        still leaves the freshest state on disk for the upload artifact.
+
+        A *transient / race* push failure (a stale-precondition 422 because a
+        concurrent tick advanced the file, or a secondary-rate-limit) is
+        survivable: the cached blob SHA is dropped so the next save re-reads and
+        retries cleanly, and this push is skipped (the next push re-sends the
+        full state). But a *hard* push failure — missing permission (403, e.g.
+        no ``contents:write``) or any other non-transient error — **raises**:
+        a silently-swallowed persistent save failure would cold-start L2/L5
+        every tick forever, so the tick must fail closed instead."""
         try:
             save_watermarks(watermarks, self.local_path)
         except OSError as e:
@@ -742,11 +797,23 @@ class BotStateStore:
             )
             self._remote_blob_sha = new_sha or self._remote_blob_sha
         except Exception as e:
-            # Stale precondition (someone/something advanced the file) or a
-            # transient error: drop the cached blob sha so the next save re-reads
-            # and retries cleanly, and keep going.
+            # Drop the cached blob sha so the next save re-reads and retries
+            # cleanly regardless of cause.
+            self._remote_blob_sha = None
+            if _is_transient_push_error(e):
+                # Stale precondition (someone/something advanced the file) or a
+                # secondary-rate-limit: survivable — log and keep going.
+                logger.error(
+                    "durable watermark push to %s/%s@%s failed (transient, "
+                    "retry next tick): %s",
+                    self.owner, self.repo, self.branch, e,
+                )
+                return
+            # Hard failure (missing permission / non-transient): fail closed so
+            # the tick does not silently cold-start forever.
             logger.error(
-                "durable watermark push to %s/%s@%s failed: %s",
+                "durable watermark push to %s/%s@%s failed (hard, failing "
+                "closed): %s",
                 self.owner, self.repo, self.branch, e,
             )
-            self._remote_blob_sha = None
+            raise

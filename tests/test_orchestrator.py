@@ -463,6 +463,22 @@ def test_unauthorized_push_hook_not_disableable(fake_api, solo_config):
     assert "hook_unauthorized_push" in _names(rt.static_branch_hooks)
 
 
+def test_break_glass_hook_receives_bot_user(fake_api, solo_config):
+    # P2-2 wiring: build_runtime_skills must inject the resolved bot_user into
+    # BreakGlassAuditHook (exactly as it does for hook_unauthorized_push), so the
+    # hook can short-circuit the bot's own squash of a break-glass-TITLED PR and
+    # not raise a false decision:break-glass-unauthorized.
+    rt = build_runtime_skills(solo_config, fake_api, config_dir=None)
+    bg = next(
+        h for h in rt.static_branch_hooks if h.name == "hook_break_glass_audit"
+    )
+    up = next(
+        h for h in rt.static_branch_hooks if h.name == "hook_unauthorized_push"
+    )
+    assert bg.bot_user == BOT_USER
+    assert bg.bot_user == up.bot_user == rt.bot_user  # same identity both hooks
+
+
 def test_severity_override_applied(fake_api, solo_config):
     cfg = dataclasses.replace(
         solo_config,

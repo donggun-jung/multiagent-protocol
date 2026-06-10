@@ -299,6 +299,198 @@ def test_corrupt_local_watermark_cache_fails_closed(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 7c. GPT P1b: BotStateStore persistence fails CLOSED on critical errors so a
+# misconfiguration cannot silently disable L2/L5 by bootstrapping-to-HEAD.
+# ---------------------------------------------------------------------------
+
+
+def test_existing_branch_missing_state_file_fails_closed(tmp_path):
+    # The bot-state branch EXISTS (ref present) but its state file is absent /
+    # unreadable. This is NOT a fresh deployment — re-bootstrapping to empty here
+    # would silently disable L2/L5 every tick. load() must fail closed (raise),
+    # NOT return an empty dict.
+    fake_api = FakeAPI(main_head=HEAD)
+    fake_api._refs[("acme", "governance", "bot-state")] = "base" + "0" * 36
+    # NOTE: no _ref_files entry → get_file_on_ref returns None on an EXISTING
+    # branch (the silent-bootstrap hole this fix closes).
+    store = BotStateStore(
+        fake_api, "acme", "governance", local_path=tmp_path / "wm.json")
+    with pytest.raises(RuntimeError, match="fail-closed"):
+        store.load()
+    # And no compensating write happened.
+    assert fake_api.bot_state_writes == []
+    assert fake_api.refs_created == []  # branch already existed; not re-created
+
+
+def test_existing_branch_missing_state_file_aborts_whole_tick(tmp_path, monkeypatch):
+    # End-to-end: the same condition aborts the tick (store.load() is unguarded
+    # in main), scanning nothing and overwriting nothing — never a silent
+    # re-bootstrap-to-HEAD.
+    fake_api = FakeAPI(main_head=HEAD)
+    fake_api._refs[("acme", "governance", "bot-state")] = "base" + "0" * 36
+    with pytest.raises(RuntimeError, match="fail-closed"):
+        _run_main(tmp_path, monkeypatch, fake_api)
+    assert fake_api.issues_opened == []
+    assert fake_api.bot_state_writes == []
+
+
+def test_genuine_first_run_no_branch_starts_empty(tmp_path):
+    # Contrast: when the branch does NOT exist (legitimate first-ever run), the
+    # branch is created and the state legitimately starts empty — the one
+    # "empty is fine" case must keep working.
+    fake_api = FakeAPI(main_head=HEAD)
+    store = BotStateStore(
+        fake_api, "acme", "governance", local_path=tmp_path / "wm.json")
+    assert store.load() == {}
+    assert fake_api.refs_created  # branch was created off HEAD
+
+
+class _Resp:
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
+class _PushError(Exception):
+    """An HTTPError-shaped push failure (carries .response.status_code)."""
+
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"HTTP {status_code}")
+        self.response = _Resp(status_code)
+
+
+def test_hard_save_permission_error_raises(tmp_path):
+    # GPT P1b(b): a write failure due to missing permission (403, e.g. no
+    # contents:write) is non-transient — it would never succeed on retry, so a
+    # silently-swallowed failure cold-starts L2/L5 forever. save() must RAISE
+    # (fail the tick closed) instead of log-and-continue.
+    class _ForbiddenAPI(FakeAPI):
+        def put_file_on_ref(self, *a, **k):
+            raise _PushError(403)
+
+    api = _ForbiddenAPI(main_head=HEAD)
+    api.seed_bot_state("acme", "governance", {"acme/app": "f" * 40})
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    store.load()
+    with pytest.raises(_PushError):
+        store.save({"acme/app": "g" * 40})
+
+
+def test_transient_save_422_is_swallowed_and_retries(tmp_path):
+    # Symmetric control: a stale-precondition 422 (a concurrent tick advanced the
+    # file) is survivable — save() swallows it, drops the cached blob sha so the
+    # NEXT save re-reads, and does NOT fail the tick.
+    class _StaleAPI(FakeAPI):
+        def __init__(self):
+            super().__init__(main_head=HEAD)
+            self.fail_next = True
+
+        def put_file_on_ref(self, owner, repo, path, *, ref, content, message,
+                            blob_sha=None):
+            if self.fail_next:
+                self.fail_next = False
+                raise _PushError(422)
+            return super().put_file_on_ref(
+                owner, repo, path, ref=ref, content=content,
+                message=message, blob_sha=blob_sha)
+
+    api = _StaleAPI()
+    api.seed_bot_state("acme", "governance", {"acme/app": "f" * 40})
+    store = BotStateStore(api, "acme", "governance", local_path=tmp_path / "wm.json")
+    store.load()
+    store.save({"acme/app": "g" * 40})          # 422 → swallowed, no raise
+    assert store._remote_blob_sha is None        # dropped for a clean re-read
+    store.save({"acme/app": "g" * 40})           # next save succeeds
+    assert api.bot_state_writes                   # the retry persisted
+
+
+def test_hard_save_error_fails_whole_tick(tmp_path, monkeypatch):
+    # End-to-end: a hard save failure surfaces through the finally-block persist
+    # and aborts the tick (non-zero / raises), rather than being silently logged
+    # and swallowed — which would let the next tick cold-start forever.
+    class _ForbiddenAPI(FakeAPI):
+        def put_file_on_ref(self, *a, **k):
+            raise _PushError(403)
+
+    fake_api = _ForbiddenAPI(main_head=HEAD)
+    # Activate both supervised repos so the bootstrap path persists HEAD → save
+    # fires this tick. seed_bot_state marks acme/governance activated; also seed
+    # acme/app so neither repo is on the bootstrap-to-HEAD path... but the very
+    # first persist is enough to trip the hard error regardless.
+    fake_api.seed_bot_state("acme", "governance", {})
+    with pytest.raises(_PushError):
+        _run_main(tmp_path, monkeypatch, fake_api)
+
+
+# ---------------------------------------------------------------------------
+# 7d. Opus P2-1: one installation's transient runtime-build (GET /app slug)
+# failure must not abort the whole tick and starve the healthy installations.
+# ---------------------------------------------------------------------------
+
+
+class _MultiAuth:
+    def installations(self) -> list[dict]:
+        # Two installations: acme (governance, healthy) + other (flaky slug).
+        return [
+            {"id": 1, "account": {"login": "acme"}},
+            {"id": 2, "account": {"login": "other"}},
+        ]
+
+
+def test_flaky_installation_does_not_starve_healthy_ones(tmp_path, monkeypatch):
+    # ``other``'s runtime build (GET /app slug) raises; ``acme`` is healthy. The
+    # tick must skip ``other`` (fail-closed for it — no scan, no merge) yet still
+    # process ``acme``'s repos, instead of one flaky /app aborting the fleet.
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    (cfg_dir / "owner.yml").write_text("github_login: acme\n", encoding="utf-8")
+    (cfg_dir / "projects.yml").write_text(
+        "governance_repo: acme/governance\n"
+        "supervised_repos:\n"
+        "  - acme/governance\n"
+        "  - acme/app\n"
+        "  - other/svc\n",
+        encoding="utf-8",
+    )
+    (cfg_dir / "env.yml").write_text(
+        "bot_app_slug: acme-merge-gate\nallow_no_ci: true\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MERGE_GATE_APP_ID", "123")
+    monkeypatch.setenv("MERGE_GATE_PRIVATE_KEY", "dummy-pem")
+    monkeypatch.setattr(main_mod.AppAuth, "from_env",
+                        classmethod(lambda cls, *a, **k: _MultiAuth()))
+
+    # Distinct, account-tagged FakeAPIs per installation id.
+    acme_api = FakeAPI(main_head=HEAD)
+    acme_api._account = "acme"
+    other_api = FakeAPI(main_head=HEAD)
+    other_api._account = "other"
+    by_id = {1: acme_api, 2: other_api}
+    monkeypatch.setattr(main_mod, "GitHubAPI", lambda auth, inst_id: by_id[inst_id])
+
+    # The flaky installation: building its runtime raises (simulates the
+    # transient GET /app slug lookup that _resolve_bot_user fails closed on).
+    real_build = main_mod.build_runtime_skills
+
+    def _flaky_build(config, api, **kw):
+        if getattr(api, "_account", None) == "other":
+            raise RuntimeError("GET /app slug transiently unavailable")
+        return real_build(config, api, **kw)
+
+    monkeypatch.setattr(main_mod, "build_runtime_skills", _flaky_build)
+
+    rc = main_mod.main([])
+    assert rc == 0  # the fleet completed; the flaky installation did not abort it
+
+    # acme's repos were bootstrapped/persisted; other/svc was NOT scanned at all
+    # (its runtime build failed → the whole installation was skipped).
+    persisted = _persisted_state(acme_api)
+    assert "acme/app" in persisted and "acme/app:l2" in persisted
+    assert "other/svc" not in persisted and "other/svc:l2" not in persisted
+    # The flaky installation's client never did any bot-state write of its own.
+    assert other_api.bot_state_writes == []
+
+
+# ---------------------------------------------------------------------------
 # 7b. Watermark fell off main history → ONE incident + re-bootstrap, no replay.
 # ---------------------------------------------------------------------------
 

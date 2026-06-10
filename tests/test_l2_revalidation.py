@@ -70,6 +70,33 @@ def test_l2_required_in_progress_is_unsettled_not_passed(fake_api):
     assert wm is None  # watermark does NOT advance past the unsettled commit
 
 
+def test_l2_no_required_in_progress_is_unsettled_not_passed(fake_api):
+    # GPT P1a: in the NO-required-checks path, a check still running
+    # (queued/in_progress) must leave the commit UNSETTLED, not 'passed'.
+    # Previously the non-completed check was skipped, so real=[]/infra=False
+    # returned 'passed' and advanced the watermark past it — permanently missing
+    # a check that later fails (it landed before CI finished). Mirrors the
+    # named-required path's treatment of in_progress.
+    _seed(fake_api, "s" * 40, [make_check("build", "", status="in_progress")])
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    assert incidents == []
+    assert wm is None  # watermark does NOT advance past the unsettled commit
+
+
+def test_l2_no_required_in_progress_does_not_mask_a_completed_real_failure(fake_api):
+    # Defensive: a still-running check alongside a COMPLETED real failure must
+    # still surface the real failure (the in_progress one only adds 'unsettled',
+    # it never downgrades a real failure to infra).
+    _seed(fake_api, "u" * 40, [
+        make_check("lint", "failure"),
+        make_check("build", "", status="in_progress"),
+    ])
+    incidents, wm = revalidate_main(fake_api, "o", "r", (), {})
+    assert len(incidents) == 1
+    assert incidents[0].commit_sha == "u" * 40
+    assert wm == "u" * 40  # settled (real-failure incident raised)
+
+
 def test_no_new_commits_returns_watermark(fake_api):
     fake_api.seed_main_commits("o", "r", [])
     incidents, wm = revalidate_main(fake_api, "o", "r", (), {"o/r:l2": "x" * 40})

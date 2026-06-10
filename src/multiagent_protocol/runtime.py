@@ -327,6 +327,10 @@ def build_runtime_skills(
             adr_finder=_adr_finder(api, gov_owner, gov_repo),
             adr_deadline_hours=config.projects.break_glass.adr_deadline_hours,
             clock=clock,
+            # The bot's own squash of a break-glass-TITLED PR (committer = bot)
+            # is not a human break-glass push — wire bot_user so the hook can
+            # short-circuit it, exactly as hook_unauthorized_push does below.
+            bot_user=bot_user,
         ),
         # R3: code-level branch protection — flag non-bot, non-break-glass,
         # non-allowlisted writes to main.

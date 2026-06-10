@@ -170,6 +170,78 @@ def test_allowlisted_committer_with_forged_low_author_passes():
     assert hook.on_commit(commit).incident_label is None
 
 
+BOT = "acme-merge-gate[bot]"
+
+
+def test_bot_self_squash_of_break_glass_titled_pr_is_no_incident():
+    # Opus P2-2: a Quadrant-A PR whose TITLE starts with [break-glass-...] is
+    # squash-merged by the BOT (committer = bot). L5 must NOT raise a false
+    # decision:break-glass-unauthorized just because the bot is not in the human
+    # allowlist — the bot's own squash is not a human break-glass push. With
+    # bot_user wired, committer == bot short-circuits to no incident.
+    hook = BreakGlassAuditHook(
+        allowlisted_actors=("owner",),
+        adr_finder=lambda sha: False,   # no ADR — would otherwise alarm
+        clock=lambda: NOW,
+        bot_user=BOT,
+    )
+    commit = CommitContext(
+        sha="d" * 40,
+        subject="[break-glass-actions-outage] hotfix from PR title",
+        body="",
+        author_login="contributor",
+        committer_login=BOT,            # the bot squash-merged it
+        parents=(),
+        trailers=TrailerSet(),
+        committed_at=None,              # even past-deadline: still no incident
+    )
+    assert hook.on_commit(commit).incident_label is None
+
+
+def test_non_bot_committer_break_glass_no_adr_still_incident():
+    # Control for P2-2: the short-circuit is committer-scoped. A NON-bot
+    # committer with the break-glass subject and no ADR (past deadline) still
+    # opens the unaudited incident — the bot_user wiring must not weaken L5 for
+    # real (human / unknown) committers.
+    hook = BreakGlassAuditHook(
+        allowlisted_actors=("owner",),
+        adr_finder=lambda sha: False,
+        adr_deadline_hours=24,
+        clock=lambda: NOW,
+        bot_user=BOT,
+    )
+    commit = CommitContext(
+        sha="e" * 40,
+        subject="[break-glass-security] revoke leaked key",
+        body="",
+        author_login="owner",
+        committer_login="owner",        # allowlisted human, but no ADR
+        parents=(),
+        trailers=TrailerSet(),
+        committed_at=None,              # unknown ts → treated as past deadline
+    )
+    r = hook.on_commit(commit)
+    assert r.incident_label == "decision:break-glass-unaudited"
+
+
+def test_non_bot_unauthorized_committer_break_glass_still_unauthorized():
+    # A non-bot committer NOT in the allowlist with the break-glass subject is
+    # still decision:break-glass-unauthorized even with bot_user wired (the
+    # short-circuit only matches the bot's own committer login).
+    hook = BreakGlassAuditHook(
+        allowlisted_actors=("owner",),
+        adr_finder=lambda sha: True,
+        clock=lambda: NOW,
+        bot_user=BOT,
+    )
+    r = hook.on_commit(_commit(
+        "[break-glass-actions-outage] hotfix",
+        author="bystander",             # committer = bystander, not bot
+    ))
+    assert r.incident_label == "decision:break-glass-unauthorized"
+    assert "bystander" in r.incident_body
+
+
 def test_custom_deadline_respected():
     hook = BreakGlassAuditHook(
         allowlisted_actors=("owner",),

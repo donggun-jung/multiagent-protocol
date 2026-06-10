@@ -342,10 +342,12 @@ def main(argv: list[str] | None = None) -> int:
     watermarks = store.load()
 
     def _persist() -> None:
-        try:
-            store.save(watermarks)
-        except Exception as e:  # never let persistence crash the tick
-            logger.error("watermark persist failed: %s", e)
+        # ``store.save`` already swallows transient/race push failures (stale
+        # 422, secondary-rate-limit) internally; anything it RAISES is a hard,
+        # non-transient failure (e.g. missing ``contents:write`` / 403). That
+        # must fail the tick closed — a silently-swallowed persistent save
+        # failure would cold-start L2/L5 every tick forever — so it propagates.
+        store.save(watermarks)
 
     # A per-tick issue-creation budget (a backstop against a mass-incident
     # flood). ``_issue_budget`` is a single-element list so the nested helper can
@@ -377,7 +379,20 @@ def main(argv: list[str] | None = None) -> int:
         for inst in installations:
             account = (inst.get("account") or {}).get("login")
             api = gov_api if account == gov_owner else GitHubAPI(auth, inst["id"])
-            runtime = build_runtime_skills(config, api, config_dir=config_dir)
+            # build_runtime_skills resolves the bot identity via GET /app, which
+            # can transiently raise (e.g. a flaky /app while resolving the App
+            # slug). That hiccup is fail-closed for THIS installation (no
+            # runtime → no gating, no merge), but it must NOT abort the whole
+            # tick and starve the healthy installations — log and move on.
+            try:
+                runtime = build_runtime_skills(config, api, config_dir=config_dir)
+            except Exception as e:
+                logger.error(
+                    "skipping installation %r — runtime build failed "
+                    "(fail-closed, no merge for this installation): %s",
+                    account, e,
+                )
+                continue
 
             for full in [r for r in supervised if r.split("/")[0] == account]:
                 owner, _, name = full.partition("/")

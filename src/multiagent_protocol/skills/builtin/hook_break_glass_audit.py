@@ -38,18 +38,34 @@ class BreakGlassAuditHook:
         adr_finder: callable | None = None,
         adr_deadline_hours: int = 24,
         clock: callable | None = None,
+        bot_user: str | None = None,
     ) -> None:
         # ``adr_finder(commit_sha) -> bool`` returns True iff a valid ADR
         # exists referencing this SHA in its body, with file mtime within
         # the deadline. Tests inject simple resolvers.
         # ``clock()`` returns the current time as UTC datetime; tests inject.
+        # ``bot_user`` is the App's resolved ``<slug>[bot]`` login (injected by
+        # the runtime, exactly as hook_unauthorized_push receives it); a commit
+        # whose COMMITTER is the bot is the bot's own squash, never a human
+        # break-glass push.
         self.allowlisted_actors = allowlisted_actors or ()
         self._adr_finder = adr_finder
         self.adr_deadline = timedelta(hours=adr_deadline_hours)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self.bot_user = bot_user
 
     def on_commit(self, commit: CommitContext) -> BranchHookResult:
         if not BREAK_GLASS_PREFIX_RE.match(commit.subject):
+            return BranchHookResult.none()
+
+        # The bot's own squash-merge of a Quadrant-A PR whose TITLE happens to
+        # start with ``[break-glass-...]`` carries the break-glass subject but is
+        # committed by the BOT, not a human pushing an emergency change to main.
+        # Treating it as a human break-glass push would falsely flag
+        # ``decision:break-glass-unauthorized`` (the bot is not in the human
+        # allowlist). Mirror hook_unauthorized_push: committer == bot → not a
+        # human break-glass push → no incident.
+        if self.bot_user is not None and commit.committer_login == self.bot_user:
             return BranchHookResult.none()
 
         # Check 1: actor allowlist. Use the COMMITTER login, not the author —
