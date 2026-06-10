@@ -170,6 +170,15 @@ class FakeAPI:
         self._files_text: dict[tuple[str, str, str], str] = {}
         self._existing_paths: set[tuple[str, str]] = set()  # (path, sha) that exist
         self._issue_counter = 1000
+        # Git refs (branch -> sha) + files on a ref (-> (text, blob_sha)), for
+        # the bot-state durable-watermark persistence surface.
+        self._refs: dict[tuple[str, str, str], str] = {}
+        self._ref_files: dict[tuple[str, str, str, str], tuple[str, str]] = {}
+        self._blob_counter = 0
+        # commit sha -> merged_by login (for commit_merged_by resolution).
+        self._merged_by: dict[tuple[str, str, str], str] = {}
+        # Per-call rate-limit signal (None = unknown, like a real first call).
+        self.rate_limit_remaining: int | None = None
         # side-effect records
         self.merged: list[tuple] = []
         self.comments_posted: list[tuple] = []
@@ -177,6 +186,9 @@ class FakeAPI:
         self.labels_added: list[tuple] = []
         self.closed: list[tuple] = []
         self.updated_branches: list[tuple] = []
+        # Every durable bot-state write: (owner, repo, branch, path, content).
+        self.bot_state_writes: list[tuple] = []
+        self.refs_created: list[tuple] = []
 
     # -- seeding --
     def register_pr(self, *, owner="example", repo="repo", number=1, labels=(),
@@ -212,11 +224,12 @@ class FakeAPI:
             ]
         return payload
 
-    def seed_issue(self, *, number=None, labels=(), body="", title="") -> dict:
+    def seed_issue(self, *, number=None, labels=(), body="", title="",
+                   state="open") -> dict:
         if number is None:
             self._issue_counter += 1
             number = self._issue_counter
-        issue = {"number": number, "title": title, "body": body,
+        issue = {"number": number, "title": title, "body": body, "state": state,
                  "labels": [{"name": n} for n in labels], "_labels": set(labels)}
         self._issues.append(issue)
         return issue
@@ -231,6 +244,21 @@ class FakeAPI:
 
     def seed_main_commits(self, owner, repo, commits):
         self._main_commits[(owner, repo)] = commits
+
+    def seed_bot_state(self, owner, repo, watermarks, *, branch="bot-state",
+                       path="bot-state/branch_supervisor_watermarks.json"):
+        """Pre-populate the durable bot-state file (and its branch ref).
+
+        Use to mark a repo as already 'activated' (watermark present) so the
+        bootstrap-to-HEAD path is skipped and the scan path runs."""
+        import json as _json
+        self._refs[(owner, repo, branch)] = "base" + "0" * 36
+        self._blob_counter += 1
+        self._ref_files[(owner, repo, branch, path)] = (
+            _json.dumps(watermarks), f"blob{self._blob_counter}")
+
+    def seed_merged_by(self, owner, repo, sha, login):
+        self._merged_by[(owner, repo, sha)] = login
 
     # -- read surface --
     def list_open_prs(self, owner, repo): return list(self._prs.get((owner, repo), []))
@@ -256,14 +284,36 @@ class FakeAPI:
             out.append(c)
         return out
     def list_issues(self, owner, repo, *, labels=None, state="open"):
+        def _state_ok(i):
+            if state == "all":
+                return True
+            return i.get("state", "open") == state
+        pool = [i for i in self._issues if _state_ok(i)]
         if labels is None:
-            return list(self._issues)
-        return [i for i in self._issues if labels in i.get("_labels", set())]
+            return list(pool)
+        return [i for i in pool if labels in i.get("_labels", set())]
     def list_issue_reactions(self, owner, repo, number): return self._reactions.get(number, [])
     def list_issue_comments(self, owner, repo, number): return self._issue_comments.get(number, [])
     def list_dir(self, owner, repo, path, ref="main"): return self._dir.get((owner, repo, path), [])
     def get_file_text(self, owner, repo, path, ref="main"): return self._files_text.get((owner, repo, path))
     def file_exists_at_sha(self, owner, repo, path, sha): return (path, sha) in self._existing_paths or not self._existing_paths
+
+    # -- git refs + durable file write (bot-state branch persistence) --
+    def get_ref_sha(self, owner, repo, ref):
+        return self._refs.get((owner, repo, ref))
+    def create_ref(self, owner, repo, ref, sha):
+        self._refs[(owner, repo, ref)] = sha
+        self.refs_created.append((owner, repo, ref, sha))
+    def get_file_on_ref(self, owner, repo, path, ref):
+        return self._ref_files.get((owner, repo, ref, path))
+    def put_file_on_ref(self, owner, repo, path, *, ref, content, message, blob_sha=None):
+        self._blob_counter += 1
+        new_sha = f"blob{self._blob_counter}"
+        self._ref_files[(owner, repo, ref, path)] = (content, new_sha)
+        self.bot_state_writes.append((owner, repo, ref, path, content))
+        return new_sha
+    def commit_merged_by(self, owner, repo, sha):
+        return self._merged_by.get((owner, repo, sha))
 
     # -- write surface (recorded) --
     def merge_pr(self, owner, repo, number, *, head_sha, method="squash", **kw):
@@ -280,12 +330,16 @@ class FakeAPI:
     def open_issue(self, *, owner, repo, title, body, labels=None):
         self._issue_counter += 1
         issue = {"number": self._issue_counter, "title": title, "body": body,
+                 "state": "open",
                  "labels": [{"name": n} for n in (labels or [])], "_labels": set(labels or [])}
         self.issues_opened.append(issue)
         self._issues.append(issue)  # so dedupe sees it within the same tick
         return issue
     def close_issue(self, owner, repo, number):
         self.closed.append((owner, repo, number))
+        for i in self._issues:
+            if i.get("number") == number:
+                i["state"] = "closed"
 
 
 @pytest.fixture

@@ -19,15 +19,18 @@ bot is stateless across ticks.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from pathlib import Path
 
 from multiagent_protocol.auth import AppAuth
 from multiagent_protocol.branch_supervisor import (
-    load_watermarks,
+    BotStateStore,
+    SupervisorIncident,
+    bootstrap_watermark_if_absent,
+    count_l2_unsettled,
     revalidate_main,
-    save_watermarks,
     scan_repo,
 )
 from multiagent_protocol.config.loader import load_config
@@ -37,17 +40,36 @@ from multiagent_protocol.drift_check import (
     incidents_to_issue_body,
     load_mirror_config,
 )
-from multiagent_protocol.github_api import GitHubAPI
+from multiagent_protocol.github_api import GitHubAPI, SecondaryRateLimitError
 from multiagent_protocol.runtime import (
     build_branch_hooks,
     build_runtime_skills,
     process_pr,
+)
+from multiagent_protocol.skills.builtin.hook_unauthorized_push import (
+    INCIDENT_LABEL as UNAUTHORIZED_PUSH_LABEL,
 )
 
 logger = logging.getLogger(__name__)
 
 AUDIT_LOG = Path("bot-state/classifier_audit.jsonl")
 MIRROR_PATHS = Path("schemas/mirror_paths.json")
+
+# Stable, machine-greppable marker embedded in every incident issue so dedupe
+# survives the issue body being edited by a human.
+_DEDUPE_MARKER = "<!-- merge-gate:dedupe:{key} -->"
+
+# Hard cap on NEW incident issues opened per tick (across all repos). A backstop
+# against a pathological tick (e.g. a mass force-push, or a config error)
+# opening hundreds of issues. Beyond the cap the tick logs the overflow and
+# defers — the watermark does NOT advance past un-surfaced incidents, so they
+# are re-attempted next tick rather than lost.
+MAX_ISSUES_PER_TICK = 30
+
+# Stop opening new L5 break-glass/unauthorized issues below this primary-rate
+# reserve, and end the tick's expensive drift loop early — leaving headroom to
+# always reach the persistence step.
+RATE_LIMIT_RESERVE = 200
 
 
 def _has_secrets(env) -> bool:
@@ -58,20 +80,112 @@ def _open_incident_if_new(
     api: GitHubAPI, gov_owner: str, gov_repo: str,
     label: str, body: str, dedupe_key: str,
 ) -> bool:
-    """Open an incident issue unless an open one already references dedupe_key."""
+    """Open an incident issue unless one already references dedupe_key.
+
+    Dedupe is against ``state="all"`` (open AND closed), keyed on a stable
+    marker (the dedupe_key, e.g. the commit SHA) embedded in the issue
+    title/body. Deduping only against OPEN issues created a zombie loop: closing
+    a false incident let the very next tick reopen it. A closed incident is a
+    deliberate human "resolved/won't-fix" signal and must stay closed."""
+    marker = _DEDUPE_MARKER.format(key=dedupe_key)
     try:
-        existing = api.list_issues(gov_owner, gov_repo, labels=label, state="open")
+        existing = api.list_issues(gov_owner, gov_repo, labels=label, state="all")
     except Exception as e:
         logger.error("could not list issues for dedupe (%s): %s", label, e)
         existing = []
     for issue in existing:
-        if dedupe_key in (issue.get("body") or ""):
+        haystack = f"{issue.get('title') or ''}\n{issue.get('body') or ''}"
+        if marker in haystack or dedupe_key in haystack:
             return False
     api.open_issue(
         owner=gov_owner, repo=gov_repo,
-        title=f"[{label}] {dedupe_key}", body=body, labels=[label],
+        title=f"[{label}] {dedupe_key}",
+        body=f"{body}\n\n{marker}",
+        labels=[label],
     )
     return True
+
+
+def _suppress_false_unauthorized(
+    api: GitHubAPI,
+    owner: str,
+    repo: str,
+    incidents: list[SupervisorIncident],
+    allowlisted: tuple[str, ...],
+) -> list[SupervisorIncident]:
+    """Drop unauthorized-push incidents whose TRUE merge actor is allowlisted.
+
+    A squash/rebase merge lands on ``main`` with a ``web-flow``/App committer,
+    so ``hook_unauthorized_push`` (which only sees commit metadata) can flag a
+    perfectly legitimate merge that an allowlisted human clicked. Here at the
+    call site — WITHOUT touching the hook's committer-identity trust logic — we
+    resolve the real ``merged_by`` via the commit→PR endpoint and suppress the
+    incident when that actor is allowlisted. Non-unauthorized incidents pass
+    through untouched; a resolution failure is fail-closed (keep the incident).
+    """
+    if not allowlisted:
+        return incidents
+    kept: list[SupervisorIncident] = []
+    for inc in incidents:
+        if inc.label != UNAUTHORIZED_PUSH_LABEL:
+            kept.append(inc)
+            continue
+        try:
+            merger = api.commit_merged_by(owner, repo, inc.commit_sha)
+        except Exception as e:
+            logger.warning(
+                "merged_by lookup failed for %s/%s@%s (keeping incident): %s",
+                owner, repo, inc.commit_sha[:7], e,
+            )
+            kept.append(inc)
+            continue
+        if merger is not None and merger in allowlisted:
+            logger.info(
+                "suppressing unauthorized-push incident on %s/%s@%s — true "
+                "merger %r is allowlisted (web-flow committer masked it)",
+                owner, repo, inc.commit_sha[:7], merger,
+            )
+            continue
+        kept.append(inc)
+    return kept
+
+
+def _rollup_incidents(
+    owner: str, repo: str, incidents: list[SupervisorIncident]
+) -> list[tuple[str, str, str]]:
+    """Collapse per-commit L5 incidents into ONE rollup per (repo, label).
+
+    Returns ``(label, dedupe_key, body)`` tuples. When a label has several
+    offending commits this tick, they become a single rollup issue listing every
+    SHA — instead of one issue per commit (the flood). The dedupe key is keyed on
+    the SORTED SHA SET, so the same set of offenders persisting across ticks
+    dedupes to the same issue (idempotent), while a NEW offender produces a fresh
+    rollup. A single-offender label degrades gracefully to a one-SHA issue."""
+    by_label: dict[str, list[SupervisorIncident]] = {}
+    for inc in incidents:
+        by_label.setdefault(inc.label, []).append(inc)
+
+    out: list[tuple[str, str, str]] = []
+    for label, items in by_label.items():
+        shas = sorted({i.commit_sha for i in items})
+        if len(shas) == 1:
+            # One offender — keep the rich per-commit body + SHA dedupe key.
+            out.append((label, shas[0][:7], items[0].body))
+            continue
+        set_hash = hashlib.sha256("\n".join(shas).encode()).hexdigest()[:12]
+        dedupe_key = f"rollup-{repo}-{set_hash}"
+        listing = "\n".join(f"- `{s[:12]}`" for s in shas)
+        bodies = "\n\n".join(
+            f"### `{i.commit_sha[:7]}`\n{i.body}" for i in items
+        )
+        body = (
+            f"**{len(shas)} `{label}` commits on `{owner}/{repo}` this tick.**\n\n"
+            f"Offending SHAs:\n{listing}\n\n"
+            f"This rollup replaces one-issue-per-commit to avoid an incident "
+            f"flood. Details per commit below.\n\n---\n\n{bodies}"
+        )
+        out.append((label, dedupe_key, body))
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -144,123 +258,227 @@ def main(argv: list[str] | None = None) -> int:
     # Decision Inbox issues live in decision_inbox.repository (defaults to the
     # governance repo); incidents (drift/break-glass/post-merge) stay in gov.
     inbox_owner, _, inbox_repo = config.projects.effective_inbox_repository.partition("/")
-    watermarks = load_watermarks()
     supervised = list(config.projects.supervised_repos)
+    allowlisted = config.owner.allowlisted_actors
     metrics: dict[str, int] = {
         "merged": 0, "inbox": 0, "blocked": 0, "race-rebased": 0,
         "l5_incidents": 0, "l2_incidents": 0, "drift_incidents": 0,
-        "inbox_resolved": 0,
+        "inbox_resolved": 0, "l2_unsettled": 0, "issues_deferred": 0,
+        "bootstrapped": 0,
     }
 
-    for inst in installations:
-        account = (inst.get("account") or {}).get("login")
-        api = GitHubAPI(auth, inst["id"])
-        runtime = build_runtime_skills(config, api, config_dir=config_dir)
+    # Durable watermark state lives on a dedicated bot-state branch of the
+    # governance repo (NOT main), written via the App's contents:write. Build
+    # the store on the governance installation's client and LOAD the watermark
+    # from the branch (source of truth) at tick start. A corrupt persisted state
+    # fails closed here (raises → non-zero tick) rather than silently re-flooding.
+    gov_install = next(
+        (i for i in installations if (i.get("account") or {}).get("login") == gov_owner),
+        None,
+    )
+    if gov_install is None:
+        logger.error(
+            "no App installation found for governance account %r — cannot "
+            "load/persist durable watermarks", gov_owner,
+        )
+        return 3
+    gov_api = GitHubAPI(auth, gov_install["id"])
+    store = BotStateStore(gov_api, gov_owner, gov_repo)
+    watermarks = store.load()
 
-        for full in [r for r in supervised if r.split("/")[0] == account]:
-            owner, _, name = full.partition("/")
-            # DEC-C: an audit-only repo is scanned on main (L2 + L5 + the
-            # unauthorized-push detector) but its open PRs are NOT gated — L1-L4
-            # is skipped. This lets the governance repo be supervised without the
-            # self-gating paradox. Default: no repo is audit-only.
-            audit_only = config.projects.is_audit_only(full)
+    def _persist() -> None:
+        try:
+            store.save(watermarks)
+        except Exception as e:  # never let persistence crash the tick
+            logger.error("watermark persist failed: %s", e)
 
-            # L1 + L3 + L4 per open PR (skipped entirely for audit-only repos).
-            if audit_only:
-                logger.info("repo %s is audit-only — skipping L1-L4 PR gating", full)
-            else:
-                try:
-                    prs = api.list_open_prs(owner, name)
-                except Exception as e:
-                    logger.error("list PRs failed for %s: %s", full, e)
-                    prs = []
-                for pr_payload in prs:
-                    number = pr_payload.get("number")
-                    try:
-                        d = process_pr(api, config, runtime, pr_payload, audit_log_path=AUDIT_LOG)
-                        metrics[d.action] = metrics.get(d.action, 0) + 1
-                        logger.info(
-                            "PR %s#%s → %s (Q%s) %s",
-                            full, number, d.action, d.quadrant, d.detail,
-                        )
-                    except Exception as e:
-                        logger.error("process PR %s#%s failed: %s", full, number, e)
+    # A per-tick issue-creation budget (a backstop against a mass-incident
+    # flood). ``_issue_budget`` is a single-element list so the nested helper can
+    # mutate it. When exhausted, incidents are deferred (not lost): the watermark
+    # is not advanced past an un-surfaced incident, so it is re-attempted later.
+    issue_budget = [MAX_ISSUES_PER_TICK]
 
-            # L5 break-glass + hallucination scan.
-            try:
-                incidents, wm = scan_repo(
-                    api, owner, name, build_branch_hooks(runtime, api, owner, name), watermarks
-                )
-                for inc in incidents:
-                    if _open_incident_if_new(
-                        api, gov_owner, gov_repo, inc.label, inc.body, inc.commit_sha[:7]
-                    ):
-                        metrics["l5_incidents"] += 1
-                if wm:
-                    watermarks[f"{owner}/{name}"] = wm
-            except Exception as e:
-                logger.error("L5 scan failed for %s: %s", full, e)
-
-            # L2 post-merge re-validation. R1: honour the same effective
-            # required_checks (per-repo override > global default > ()) that C2
-            # uses, so a named check that must be green pre-merge must also be
-            # green on the merged commit.
-            l2_required = config.projects.effective_required_checks(
-                full, config.env.required_checks
+    def _open_capped(label: str, body: str, dedupe_key: str, metric: str) -> None:
+        if issue_budget[0] <= 0:
+            metrics["issues_deferred"] += 1
+            logger.warning(
+                "per-tick issue cap (%d) reached — deferring %s %s",
+                MAX_ISSUES_PER_TICK, label, dedupe_key,
             )
-            try:
-                l2_incidents, l2_wm = revalidate_main(
-                    api, owner, name, l2_required, watermarks,
-                    allow_no_ci=config.env.allow_no_ci,
-                )
-                for inc in l2_incidents:
-                    if _open_incident_if_new(
-                        api, gov_owner, gov_repo, inc.label, inc.body, inc.commit_sha[:7]
-                    ):
-                        metrics["l2_incidents"] += 1
-                if l2_wm:
-                    watermarks[f"{owner}/{name}:l2"] = l2_wm
-            except Exception as e:
-                logger.error("L2 re-validation failed for %s: %s", full, e)
-
-        # Governance-scoped work runs under the installation that owns it.
-        if account == gov_owner:
-            if MIRROR_PATHS.exists():
-                try:
-                    mirror = load_mirror_config(MIRROR_PATHS)
-                    drift = []
-                    for full in [r for r in supervised if r.split("/")[0] == account]:
-                        a_owner, _, a_repo = full.partition("/")
-                        drift += check_repo_against_canonical(
-                            api, gov_owner, gov_repo, a_owner, a_repo, mirror
-                        )
-                    if drift and _open_incident_if_new(
-                        api, gov_owner, gov_repo,
-                        "decision:mirror-drift-incident",
-                        incidents_to_issue_body(drift), "mirror-drift",
-                    ):
-                        metrics["drift_incidents"] += 1
-                except Exception as e:
-                    logger.error("drift check failed: %s", e)
-
-            try:
-                resolutions = resolve_open_issues(
-                    api, inbox_owner, inbox_repo, config.owner.allowlisted_actors
-                )
-                metrics["inbox_resolved"] += len(resolutions)
-                for r in resolutions:
-                    logger.info("inbox: %s#%s → %s (%s)",
-                                r.pr_full_name, r.pr_number, r.verdict, r.action)
-            except Exception as e:
-                logger.error("inbox poll failed: %s", e)
+            return
+        if _open_incident_if_new(gov_api, gov_owner, gov_repo, label, body, dedupe_key):
+            issue_budget[0] -= 1
+            metrics[metric] += 1
 
     try:
-        save_watermarks(watermarks)
-    except Exception as e:
-        logger.error("could not persist watermarks: %s", e)
+        for inst in installations:
+            account = (inst.get("account") or {}).get("login")
+            api = gov_api if account == gov_owner else GitHubAPI(auth, inst["id"])
+            runtime = build_runtime_skills(config, api, config_dir=config_dir)
+
+            for full in [r for r in supervised if r.split("/")[0] == account]:
+                owner, _, name = full.partition("/")
+                # DEC-C: an audit-only repo is scanned on main (L2 + L5 + the
+                # unauthorized-push detector) but its open PRs are NOT gated —
+                # L1-L4 is skipped. This lets the governance repo be supervised
+                # without the self-gating paradox. Default: no repo is audit-only.
+                audit_only = config.projects.is_audit_only(full)
+
+                # L1 + L3 + L4 per open PR (skipped for audit-only repos).
+                if audit_only:
+                    logger.info("repo %s is audit-only — skipping L1-L4 gating", full)
+                else:
+                    try:
+                        prs = api.list_open_prs(owner, name)
+                    except Exception as e:
+                        logger.error("list PRs failed for %s: %s", full, e)
+                        prs = []
+                    for pr_payload in prs:
+                        number = pr_payload.get("number")
+                        try:
+                            d = process_pr(
+                                api, config, runtime, pr_payload,
+                                audit_log_path=AUDIT_LOG,
+                            )
+                            metrics[d.action] = metrics.get(d.action, 0) + 1
+                            logger.info(
+                                "PR %s#%s → %s (Q%s) %s",
+                                full, number, d.action, d.quadrant, d.detail,
+                            )
+                        except Exception as e:
+                            logger.error("process PR %s#%s failed: %s", full, number, e)
+
+                # BOOTSTRAP-TO-HEAD: the first time a repo+layer is seen, set its
+                # watermark to current main HEAD, persist, and scan NOTHING this
+                # tick — gate doctrine cannot apply to pre-activation history,
+                # and a cold rewalk is what caused the live L5 flood + timeout.
+                l2_required = config.projects.effective_required_checks(
+                    full, config.env.required_checks
+                )
+                try:
+                    boot_l5 = bootstrap_watermark_if_absent(api, owner, name, watermarks)
+                    boot_l2 = bootstrap_watermark_if_absent(
+                        api, owner, name, watermarks, key_suffix=":l2"
+                    )
+                    if boot_l5 is not None or boot_l2 is not None:
+                        metrics["bootstrapped"] += 1
+                        _persist()  # persist the new HEAD watermark immediately
+
+                    # L5 break-glass + hallucination + unauthorized-push scan.
+                    if boot_l5 is None:
+                        incidents, wm = scan_repo(
+                            api, owner, name,
+                            build_branch_hooks(runtime, api, owner, name),
+                            watermarks,
+                        )
+                        incidents = _suppress_false_unauthorized(
+                            api, owner, name, incidents, allowlisted
+                        )
+                        for label, key, body in _rollup_incidents(owner, name, incidents):
+                            _open_capped(label, body, key, "l5_incidents")
+                        if wm:
+                            watermarks[f"{owner}/{name}"] = wm
+
+                    # L2 post-merge re-validation (R1 effective required_checks).
+                    if boot_l2 is None:
+                        l2_incidents, l2_wm = revalidate_main(
+                            api, owner, name, l2_required, watermarks,
+                            allow_no_ci=config.env.allow_no_ci,
+                        )
+                        for inc in l2_incidents:
+                            _open_capped(
+                                inc.label, inc.body, inc.commit_sha[:7], "l2_incidents"
+                            )
+                        if l2_wm:
+                            watermarks[f"{owner}/{name}:l2"] = l2_wm
+                except SecondaryRateLimitError as e:
+                    # One throttled repo must not abort the whole tick and replay
+                    # forever — log, persist progress, move to the next repo.
+                    logger.error("rate-limited scanning %s; skipping repo: %s", full, e)
+                except Exception as e:
+                    logger.error("supervisor scan failed for %s: %s", full, e)
+
+                # Incremental persistence: save after EACH repo so a 5-min
+                # timeout mid-fleet still banks the watermarks advanced so far.
+                _persist()
+
+                if (
+                    api.rate_limit_remaining is not None
+                    and api.rate_limit_remaining < RATE_LIMIT_RESERVE
+                ):
+                    logger.warning(
+                        "rate-limit reserve hit (%s remaining) — ending tick "
+                        "early after %s to guarantee persistence",
+                        api.rate_limit_remaining, full,
+                    )
+                    break
+
+            # Governance-scoped work runs under the installation that owns it.
+            if account == gov_owner:
+                _run_governance_work(
+                    api, config, gov_owner, gov_repo, inbox_owner, inbox_repo,
+                    supervised, allowlisted, metrics, _open_capped,
+                )
+
+        metrics["l2_unsettled"] = count_l2_unsettled(watermarks)
+        logger.info(
+            "rate-limit remaining at tick end: %s", gov_api.rate_limit_remaining
+        )
+    finally:
+        # finally guard: even on a timeout/exception, bank the watermarks.
+        _persist()
 
     logger.info("tick complete: %s", metrics)
     return 0
+
+
+def _run_governance_work(
+    api, config, gov_owner, gov_repo, inbox_owner, inbox_repo,
+    supervised, allowlisted, metrics, open_capped,
+) -> None:
+    """Drift check + Decision-Inbox poll (governance installation only)."""
+    if MIRROR_PATHS.exists():
+        try:
+            mirror = load_mirror_config(MIRROR_PATHS)
+            drift = []
+            for full in [r for r in supervised if r.split("/")[0] == gov_owner]:
+                a_owner, _, a_repo = full.partition("/")
+                # Skip the governance/source repo: it IS the canonical, so
+                # comparing it to itself is always-clean wasted API calls.
+                if (a_owner, a_repo) == (gov_owner, gov_repo):
+                    continue
+                # Below the rate reserve, stop the expensive drift loop early
+                # and let the tick reach persistence.
+                if (
+                    api.rate_limit_remaining is not None
+                    and api.rate_limit_remaining < RATE_LIMIT_RESERVE
+                ):
+                    logger.warning(
+                        "rate-limit reserve hit during drift loop (%s) — "
+                        "ending drift scan early", api.rate_limit_remaining,
+                    )
+                    break
+                drift += check_repo_against_canonical(
+                    api, gov_owner, gov_repo, a_owner, a_repo, mirror
+                )
+            if drift:
+                open_capped(
+                    "decision:mirror-drift-incident",
+                    incidents_to_issue_body(drift), "mirror-drift", "drift_incidents",
+                )
+        except Exception as e:
+            logger.error("drift check failed: %s", e)
+
+    try:
+        resolutions = resolve_open_issues(
+            api, inbox_owner, inbox_repo, allowlisted
+        )
+        metrics["inbox_resolved"] += len(resolutions)
+        for r in resolutions:
+            logger.info("inbox: %s#%s → %s (%s)",
+                        r.pr_full_name, r.pr_number, r.verdict, r.action)
+    except Exception as e:
+        logger.error("inbox poll failed: %s", e)
 
 
 if __name__ == "__main__":
