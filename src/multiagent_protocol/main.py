@@ -23,9 +23,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from multiagent_protocol.auth import AppAuth
+from multiagent_protocol.auto_revert import ensure_revert_pr
 from multiagent_protocol.branch_supervisor import (
     BotStateStore,
     SupervisorIncident,
@@ -43,6 +45,7 @@ from multiagent_protocol.drift_check import (
     load_mirror_config,
 )
 from multiagent_protocol.github_api import GitHubAPI, SecondaryRateLimitError
+from multiagent_protocol.l4_burn_in import L4BurnInStore, apply_burn_in
 from multiagent_protocol.runtime import (
     build_branch_hooks,
     build_runtime_skills,
@@ -109,6 +112,61 @@ def _open_incident_if_new(
         labels=[label],
     )
     return True
+
+
+# The L2 real-failure incident label — the one path FEATURE A augments with a
+# revert PR. Kept as a constant so the auto-revert dispatch matches exactly.
+L2_REVALIDATION_LABEL = "decision:post-merge-revalidation"
+
+
+def _issue_ref(issue: dict) -> str:
+    """A ``Task-Ref``-shaped reference for an incident issue (``Issue#N``)."""
+    return f"Issue#{issue.get('number')}"
+
+
+def _installation_token(api: GitHubAPI) -> str | None:
+    """Best-effort installation token for the given repo's client (auto-revert
+    clone/push auth). Returns None when the client has no App auth (a test
+    double) or the exchange fails — the auto-revert then degrades to
+    incident-only rather than crashing the tick."""
+    auth = getattr(api, "auth", None)
+    inst_id = getattr(api, "installation_id", None)
+    if auth is None or inst_id is None:
+        return None
+    try:
+        return auth.installation_token(inst_id)
+    except Exception as e:  # noqa: BLE001 - fail-safe → incident-only
+        logger.warning("auto-revert: could not obtain installation token: %s", e)
+        return None
+
+
+def _append_incident_note(
+    api: GitHubAPI, gov_owner: str, gov_repo: str,
+    issue: dict, marker: str, note: str,
+) -> None:
+    """Append the auto-revert note to an incident issue body (idempotent).
+
+    The note is inserted just before the hidden dedupe marker so the marker
+    stays at the end (where dedupe/greppers expect it). A no-op when the note is
+    already present, so a re-emitted incident (tick died pre-persist) does not
+    stack duplicate notes."""
+    number = issue.get("number")
+    if number is None or not note:
+        return
+    body = issue.get("body") or ""
+    if note in body:
+        return
+    if marker in body:
+        body = body.replace(marker, f"{note}\n\n{marker}", 1)
+    else:
+        body = f"{body}\n\n{note}"
+    try:
+        api.update_issue_body(gov_owner, gov_repo, number, body)
+        issue["body"] = body  # keep the in-memory copy consistent this tick
+    except Exception as e:  # noqa: BLE001 - the incident already exists; note is best-effort
+        logger.warning(
+            "auto-revert: could not append revert note to issue #%s: %s", number, e
+        )
 
 
 def _suppress_false_unauthorized(
@@ -243,11 +301,14 @@ class _DriftTreeAPI:
         return tree.get(path)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, now: datetime | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    # Single tick clock, injectable for tests (FEATURE B — L4 burn-in). Never
+    # read datetime.now() inline in the burn-in logic that tests cover.
+    now = now or datetime.now(timezone.utc)
 
     config_dir = Path("config")
     schemas_dir = Path("schemas")
@@ -319,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
         "merged": 0, "observe": 0, "inbox": 0, "blocked": 0, "race-rebased": 0,
         "l5_incidents": 0, "l2_incidents": 0, "drift_incidents": 0,
         "inbox_resolved": 0, "l2_unsettled": 0, "issues_deferred": 0,
-        "bootstrapped": 0,
+        "bootstrapped": 0, "auto_revert_prs": 0, "l4_promoted": 0,
     }
 
     # Durable watermark state lives on a dedicated bot-state branch of the
@@ -340,6 +401,10 @@ def main(argv: list[str] | None = None) -> int:
     gov_api = GitHubAPI(auth, gov_install["id"])
     store = BotStateStore(gov_api, gov_owner, gov_repo)
     watermarks = store.load()
+    # FEATURE B — L4 burn-in clock. Its state file lives on the SAME bot-state
+    # branch (guaranteed to exist now that store.load() ran). Fail-safe reads,
+    # best-effort writes; disabled by default (l4_burn_in_days=0 → inert).
+    burn_in_store = L4BurnInStore(gov_api, gov_owner, gov_repo)
 
     def _persist() -> None:
         # ``store.save`` already swallows transient/race push failures (stale
@@ -375,6 +440,73 @@ def main(argv: list[str] | None = None) -> int:
             metrics[metric] += 1
         return True
 
+    def _open_l2_capped(repo_api, owner: str, name: str, inc) -> bool:
+        """L2 incident opener that also runs FEATURE A (auto-revert) when on.
+
+        For a ``decision:post-merge-revalidation`` incident with
+        ``auto_revert_pr`` enabled: open the incident FIRST (its number becomes
+        the revert commit's ``Task-Ref``), then create/link the revert PR in the
+        SUPERVISED repo (``repo_api`` — its own installation client), then append
+        the PR link (or failure reason) to the incident body. Everything else —
+        and the disabled case — falls straight through to :func:`_open_capped`,
+        so the well-tested flood-control / budget path is unchanged.
+
+        Returns False ONLY when the per-tick cap deferred a NEW issue (caller
+        holds the watermark), matching ``_open_capped``.
+        """
+        if not (config.env.auto_revert_pr and inc.label == L2_REVALIDATION_LABEL):
+            return _open_capped(inc.label, inc.body, inc.commit_sha[:7], "l2_incidents")
+
+        dedupe_key = inc.commit_sha[:7]
+        marker = _DEDUPE_MARKER.format(key=dedupe_key)
+        # Does the incident already exist (open OR closed)? If so we do NOT spend
+        # budget, but we DO still (idempotently) ensure the revert PR — a prior
+        # tick may have opened the issue then died before pushing the branch.
+        try:
+            existing = gov_api.list_issues(
+                gov_owner, gov_repo, labels=inc.label, state="all"
+            )
+        except Exception as e:
+            logger.error("could not list issues for dedupe (%s): %s", inc.label, e)
+            existing = []
+        match = None
+        for issue in existing:
+            hay = f"{issue.get('title') or ''}\n{issue.get('body') or ''}"
+            if marker in hay or dedupe_key in hay:
+                match = issue
+                break
+
+        if match is None:
+            # A NEW incident — subject to the per-tick cap, exactly like _open_capped.
+            if issue_budget[0] <= 0:
+                metrics["issues_deferred"] += 1
+                logger.warning(
+                    "per-tick issue cap (%d) reached — deferring %s %s",
+                    MAX_ISSUES_PER_TICK, inc.label, dedupe_key,
+                )
+                return False
+            match = gov_api.open_issue(
+                owner=gov_owner, repo=gov_repo,
+                title=f"[{inc.label}] {dedupe_key}",
+                body=f"{inc.body}\n\n{marker}",
+                labels=[inc.label],
+            )
+            issue_budget[0] -= 1
+            metrics["l2_incidents"] += 1
+
+        # Create / link the revert PR (never raises), then append the note to
+        # the incident body. Token comes from the supervised repo's own
+        # installation client so the clone/push is authorised for that repo.
+        token = _installation_token(repo_api)
+        result = ensure_revert_pr(
+            repo_api, owner, name, inc.commit_sha,
+            token=token, incident_ref=_issue_ref(match),
+        )
+        if result.created:
+            metrics["auto_revert_prs"] += 1
+        _append_incident_note(gov_api, gov_owner, gov_repo, match, marker, result.note)
+        return True
+
     try:
         for inst in installations:
             account = (inst.get("account") or {}).get("login")
@@ -393,6 +525,21 @@ def main(argv: list[str] | None = None) -> int:
                     account, e,
                 )
                 continue
+
+            # FEATURE B — L4 burn-in: promote validator_agent_registry from
+            # advisory (P2) to hard-block (P0) once the window elapses, mutating
+            # this installation's runtime IN PLACE before any PR is gated. Inert
+            # unless l4_burn_in_days>0; the operator's severity_overrides always
+            # wins. Never raises.
+            try:
+                burn = apply_burn_in(runtime, config, burn_in_store, now=now)
+                if burn.just_promoted:
+                    metrics["l4_promoted"] += 1
+                    logger.info(
+                        "L4 burn-in: %s (installation %r)", burn.reason, account
+                    )
+            except Exception as e:  # noqa: BLE001 - burn-in must never abort a tick
+                logger.error("L4 burn-in evaluation failed (advisory stays): %s", e)
 
             for full in [r for r in supervised if r.split("/")[0] == account]:
                 owner, _, name = full.partition("/")
@@ -476,9 +623,11 @@ def main(argv: list[str] | None = None) -> int:
                         )
                         l2_deferred = False
                         for inc in l2_incidents:
-                            if not _open_capped(
-                                inc.label, inc.body, inc.commit_sha[:7], "l2_incidents"
-                            ):
+                            # FEATURE A: on a real-failure incident with
+                            # auto_revert_pr on, this also opens/links a revert
+                            # PR in the supervised repo and links it in the
+                            # incident. Otherwise identical to _open_capped.
+                            if not _open_l2_capped(api, owner, name, inc):
                                 l2_deferred = True
                         # Same hold-on-deferral rule. (Corner: a deferred STALL
                         # incident re-tracks with a fresh first-seen next tick —

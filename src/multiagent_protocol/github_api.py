@@ -370,6 +370,43 @@ class GitHubAPI:
         r.raise_for_status()
         return r.json()
 
+    def create_pull_request(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        title: str,
+        head: str,
+        base: str,
+        body: str = "",
+    ) -> dict:
+        """Open a PR from ``head`` into ``base``; return the created PR JSON.
+
+        Used by the L2 auto-revert path to open the revert PR after the revert
+        branch is pushed. The PR then goes through the NORMAL merge gate — the
+        bot never auto-labels it ``ready-to-merge`` (that is the point: a bot-
+        authored revert is still owner/classifier-gated)."""
+        r = self._request(
+            "POST",
+            f"/repos/{owner}/{repo}/pulls",
+            json={"title": title, "head": head, "base": base, "body": body},
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def list_prs_for_head(
+        self, owner: str, repo: str, head_branch: str, *, state: str = "open"
+    ) -> list[dict]:
+        """List PRs whose head is ``head_branch`` (same-repo branch name).
+
+        The GitHub ``head`` filter wants ``<owner>:<branch>``. Used by the
+        auto-revert idempotency check: if an open PR already exists from the
+        ``revert/<sha7>`` branch, link it instead of opening a duplicate."""
+        return list(self._paginate(
+            f"/repos/{owner}/{repo}/pulls",
+            params={"state": state, "head": f"{owner}:{head_branch}"},
+        ))
+
     # -- Labels + comments --
 
     def add_label(self, owner: str, repo: str, number: int, label: str) -> None:
@@ -429,6 +466,18 @@ class GitHubAPI:
             "PATCH",
             f"/repos/{owner}/{repo}/issues/{number}",
             json={"state": "closed"},
+        )
+        r.raise_for_status()
+
+    def update_issue_body(self, owner: str, repo: str, number: int, body: str) -> None:
+        """Replace an issue's body (PATCH). Used by the L2 auto-revert path to
+        append the revert-PR link (or the failure reason) to an already-opened
+        incident issue whose SHA-dedupe number was needed for the revert
+        commit's ``Task-Ref`` trailer."""
+        r = self._request(
+            "PATCH",
+            f"/repos/{owner}/{repo}/issues/{number}",
+            json={"body": body},
         )
         r.raise_for_status()
 

@@ -5,11 +5,11 @@
 > One human, many agents. Different sessions, different machines, different models — same `main` branch. This protocol stops them from stepping on each other, gates merges through a self-built check, and routes irreversible decisions back to you instead of letting agents decide.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: v1.1](https://img.shields.io/badge/status-v1.1-brightgreen.svg)](STATUS.md)
+[![Status: v1.2](https://img.shields.io/badge/status-v1.2-brightgreen.svg)](STATUS.md)
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![한국어](https://img.shields.io/badge/lang-한국어-orange.svg)](README.ko.md)
 
-> **v1.1.0.** The cron orchestrator is **live**: your private installation evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). New in 1.1: **delegated installation** — you hand [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) to your own AI agent and it installs everything (you click twice) — plus an **operator preference layer** (`config/preferences.yml`) so your agents follow *your* working style. A few capabilities remain intentionally later — automatic revert-PR creation, the automatic 60-day L4 burn-in (promote manually via `severity_overrides` today), PyPI publishing — see [`STATUS.md`](STATUS.md).
+> **v1.2.0.** The cron orchestrator is **live**: your private installation evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). Installation is **delegated** — hand [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) to your own AI agent (wizard-generated prompt or fully conversational Interview Mode) and it installs everything while your agents follow *your* working style via the **preference layer** (`config/preferences.yml`). New in 1.2: **automatic revert-PRs** and the **60-day L4 burn-in auto-promotion**, both default-off opt-ins with their own ADRs, plus the **Korean mirror of all nine concept docs**. Still later: PyPI publishing, multi-account installs — see [`STATUS.md`](STATUS.md).
 
 ---
 
@@ -89,8 +89,9 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 
 ## Status
 
-- **v1.1.0** (current): delegated agent installation (AGENT_SETUP runbook + deploy example), operator preference layer, wizard v2 (6 files + delegation prompt), honest Free-tier cadence guidance, post-RC reliability + security hardening. Docker image on GHCR per tag; GitHub Action pinnable at `@v1.1.0`.
-- **Later**: PyPI publishing (awaits trusted-publisher setup — install from your mirror meanwhile), automatic revert-PR creation, automatic 60-day L4 burn-in, Korean mirror of the concept docs, multi-account installations (see [`STATUS.md`](STATUS.md)).
+- **v1.2.0** (current): L2 automatic revert-PRs + L4 60-day burn-in auto-promotion (both default-off opt-ins, `docs/decisions/0002`–`0003`), Korean mirror of all nine concept docs, doctrine self-contradiction fixes. 465 tests.
+- **v1.1.0**: delegated agent installation (AGENT_SETUP runbook + Interview Mode + deploy example), operator preference layer, wizard v2, honest Free-tier cadence guidance. Docker image on GHCR per tag; GitHub Action pinnable per release tag.
+- **Later**: PyPI publishing (awaits trusted-publisher setup — install from your mirror meanwhile), multi-account installations, GitLab/Bitbucket adapters (see [`STATUS.md`](STATUS.md)).
 - **Maintenance**: best-effort, no SLA. See [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## Documentation

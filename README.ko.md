@@ -5,11 +5,11 @@
 > 사람 1명, 에이전트 여럿. 서로 다른 세션, 서로 다른 머신, 서로 다른 모델 — 같은 `main`. 이 프로토콜은 그들이 서로를 밟지 않도록 막고, merge를 self-built check로 게이트하며, **돌이킬 수 없는 결정은 에이전트가 아니라 사람에게 라우팅합니다.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: v1.1](https://img.shields.io/badge/status-v1.1-brightgreen.svg)](STATUS.md)
+[![Status: v1.2](https://img.shields.io/badge/status-v1.2-brightgreen.svg)](STATUS.md)
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 
-> **v1.1.0.** Cron 오케스트레이터가 **가동 중**입니다: 당신의 비공개 설치본이 열린 PR을 평가하고, auto-approve 가능한 quadrant(A/B/C)를 머지하며, 비가역+critical 변경(D)은 Decision Inbox로 라우팅하고, `main`을 감사(L2+L5)합니다. **1.1의 핵심: 위임 설치** — [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)를 **당신의 AI 에이전트에게 건네면 에이전트가 전 과정을 설치**합니다(사람은 두 번만: App 등록 클릭, 실동작 확인). 여기에 **운영자 취향 레이어**(`config/preferences.yml`)가 추가되어 에이전트들이 당신의 언어·보고 스타일·자율성 수위를 따릅니다. 일부 기능은 의도적으로 이후 릴리스입니다 — 자동 revert-PR 생성, 자동 60일 L4 burn-in(현재는 `severity_overrides`로 수동 승격), PyPI 배포 — [`STATUS.md`](STATUS.md) 참고.
+> **v1.2.0.** Cron 오케스트레이터가 **가동 중**입니다: 당신의 비공개 설치본이 열린 PR을 평가하고, auto-approve 가능한 quadrant(A/B/C)를 머지하며, 비가역+critical 변경(D)은 Decision Inbox로 라우팅하고, `main`을 감사(L2+L5)합니다. 설치는 **위임식**입니다 — [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)를 당신의 AI 에이전트에게 건네면(위저드 프롬프트 또는 완전 대화형 인터뷰 모드) 전 과정을 설치하고, **취향 레이어**(`config/preferences.yml`)로 에이전트들이 당신의 언어·보고 스타일·자율성 수위를 따릅니다. **1.2의 새 기능**: 사고 병합의 **자동 revert-PR**, **60일 L4 자동 승격**(둘 다 기본 off 옵트인, 각자 ADR 보유), 그리고 **개념 문서 9종 전부의 한국어 미러**. 아직 이후 과제: PyPI 배포, 다중 계정 설치 — [`STATUS.md`](STATUS.md) 참고.
 
 ---
 
@@ -70,8 +70,9 @@ them, walk me through the clicks step by step.
 
 ## 상태
 
-- **v1.1.0** (현재): 위임 설치(AGENT_SETUP 런북 + deploy 예시), 운영자 취향 레이어, 위저드 v2(6파일 + 위임 프롬프트), Free tier 케이던스 정직화, RC 이후 신뢰성·보안 하드닝. 태그마다 GHCR Docker 이미지; GitHub Action은 `@v1.1.0` 핀. 테스트 435개.
-- **이후**: PyPI 배포(트러스티드 퍼블리셔 설정 대기 — 그동안은 미러 설치), 자동 revert-PR, 자동 60일 L4 burn-in, concept 문서 한국어 미러, 다중 계정 설치 — [`STATUS.md`](STATUS.md).
+- **v1.2.0** (현재): L2 자동 revert-PR + L4 60일 자동 승격(둘 다 기본 off 옵트인, `docs/decisions/0002`–`0003`), 개념 문서 9종 한국어 미러, 독트린 자기모순 수정. 테스트 465개.
+- **v1.1.0**: 위임 설치(AGENT_SETUP 런북 + 인터뷰 모드 + deploy 예시), 운영자 취향 레이어, 위저드 v2, Free tier 케이던스 정직화. 태그마다 GHCR Docker 이미지.
+- **이후**: PyPI 배포(트러스티드 퍼블리셔 설정 대기 — 그동안은 미러 설치), 다중 계정 설치, GitLab/Bitbucket 어댑터 — [`STATUS.md`](STATUS.md).
 - **유지보수**: best-effort, no SLA — [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## 문서

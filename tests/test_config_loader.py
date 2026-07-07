@@ -432,6 +432,57 @@ def test_allow_no_ci_suppresses_ci_posture_warning(tmp_path: Path, caplog):
     assert not any("C2 posture" in r.getMessage() for r in caplog.records)
 
 
+# -- FEATURE A / B: auto_revert_pr + l4_burn_in_days (opt-in, default OFF) ------
+
+def test_new_v1_2_knobs_default_off(tmp_path: Path):
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/p\nsupervised_repos:\n  - alice/repo-a\n")
+    _write(cfg_dir, "env.yml", "bot_app_slug: foo\nallow_no_ci: true\n")
+    cfg = load_config(cfg_dir)
+    # Both features are OFF by default.
+    assert cfg.env.auto_revert_pr is False
+    assert cfg.env.l4_burn_in_days == 0
+
+
+def test_new_v1_2_knobs_parsed_when_set(tmp_path: Path):
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/p\nsupervised_repos:\n  - alice/repo-a\n")
+    _write(cfg_dir, "env.yml",
+           "bot_app_slug: foo\nallow_no_ci: true\n"
+           "auto_revert_pr: true\nl4_burn_in_days: 60\n")
+    cfg = load_config(cfg_dir)
+    assert cfg.env.auto_revert_pr is True
+    assert cfg.env.l4_burn_in_days == 60
+
+
+def test_env_schema_accepts_v1_2_knobs():
+    schema = _load_schema("env.schema.json")
+    _jsonschema.validate(
+        instance={"bot_app_slug": "foo", "auto_revert_pr": True,
+                  "l4_burn_in_days": 60},
+        schema=schema,
+    )
+    # Still accepts the shape without the new fields.
+    _jsonschema.validate(instance={"bot_app_slug": "foo"}, schema=schema)
+    # l4_burn_in_days must be a non-negative integer.
+    import pytest
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={"bot_app_slug": "foo", "l4_burn_in_days": -1}, schema=schema)
+    # auto_revert_pr must be a boolean.
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={"bot_app_slug": "foo", "auto_revert_pr": "yes"}, schema=schema)
+    # additionalProperties:false still rejects unknown env keys.
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={"bot_app_slug": "foo", "bogus_env_key": 1}, schema=schema)
+
+
 def test_audit_only_repo_not_required_to_declare_ci_posture(tmp_path: Path, caplog):
     # An audit-only repo is not PR-gated, so it need not declare a CI posture.
     import logging

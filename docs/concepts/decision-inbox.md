@@ -61,7 +61,7 @@ Every cron tick, `decision_inbox.py`:
       - Option B / `/approve B` → label PR `decision:approved-B`, comment indicates the alternate was chosen. Owner is expected to update the PR description with the actual alternate; L1 still requires CI green.
       - Option C / `/approve C` → label Issue `decision:deferred`, leave open. Owner may flip later.
       - 👎 / `/reject` → close PR with comment, close Issue with label `decision:rejected`.
-4. Update tick metrics: `inbox_open_count`, `inbox_resolved_this_tick`, `inbox_oldest_age_hours`.
+4. Update tick metrics: `inbox`, `inbox_resolved`, `issues_deferred` (the exact counter names — see Metrics below).
 
 ## Resolution states
 
@@ -125,21 +125,19 @@ Owner closes the issue with the GitHub UI without leaving a `/approve` or `/reje
 
 ## Metrics
 
-Every cron tick records:
+Every cron tick's metrics counters (the `metrics_summary` artifact) carry
+the inbox-relevant keys — these are the exact names the code emits:
 
 ```json
 {
-  "inbox_open_count": <int>,
-  "inbox_resolved_this_tick": {
-    "approved-A": <int>,
-    "approved-B": <int>,
-    "approved-C-deferred": <int>,
-    "rejected": <int>,
-    "abandoned": <int>
-  },
-  "inbox_oldest_age_hours": <float>,
-  "inbox_head_sha_mismatches": <int>
+  "inbox": <int>,           // Quadrant-D issues opened this tick
+  "inbox_resolved": <int>,  // owner answers collected this tick
+  "issues_deferred": <int>  // "/approve C" needs-more-info deferrals
 }
 ```
 
-A healthy inbox has `inbox_open_count` < 10 and `inbox_oldest_age_hours` < 168 (one week). Sustained higher numbers indicate either an owner who is over-loaded or a classifier that is over-quadrant-D'ing.
+There is no `abandoned` counter — no automated abandon lifecycle exists (see
+"Asynchronous by design" above). A healthy inbox stays under ~10 open issues
+with nothing waiting longer than about a week; sustained higher numbers
+indicate either an over-loaded owner or a classifier that is
+over-quadrant-D'ing — audit the path rules, don't add a timer.
