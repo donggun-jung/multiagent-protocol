@@ -18,8 +18,8 @@ runbook. You will be needed exactly twice, at the steps marked **[HUMAN]**.
 - Never print, log, or commit secret values (App private key, receipt key).
   Never commit anything under `config/` to a **public** repo.
 
-**Inputs you need before step 0** (from the wizard zip, or compose them
-yourself per step 2):
+**Inputs you need before step 0** — from the wizard zip, **or collected by
+you in Interview Mode (next section)** if the operator prepared nothing:
 
 | Input | Example |
 |---|---|
@@ -28,6 +28,77 @@ yourself per step 2):
 | The 6 config files | `owner / projects / env / skills / agent_registry / preferences` `.yml` |
 | Runner tier decision | `actions-free` (default) or `self-hosted` |
 | Where `gh` is authenticated | as the operator's account |
+
+---
+
+## Interview Mode — conversational install, no wizard required
+
+If your operator arrives with nothing but this runbook (no wizard zip, no
+config), **you conduct the setup interview yourself**, then continue to
+step 0. Rules of the interview:
+
+- **Speak the operator's language.** Detect it from how they talk to you;
+  everything below is your script's *content*, not its wording.
+- **One batched round.** Ask all questions in a single message, numbered,
+  each with its default in brackets. Accept "전부 기본값으로" / "defaults
+  are fine" as a complete answer. Follow up only on genuinely missing
+  essentials (login, repo).
+- **Offer defaults, never invent.** Unanswered optional fields are omitted
+  from the YAML, not guessed.
+- **Close the loop.** Before writing files, reflect a 5-line summary back
+  ("I will supervise X for account Y, ticking every 30 min on GitHub Free,
+  agents will speak Korean and bring you options-menus, quiet 23:00–08:00 —
+  correct?") and wait for a yes.
+
+The interview (map answers 1:1 onto the schemas in [`schemas/`](../../schemas/)
+and the shapes in [`examples/solo-developer/config/`](../../examples/solo-developer/config/)):
+
+1. **GitHub login** → `owner.yml github_login` (verify it matches `gh auth status`).
+2. **Which repo(s) should be protected?** → `projects.yml supervised_repos`;
+   governance repo will be `<login>/multiagent-protocol-gov` (step 1).
+3. **Do those repos have CI (automated checks)?**
+   - yes → ask which check names must pass → `env.yml required_checks`
+   - no → offer the choice honestly: add a minimal sanity workflow
+     (recommended; you will create it in step 5) or set
+     `allow_no_ci: true` (gate merges without CI evidence — say that plainly).
+4. **Runner** [GitHub Actions Free, ticking every 30 min]: fine for almost
+   everyone starting out; 5-minute reactions need a self-hosted runner
+   ([guide](../guide/self-hosted-runner.md)) → `env.yml runner_tier`.
+5. **Working preferences** → `preferences.yml` (this is where the
+   installation becomes *theirs*):
+   - language your agents should use with them [their language]
+   - written reports [same / english / bilingual]
+   - report style [conclusion first / detailed]
+   - decisions as [2–4 labeled options with pros+cons / plain questions]
+   - collect questions and ask together? [yes]
+   - autonomy [cautious = confirm outward/irreversible things ·
+     standard = follow the quadrants · delegating = proceed and report]
+   - quiet hours + timezone [none]
+   - **taste ledger seeds**: "What do you keep repeating to your AI agents?
+     Give me 1–5 one-liners; every agent will follow them from now on." [skip]
+   - **vocabulary**: "Any nicknames or shorthand I should understand —
+     project names, terms?" [skip]
+6. **Skills** [defaults]: keep built-in defaults unless they ask.
+
+Then: write the six files, validate exactly as step 2 does, show the
+summary, get the yes — and run steps 0–9. At every **[HUMAN]** step, give
+click-by-click directions in their language and wait; never rush a human
+step.
+
+**Bootstrap prompt** (this is all an operator needs to paste to their agent
+to start a conversational install):
+
+```text
+You are my AI coding agent. Set up multiagent-protocol for me.
+Fetch and follow: https://raw.githubusercontent.com/donggun-jung/multiagent-protocol/main/docs/agent-setup/AGENT_SETUP.md
+I have not prepared any config. Start with the runbook's Interview Mode:
+interview me in my own language (one batched round, offer defaults), build
+the six config files from my answers, confirm the summary back to me, then
+execute steps 0-9. Involve me only at the [HUMAN] steps, and when we reach
+them, walk me through the clicks step by step.
+```
+
+---
 
 Terminology: the **governance repo** is the private copy of this framework
 that holds the operator's config and runs the bot. We name it

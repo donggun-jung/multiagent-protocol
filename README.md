@@ -65,6 +65,20 @@ The recommended path is **delegated installation — your own AI agent sets ever
 3. Paste the agent prompt into your own agent (Claude Code, Codex, …). It executes [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md): private **mirror** governance repo (not a fork — forks can't be private), config, cron workflow, secrets, labels, agent rule kit, observe-mode tick, go-live, end-to-end test.
 4. You act exactly twice: the GitHub App registration clicks, and the go-live confirmation.
 
+**No wizard needed — fully conversational install:** paste this to your agent
+and it interviews you (in your language), builds your config from the answers,
+and guides you through the two human moments click by click:
+
+```text
+You are my AI coding agent. Set up multiagent-protocol for me.
+Fetch and follow: https://raw.githubusercontent.com/donggun-jung/multiagent-protocol/main/docs/agent-setup/AGENT_SETUP.md
+I have not prepared any config. Start with the runbook's Interview Mode:
+interview me in my own language (one batched round, offer defaults), build
+the six config files from my answers, confirm the summary back to me, then
+execute steps 0-9. Involve me only at the [HUMAN] steps, and when we reach
+them, walk me through the clicks step by step.
+```
+
 Prefer doing it by hand? [`docs/guide/quick-start.md`](docs/guide/quick-start.md) — budget 1–2 hours.
 
 ## Architecture (one paragraph)

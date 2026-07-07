@@ -2,14 +2,16 @@
 
 There are two ways to install `multiagent-protocol`:
 
-- **Delegated (recommended): your AI agent installs it for you.** Run the
-  [web wizard](../wizard/index.html), copy the generated **agent prompt**, and
-  paste it to your own agent (Claude Code, Codex, …). The agent executes
-  [`docs/agent-setup/AGENT_SETUP.md`](../agent-setup/AGENT_SETUP.md) end to
-  end; you are needed for exactly two things (GitHub App clicks + the go-live
-  confirmation). This path exists because the setup below, done by hand, takes
-  a human roughly **1–2 hours** — an agent does it in minutes and verifies
-  each step.
+- **Delegated (recommended): your AI agent installs it for you.** Two ways in:
+  run the [web wizard](../wizard/index.html) and paste its generated **agent
+  prompt** — or skip even that and paste the **Interview-Mode bootstrap
+  prompt** ([README § Quick start](../../README.md#quick-start), also in
+  [`AGENT_SETUP.md`](../agent-setup/AGENT_SETUP.md)): your agent interviews
+  you conversationally in your language, builds the config from your answers,
+  then executes the runbook end to end. Either way you are needed for exactly
+  two things (GitHub App clicks + the go-live confirmation). This path exists
+  because the setup below, done by hand, takes a human roughly **1–2 hours** —
+  an agent does it in minutes and verifies each step.
 - **Manual: you do the steps yourself.** The rest of this page. Budget 1–2
   hours for a first install, not 15 minutes.
 

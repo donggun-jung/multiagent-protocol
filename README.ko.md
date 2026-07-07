@@ -47,6 +47,21 @@
 3. 그 프롬프트를 당신의 에이전트(Claude Code, Codex 등)에게 붙여넣습니다. 에이전트가 [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)를 실행합니다: 비공개 **미러** 거버넌스 repo(포크 아님 — 공개 repo의 포크는 private 전환 불가), 설정, cron 워크플로, 시크릿 3종, 라벨, 에이전트 규율 킷, 관찰 모드 시운전, 실동작 전환, E2E 검증까지.
 4. 사람이 하는 일은 정확히 두 번: GitHub App 등록 클릭, 그리고 실동작 최종 확인.
 
+**위저드조차 필요 없습니다 — 완전 대화형 설치:** 아래 문단을 에이전트에게
+붙여넣으면, 에이전트가 **당신의 언어로 인터뷰**해서 답변으로 설정을 만들고,
+사람이 해야 하는 두 순간은 클릭 단위로 안내합니다(프롬프트 자체는 영문 —
+에이전트가 가장 안정적으로 따르는 언어일 뿐, 대화는 한국어로 진행됩니다):
+
+```text
+You are my AI coding agent. Set up multiagent-protocol for me.
+Fetch and follow: https://raw.githubusercontent.com/donggun-jung/multiagent-protocol/main/docs/agent-setup/AGENT_SETUP.md
+I have not prepared any config. Start with the runbook's Interview Mode:
+interview me in my own language (one batched round, offer defaults), build
+the six config files from my answers, confirm the summary back to me, then
+execute steps 0-9. Involve me only at the [HUMAN] steps, and when we reach
+them, walk me through the clicks step by step.
+```
+
 손으로 직접 하고 싶다면: [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) — 1–2시간을 잡으세요.
 
 ## 아키텍처 (한 문단)
