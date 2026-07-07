@@ -202,6 +202,12 @@ class FakeAPI:
         # Every durable bot-state write: (owner, repo, branch, path, content).
         self.bot_state_writes: list[tuple] = []
         self.refs_created: list[tuple] = []
+        # FEATURE A (auto-revert) side effects: created PRs + body edits, plus
+        # a seedable pool of open PRs keyed by (owner, repo, head_branch).
+        self.prs_created: list[dict] = []
+        self.issue_bodies_updated: list[tuple] = []
+        self._pr_number_counter = 5000
+        self._open_prs_by_head: dict[tuple, list[dict]] = {}
 
     # -- seeding --
     def register_pr(self, *, owner="example", repo="repo", number=1, labels=(),
@@ -360,6 +366,41 @@ class FakeAPI:
         for i in self._issues:
             if i.get("number") == number:
                 i["state"] = "closed"
+
+    def update_issue_body(self, owner, repo, number, body):
+        self.issue_bodies_updated.append((owner, repo, number, body))
+        for i in self._issues:
+            if i.get("number") == number:
+                i["body"] = body
+
+    # -- FEATURE A: revert-PR endpoints --
+    def seed_open_pr_for_head(self, owner, repo, head_branch, *, number=None,
+                              html_url=None):
+        """Pre-populate an OPEN PR from ``head_branch`` (idempotency tests)."""
+        if number is None:
+            self._pr_number_counter += 1
+            number = self._pr_number_counter
+        pr = {"number": number,
+              "html_url": html_url or f"https://github.com/{owner}/{repo}/pull/{number}",
+              "head": {"ref": head_branch}, "state": "open"}
+        self._open_prs_by_head.setdefault((owner, repo, head_branch), []).append(pr)
+        return pr
+
+    def list_prs_for_head(self, owner, repo, head_branch, *, state="open"):
+        return list(self._open_prs_by_head.get((owner, repo, head_branch), []))
+
+    def create_pull_request(self, owner, repo, *, title, head, base, body=""):
+        self._pr_number_counter += 1
+        number = self._pr_number_counter
+        pr = {"number": number, "title": title,
+              "html_url": f"https://github.com/{owner}/{repo}/pull/{number}",
+              "head": {"ref": head}, "base": {"ref": base}, "body": body,
+              "state": "open"}
+        self.prs_created.append(pr)
+        # A created PR is now an open PR from that head (so a follow-up
+        # list_prs_for_head sees it — the tick-died-after-push idempotency path).
+        self._open_prs_by_head.setdefault((owner, repo, head), []).append(pr)
+        return pr
 
 
 @pytest.fixture

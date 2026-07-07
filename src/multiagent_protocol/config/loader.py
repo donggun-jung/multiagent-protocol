@@ -129,6 +129,16 @@ class EnvConfig:
     # default ``github-actions``. A per-repo
     # ``projects.repo_overrides[<repo>].expected_check_publisher`` overrides this.
     expected_check_publisher: str | None = None
+    # FEATURE A — L2 auto-revert PR (opt-in, default OFF). When True, an L2
+    # real-failure ALSO opens a revert PR in the supervised repo (the revert
+    # still passes through the normal gate; it is never auto-labelled
+    # ready-to-merge). Default False = detection + incident only.
+    auto_revert_pr: bool = False
+    # FEATURE B — L4 60-day burn-in auto-promotion (opt-in, default 0 = OFF).
+    # A positive int is the number of days after which ``validator_agent_registry``
+    # is promoted from advisory (P2) to hard-block (P0) automatically, unless the
+    # operator pinned its severity via ``skills.severity_overrides``.
+    l4_burn_in_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -291,6 +301,8 @@ def load_config(
             allow_no_ci=bool(env_data.get("allow_no_ci", False)),
             required_checks=tuple(env_data.get("required_checks", [])),
             expected_check_publisher=env_data.get("expected_check_publisher"),
+            auto_revert_pr=bool(env_data.get("auto_revert_pr", False)),
+            l4_burn_in_days=int(env_data.get("l4_burn_in_days", 0)),
         ),
         skills=SkillsConfig(
             enabled=tuple(skills_data.get("enabled", [])),

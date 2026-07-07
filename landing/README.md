@@ -20,3 +20,8 @@ Serve it from anything that can serve a static file (GitHub Pages, any
 reverse proxy, `python -m http.server`). Content honesty rule: the
 "what works / what doesn't yet" section mirrors [`STATUS.md`](../STATUS.md) —
 update both in the same PR when shipping behavior changes.
+
+Canonical deployment (2026-07-07): served at **`https://ai.jdg.dev/multiagent/`**
+— that domain hosts multiple content sections, so the root redirects here
+until a hub index exists. Redeploy = copy this file into the host's
+`site/multiagent/` directory (read-only static mount; no restart needed).

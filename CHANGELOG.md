@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-07
+
+**The "nothing left on the not-yet list that fits in a minor" release.** Both
+remaining single-installation gaps ship as default-off opt-ins, and the Korean
+concept-doc mirror completes. With the new config absent, the gate is
+byte-identical to 1.1.0 (465 tests; the prior 435 unchanged).
+
+### Added
+
+- **L2 automatic revert-PR (opt-in, `env.yml` `auto_revert_pr: false`).** When a
+  post-merge re-validation real-failure is detected, the bot now also opens a
+  `revert/<bad-sha7>` PR in the supervised repo (shallow clone → `git revert`
+  → amend Agent-* trailers → push → PR) and links it in the incident issue. The
+  revert PR still passes through the normal merge gate (never auto-approved);
+  every failure degrades gracefully to incident-only, with the App token
+  redacted from any public output. Idempotent per bad commit.
+  See [`docs/decisions/0002_auto_revert_pr.md`](docs/decisions/0002_auto_revert_pr.md).
+- **L4 60-day burn-in auto-promotion (opt-in, `env.yml` `l4_burn_in_days: 0`).**
+  A positive value auto-promotes the registry gate (`validator_agent_registry`)
+  from advisory (P2) to hard-block (P0) after the window elapses, tracked in
+  `bot-state/l4_burn_in.json` on the bot-state branch. `skills.severity_overrides`
+  always wins (in either direction); corrupt/missing state fails safe (stays
+  advisory). See [`docs/decisions/0003_l4_burn_in.md`](docs/decisions/0003_l4_burn_in.md).
+- **Korean mirror of all nine concept docs** (`docs/ko/concepts/`), with a
+  per-file banner naming the English original as authoritative, consistent
+  terminology anchors, and depth-corrected links; `docs/ko/index.html` lists
+  them.
+
+### Fixed
+
+- **Doctrine self-contradiction on the inbox lifecycle**: `architecture.md`
+  claimed a 14-day nudge / 30-day `decision:abandoned` timer that has never
+  existed in code; it now defers to `decision-inbox.md` (asynchronous by
+  design, label-based staleness only).
+- **Decision-inbox metrics doc** now lists the exact counter names the code
+  emits (`inbox`, `inbox_resolved`, `issues_deferred`) instead of an invented
+  JSON shape with an `abandoned` counter.
+
 ## [1.1.0] - 2026-07-07
 
 **Fleet-parity additions + the delegated-installation release.** Four additive,
@@ -315,6 +353,7 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
+[1.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0
 [1.0.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0
 [0.9.9]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.2.0...v0.9.9

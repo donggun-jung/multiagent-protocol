@@ -141,7 +141,14 @@ Runs once per cron tick across all supervised repos. Owns the **Quadrant D → o
 
 ### Stale handling
 
-If a `decision:pending-owner` Issue is open for more than 14 days with no activity, the bot pings the owner via a daily nudge comment. After 30 days, label `decision:abandoned`. No auto-action — only human deletes or revives.
+There is **no automated nudge / abandon / auto-close timer** (see
+[`decision-inbox.md`](decision-inbox.md), which is authoritative here). The
+inbox is asynchronous by design: an issue waits as long as the owner needs.
+The two stale-related mechanisms that DO exist are label-based: `/approve C`
+marks the PR `decision:deferred` (needs more info), and an approval whose PR
+head SHA has since changed is superseded with `decision:stale-approval`.
+Aging is made *visible* (open count and ages in the tick metrics), never
+acted on automatically.
 
 ### Outputs
 

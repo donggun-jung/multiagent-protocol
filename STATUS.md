@@ -15,7 +15,7 @@ is intentionally left for a later release.
 
 ## Implementation matrix
 
-| Feature                                            | Doctrine        | v0.0.2 | v1.1.0 (current) |
+| Feature                                            | Doctrine        | v0.0.2 | v1.2.0 (current) |
 |----------------------------------------------------|-----------------|--------|----------------------|
 | 4-quadrant classifier (path heuristic, max-vote)   | implemented     | ✅      | ✅                |
 | 4-module bot package layout                        | implemented     | ✅      | ✅                |
@@ -34,10 +34,10 @@ is intentionally left for a later release.
 | L3 race-guard (server-side sha precondition)       | implemented     | ✅      | ✅                |
 | L3 auto-rebase stale PR branch (`update-branch`)   | implemented     | ❌      | ✅                |
 | L4 trailer registry lookup (tool/model)            | documented      | ❌      | ✅ advisory (P2)  |
-| L4 60-day burn-in auto-promotion                   | documented      | ❌      | ❌ (manual via `severity_overrides`) |
+| L4 60-day burn-in auto-promotion                   | implemented     | ❌      | ✅ v1.2 opt-in (`l4_burn_in_days`; explicit `severity_overrides` always wins) |
 | L2 post-merge re-validation                        | documented      | ❌      | ✅ detection      |
 | L2 infra-failure differentiation                   | documented      | ❌      | ✅                |
-| L2 auto-revert PR **creation**                     | documented      | ❌      | ❌ (incident + revert cmd; see § L2) |
+| L2 auto-revert PR **creation**                     | implemented     | ❌      | ✅ v1.2 opt-in (`auto_revert_pr`; the revert PR still passes the gate) |
 | L5 break-glass detection                           | implemented     | ✅      | ✅                |
 | L5 24-hour ADR deadline check (adr_finder wired)   | implemented     | ❌      | ✅                |
 | Decision Inbox: open Quadrant D issue (idempotent) | implemented     | 🚧 helpers | ✅             |
@@ -52,7 +52,7 @@ is intentionally left for a later release.
 | Wizard: agent-assist prompt + manifest URL         | implemented     | ✅      | ✅                |
 | Personal-data CI scan + no-config-in-public guard  | implemented     | ✅/—   | ✅                |
 | English + Korean README                            | implemented     | ✅      | ✅                |
-| Concept docs Korean mirror                         | partial         | ❌      | ❌ EN only (v1.x) |
+| Concept docs Korean mirror                         | implemented     | ❌      | ✅ v1.2 (all 9, EN authoritative on conflict) |
 | GitHub Pages site                                  | implemented     | ✅      | ✅                |
 | Config: `env.allow_no_ci` (no-CI repos auto-merge) | implemented     | ❌      | ✅ (opt-in)           |
 | Release pipeline: GHCR image on tag                | implemented     | ❌      | ✅ (`release.yml`)    |
@@ -67,7 +67,7 @@ is intentionally left for a later release.
 Legend: ✅ shipped · 🚧 partial · ❌ not yet. *planned* means we intend to ship
 it on the version listed.
 
-Test coverage: **435 pytest cases** (was 110 at v0.0.2, 167 at the RC) —
+Test coverage: **465 pytest cases** (was 110 at v0.0.2, 167 at the RC, 435 at v1.1) —
 orchestrator decisions, L2 re-validation, L4 registry, Decision-Inbox
 resolution, runtime toggles, required-checks threading, published-verdict
 rule, unauthorized-push hook, and the no-secrets no-op are under test.
@@ -94,16 +94,17 @@ you get a **working gate**:
 
 ### What you will NOT get yet
 
-- **Automatic revert PRs.** L2 detects a bad merge and files an incident with
-  the `git revert <sha>` command; it does not yet open the revert PR itself
-  (the bot authoring commits in a supervised repo is a Quadrant-D action that
-  needs its own ADR — same gating rationale as mirror auto-cascade).
-- **Automatic L4 burn-in.** The registry gate ships advisory (P2). Promote it
-  to a hard block today with `config/skills.yml` `severity_overrides:
-  {validator_agent_registry: P0}`; the automatic 60-day promotion is later.
-- **Korean mirror of the concept docs** (README + quick-start are mirrored).
 - **Multi-account installations.** A single App installation covering your
   governance + supervised repos is the supported shape.
+- **PyPI installs.** Install from your private mirror; the release job's PyPI
+  step stays gated behind `PYPI_PUBLISH_ENABLED` until a trusted publisher
+  exists.
+- **GitLab / Bitbucket.** The API client is GitHub-specific.
+
+*(Moved out of this list in v1.2: automatic revert PRs and the automatic
+60-day L4 burn-in — both shipped as default-off opt-ins with their own ADRs
+(`docs/decisions/0002`, `0003`) — and the Korean concept-doc mirror, now
+complete for all nine documents.)*
 
 ## Design notes that affect "fully usable"
 
