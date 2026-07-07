@@ -38,9 +38,22 @@ INCLUDED_GLOBS = [
     "*.yml",
     "*.yaml",
     "*.toml",
+    "*.md",
     ".github/**/*.yml",
     ".github/**/*.yaml",
     "schemas/**/*.json",
+    # Widened 2026-07-07: every operator-facing surface ships from these
+    # trees, and personal data must be impossible there too.
+    "deploy/**/*.yml",
+    "examples/**/*.yml",
+    "templates/**/*.md",
+    "docs/**/*.md",
+    "docs/**/*.html",
+    "docs/**/*.js",
+    "docs/**/*.css",
+    "site/**/*.html",
+    "site/**/*.js",
+    "site/**/*.css",
 ]
 
 EXCLUDED = {

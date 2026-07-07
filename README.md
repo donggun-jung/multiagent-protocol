@@ -5,11 +5,11 @@
 > One human, many agents. Different sessions, different machines, different models — same `main` branch. This protocol stops them from stepping on each other, gates merges through a self-built check, and routes irreversible decisions back to you instead of letting agents decide.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: v1.0](https://img.shields.io/badge/status-v1.0-brightgreen.svg)](STATUS.md)
+[![Status: v1.1](https://img.shields.io/badge/status-v1.1-brightgreen.svg)](STATUS.md)
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![한국어](https://img.shields.io/badge/lang-한국어-orange.svg)](README.ko.md)
 
-> **v1.0.0.** The cron orchestrator is **live**: a fork evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). Hardened through multiple rounds of independent external review (including a Quadrant-D approval bypass found and closed). A few capabilities are intentionally **post-1.0** — automatic revert-PR creation, the automatic 60-day L4 burn-in (promote manually via `severity_overrides` today), and a Korean mirror of the concept docs — see [`STATUS.md`](STATUS.md).
+> **v1.1.0.** The cron orchestrator is **live**: your private installation evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). New in 1.1: **delegated installation** — you hand [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) to your own AI agent and it installs everything (you click twice) — plus an **operator preference layer** (`config/preferences.yml`) so your agents follow *your* working style. A few capabilities remain intentionally later — automatic revert-PR creation, the automatic 60-day L4 burn-in (promote manually via `severity_overrides` today), PyPI publishing — see [`STATUS.md`](STATUS.md).
 
 ---
 
@@ -30,7 +30,7 @@ If you are a single developer using two or more AI coding agents to work on the 
 - **Identity gate (L4)** — validate every commit's `Agent-*` / `Task-Ref` trailers against your registry. *Trailer-format (C5) is implemented; registry tool/model lookup ships **advisory (P2)** in v0.2.0 — promote to a hard block via `severity_overrides`. The 60-day burn-in is later.*
 - **Break-glass auditor (L5)** — scan `main` for `[break-glass-*]` commits and require an ADR within 24 hours. *Implemented, including the 24-hour ADR deadline check (v0.2.0).*
 
-The protocol is split into a small bot (Python, ~3 kLOC, plug-in extensible) and a doctrine layer (Markdown files that an agent reads at session start). The bot runs as a GitHub App on a 5-minute cron — on GitHub Actions Free tier for small repos, or on a self-hosted runner for larger workloads.
+The protocol is split into a small bot (Python, ~3 kLOC, plug-in extensible) and a doctrine layer (Markdown files that an agent reads at session start). The bot runs as a GitHub App on a cron you size to your Actions budget — `*/30` by default on GitHub Actions Free, `*/5` on a self-hosted runner (the honest arithmetic is in the [quick start, step 3](docs/guide/quick-start.md)).
 
 ## Why "multiagent" rather than "Claude" / "Codex" / etc.?
 
@@ -56,16 +56,16 @@ data layer under `config/`. The product = framework + your config; there is no
 wizard generates your config layer for you. See
 [`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md).
 
-## Quick start (15 minutes)
+## Quick start
 
-The fastest path is the **web wizard**:
+The recommended path is **delegated installation — your own AI agent sets everything up**:
 
-1. Open [https://donggun-jung.github.io/multiagent-protocol/wizard/](https://donggun-jung.github.io/multiagent-protocol/wizard/) in your browser.
-2. Fill in: your GitHub login, the repos you want supervised, your preferred runner tier, and which built-in skills to enable.
-3. The wizard generates 5 YAML config files (`owner.yml`, `projects.yml`, `env.yml`, `skills.yml`, `agent_registry.yml`) + a 1-click GitHub App registration URL.
-4. Download the `.zip`, drop it into your fork of this repo, register the App, set 2 Actions secrets, push.
+1. Open the [web wizard](https://donggun-jung.github.io/multiagent-protocol/wizard/) and answer its questions: your GitHub login, the repos to supervise, your runner tier, the skills to enable, and **your working preferences** (language, report style, autonomy). Everything stays in your browser.
+2. The wizard generates 6 YAML config files (`owner`, `projects`, `env`, `skills`, `agent_registry`, `preferences`) + a GitHub App registration URL + an **agent prompt**.
+3. Paste the agent prompt into your own agent (Claude Code, Codex, …). It executes [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md): private **mirror** governance repo (not a fork — forks can't be private), config, cron workflow, secrets, labels, agent rule kit, observe-mode tick, go-live, end-to-end test.
+4. You act exactly twice: the GitHub App registration clicks, and the go-live confirmation.
 
-Or skip the wizard and read [`docs/guide/quick-start.md`](docs/guide/quick-start.md) for the manual path.
+Prefer doing it by hand? [`docs/guide/quick-start.md`](docs/guide/quick-start.md) — budget 1–2 hours.
 
 ## Architecture (one paragraph)
 
@@ -75,13 +75,15 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 
 ## Status
 
-- **v1.0.0** (current): first stable release. L1–L5 enforced end-to-end, Decision Inbox open + poll/resolve, distribution pipeline (Docker/Action live, PyPI on tag), 167 tests. Hardened through multiple rounds of independent external review.
-- **Post-1.0**: automatic revert-PR creation, automatic 60-day L4 burn-in, Korean mirror of the concept docs, multi-account installations (see [`STATUS.md`](STATUS.md)).
+- **v1.1.0** (current): delegated agent installation (AGENT_SETUP runbook + deploy example), operator preference layer, wizard v2 (6 files + delegation prompt), honest Free-tier cadence guidance, post-RC reliability + security hardening. Docker image on GHCR per tag; GitHub Action pinnable at `@v1.1.0`.
+- **Later**: PyPI publishing (awaits trusted-publisher setup — install from your mirror meanwhile), automatic revert-PR creation, automatic 60-day L4 burn-in, Korean mirror of the concept docs, multi-account installations (see [`STATUS.md`](STATUS.md)).
 - **Maintenance**: best-effort, no SLA. See [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## Documentation
 
-- [`docs/guide/quick-start.md`](docs/guide/quick-start.md) — 15-minute setup
+- [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) — delegated installation: your agent runs this
+- [`docs/guide/quick-start.md`](docs/guide/quick-start.md) — install paths (delegated + manual)
+- [`templates/adopter/`](templates/adopter/) — agent rule kit for your supervised repos (trailers, labels, your preferences)
 - [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — how the bot is organized
 - [`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md) — framework (public) vs. your config (private): one codebase, two data layers
 - [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — the autonomy classifier (when does the bot decide vs. ask you)

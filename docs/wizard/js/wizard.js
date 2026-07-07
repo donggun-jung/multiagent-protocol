@@ -5,11 +5,27 @@
 // Language switching
 // -----------------------------------------------------------------------------
 
+// Currently-selected UI language. Used by dynamic messages (e.g. the
+// vocabulary warning) that are built in JS rather than by [data-i18n].
+let currentLang = "en";
+
+// Look up a localized string, falling back to English then the key itself.
+function t(key) {
+  const en = LOCALES.en || {};
+  const cur = LOCALES[currentLang] || en;
+  if (cur[key] != null) return cur[key];
+  if (en[key] != null) return en[key];
+  return key;
+}
+
 document.querySelectorAll(".lang-switch button").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".lang-switch button").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
-    applyLocale(btn.getAttribute("data-lang"));
+    currentLang = btn.getAttribute("data-lang");
+    applyLocale(currentLang);
+    // Dynamic strings are not covered by applyLocale; refresh them.
+    refreshVocabWarning();
   });
 });
 
@@ -108,6 +124,137 @@ function generateAgentRegistryYml(state) {
   return lines.join("\n") + "\n";
 }
 
+// Today's date as YYYY-MM-DD in the operator's local timezone. Used to date
+// taste-ledger entries. Local (not UTC) so the date matches the day the
+// operator is actually filling the form.
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Quote a value as a YAML double-quoted scalar so free text (colons, '#',
+// quotes, leading digits) survives round-trip. Always quote — simpler and
+// always safe for the short strings we emit here.
+function yamlQuote(s) {
+  return '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+
+// Render config/preferences.yml from the preferences sub-state. Optional
+// sections with no content are omitted entirely (no empty keys), per the
+// preferences schema and the "omit empty" wizard rule. `language` (with a
+// primary) is the only required block.
+function generatePreferencesYml(p) {
+  const out = [];
+  out.push(`# Operator working preferences — the personal layer of this installation.`);
+  out.push(`# Read by YOUR agents (installed into supervised repos via templates/adopter).`);
+  out.push(`# The bot never reads this file. Schema: schemas/preferences.schema.json`);
+  out.push(``);
+
+  // language (required: primary)
+  out.push(`language:`);
+  out.push(`  primary: ${yamlQuote(p.primaryLang)}`);
+  out.push(`  reports: ${p.reports}`);
+
+  // communication (all fields have defaults; emit them so the file is explicit)
+  out.push(`communication:`);
+  out.push(`  report_style: ${p.reportStyle}`);
+  out.push(`  decision_format: ${p.decisionFormat}`);
+  out.push(`  batch_questions: ${p.batchQuestions ? "true" : "false"}`);
+
+  // autonomy: profile always; quiet_hours + timezone only when set.
+  out.push(`autonomy:`);
+  out.push(`  profile: ${p.autonomyProfile}`);
+  if (p.quietHours) {
+    out.push(`  quiet_hours: ${yamlQuote(p.quietHours)}`);
+  }
+  if (p.timezone) {
+    out.push(`  timezone: ${yamlQuote(p.timezone)}`);
+  }
+
+  // taste_ledger: only if the operator seeded rules.
+  if (p.tasteLedger.length > 0) {
+    const today = todayISO();
+    out.push(`taste_ledger:`);
+    p.tasteLedger.forEach(rule => {
+      out.push(`  - date: ${yamlQuote(today)}`);
+      out.push(`    rule: ${yamlQuote(rule)}`);
+    });
+  }
+
+  // vocabulary: only if the operator seeded (valid) entries.
+  if (p.vocabulary.length > 0) {
+    out.push(`vocabulary:`);
+    p.vocabulary.forEach(v => {
+      out.push(`  - term: ${yamlQuote(v.term)}`);
+      out.push(`    meaning: ${yamlQuote(v.meaning)}`);
+    });
+  }
+
+  return out.join("\n") + "\n";
+}
+
+// Split "term: meaning" lines into parsed entries and a list of malformed
+// lines (non-empty lines with no usable "term: meaning" shape). The term is
+// everything before the FIRST colon; the meaning is the rest.
+function parseVocabulary(textareaValue) {
+  const entries = [];
+  const malformed = [];
+  textareaValue.split("\n").forEach(raw => {
+    const line = raw.trim();
+    if (line.length === 0) return;
+    const idx = line.indexOf(":");
+    if (idx < 0) {
+      malformed.push(line);
+      return;
+    }
+    const term = line.slice(0, idx).trim();
+    const meaning = line.slice(idx + 1).trim();
+    if (term.length === 0 || meaning.length === 0) {
+      malformed.push(line);
+      return;
+    }
+    entries.push({ term: term, meaning: meaning });
+  });
+  return { entries: entries, malformed: malformed };
+}
+
+function readPreferences() {
+  const primarySel = document.getElementById("prefs-primary-lang").value;
+  let primaryLang;
+  if (primarySel === "other") {
+    primaryLang = (document.getElementById("prefs-primary-lang-other").value || "").trim();
+  } else {
+    primaryLang = primarySel;
+  }
+  const reports = document.querySelector('input[name="prefs-reports"]:checked').value;
+  const reportStyle = document.querySelector('input[name="prefs-report-style"]:checked').value;
+  const decisionFormat = document.querySelector('input[name="prefs-decision-format"]:checked').value;
+  const batchQuestions = document.getElementById("prefs-batch-questions").checked;
+  const autonomyProfile = document.querySelector('input[name="prefs-autonomy"]:checked').value;
+  const quietHours = (document.getElementById("prefs-quiet-hours").value || "").trim();
+  const timezone = (document.getElementById("prefs-timezone").value || "").trim();
+  const tasteLedger = lines(document.getElementById("prefs-taste-ledger").value);
+  const vocab = parseVocabulary(document.getElementById("prefs-vocabulary").value);
+
+  return {
+    primarySel: primarySel,
+    primaryLang: primaryLang,
+    reports: reports,
+    reportStyle: reportStyle,
+    decisionFormat: decisionFormat,
+    batchQuestions: batchQuestions,
+    autonomyProfile: autonomyProfile,
+    quietHours: quietHours,
+    timezone: timezone,
+    tasteLedger: tasteLedger,
+    vocabulary: vocab.entries,
+    vocabularyMalformed: vocab.malformed,
+  };
+}
+
 function readForm() {
   const ownerLogin = (document.getElementById("owner-login").value || "").trim();
   const allowlistedExtra = lines(document.getElementById("owner-allowlist").value);
@@ -122,6 +269,7 @@ function readForm() {
   const agents = Array.from(
     document.querySelectorAll(".agent-checkboxes input:checked")
   ).map(el => el.value);
+  const preferences = readPreferences();
 
   return {
     ownerLogin,
@@ -135,6 +283,7 @@ function readForm() {
     skillEmptyPr,
     botAppSlug,
     agents,
+    preferences,
   };
 }
 
@@ -155,7 +304,15 @@ function validateState(state) {
     errors.push("Step 2: 'Bot repo' is set but not in owner/repo form.");
   }
   if (state.botAppSlug && !/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(state.botAppSlug)) {
-    errors.push("Step 5: 'GitHub App slug' must be lowercase letters, numbers, and hyphens.");
+    errors.push("Step 6: 'GitHub App slug' must be lowercase letters, numbers, and hyphens.");
+  }
+
+  const p = state.preferences;
+  if (p.primarySel === "other" && !/^.{2,16}$/.test(p.primaryLang)) {
+    errors.push("Step 3: primary language 'Other' needs a code of 2-16 characters.");
+  }
+  if (p.quietHours && !/^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$/.test(p.quietHours)) {
+    errors.push("Step 3: quiet hours must look like HH:MM-HH:MM (24h clock), e.g. 22:30-07:30.");
   }
   return errors;
 }
@@ -167,6 +324,7 @@ function buildAllFiles(state) {
     "config/env.yml": generateEnvYml(state),
     "config/skills.yml": generateSkillsYml(state),
     "config/agent_registry.yml": generateAgentRegistryYml(state),
+    "config/preferences.yml": generatePreferencesYml(state.preferences),
   };
 }
 
@@ -329,35 +487,108 @@ function buildManifestUrl(state) {
 }
 
 // -----------------------------------------------------------------------------
-// Agent-assist prompt: a copy-pasteable prompt for handing the wizard's
-// output to an AI coding agent for the rest of the install.
+// Delegation prompt: the product's core UX. The operator pastes this to THEIR
+// OWN AI coding agent, which performs the WHOLE installation by fetching and
+// following the upstream AGENT_SETUP.md runbook. Step numbers 0-9 are a FIXED
+// contract with that runbook — do not renumber them here without updating it.
 // -----------------------------------------------------------------------------
 
+// Canonical upstream — the public framework repo. This is the ONLY real
+// identifier allowed in wizard output; everything else is the operator's own.
+const UPSTREAM_REPO = "donggun-jung/multiagent-protocol";
+const UPSTREAM_BRANCH = "main";
+const SETUP_DOC_RAW =
+  "https://raw.githubusercontent.com/" + UPSTREAM_REPO + "/" +
+  UPSTREAM_BRANCH + "/docs/agent-setup/AGENT_SETUP.md";
+
 function buildAgentPrompt(state, files) {
-  const repo = state.governanceRepo || "<your-fork>/multiagent-protocol";
-  return `I have generated config files for my multiagent-protocol installation.
-Please help me complete the setup. The config files (5 files under config/)
-are pasted below. Apply them to the repo \`${repo}\` (fork of
-https://github.com/donggun-jung/multiagent-protocol):
+  const repo = state.governanceRepo || "<your-governance-repo>";
+  const slug = state.botAppSlug || "your-merge-gate";
+  const embedded = Object.entries(files).map(([name, content]) =>
+    "--- " + name + " ---\n" + content.replace(/\n$/, "")
+  ).join("\n\n");
 
-1. Create a feature branch, e.g. \`setup/initial-config\`.
-2. Write the 5 files exactly as shown.
-3. Commit with subject \`setup: initial wizard config\` and include
-   the standard Agent-* commit trailers.
-4. Push and open a PR against \`main\`.
-5. Tell me the manifest URL to register the GitHub App
-   (you can read the wizard's URL builder logic from
-   docs/wizard/js/wizard.js function buildManifestUrl).
-6. Wait for me to confirm the App is registered + Actions secrets are set
-   (MERGE_GATE_APP_ID + MERGE_GATE_PRIVATE_KEY), then merge the PR.
+  return `You are my AI coding agent. Install multiagent-protocol for me end to end.
+I am the operator; you do the work and only involve me at the steps marked
+[HUMAN]. Verify each step before moving on; if a verification fails twice,
+STOP and report the step number — do not improvise a workaround.
 
-Files to write:
+First, fetch and follow this runbook exactly (its step numbers are the contract
+below): ${SETUP_DOC_RAW}
+It is the canonical procedure from the public framework repo
+${UPSTREAM_REPO} (branch ${UPSTREAM_BRANCH}). My governance repo is \`${repo}\`.
 
-${Object.entries(files).map(([name, content]) =>
-  `--- ${name} ---\n${content}`
-).join("\n")}
+Step 0 — Preflight: confirm gh is authenticated as me, git + python 3 present,
+  and that the runbook's version matches this prompt's step contract.
+Step 1 — Create my PRIVATE governance repo \`${repo}\` as a MIRROR of the
+  upstream (git clone --mirror upstream, push into a fresh private repo). Do NOT
+  fork: a fork of a public repo cannot be made private.
+Step 2 — Write the 6 config files below into \`config/\` exactly as given, then
+  validate with \`python -m multiagent_protocol check-config\`. Fix and re-run
+  until it prints "config OK".
+Step 3 — Deploy the cron workflow from \`deploy/bot-cron.example.yml\` into the
+  governance repo's \`.github/workflows/\` (fill the schedule/runner from
+  config/env.yml).
+Step 4 — [HUMAN] GitHub App: prepare the App-manifest registration URL and give
+  it to me to click (this is the ONE human-click step). After I register the App
+  and hand you the App ID + private key, set the repo secrets:
+  \`gh secret set MERGE_GATE_APP_ID\`, \`gh secret set MERGE_GATE_PRIVATE_KEY\`,
+  and generate + set \`gh secret set MERGE_GATE_RECEIPT_KEY\` (a fresh random key).
+Step 5 — Prepare each supervised repo: create the \`ready-to-merge\` label, turn
+  on squash-merge, and ensure CI exists (or set allow_no_ci per the runbook).
+Step 6 — Install the \`templates/adopter\` kit into each supervised repo with the
+  placeholders filled — including the preferences block rendered from
+  config/preferences.yml (language, report style, autonomy, taste ledger,
+  vocabulary).
+Step 7 — Run the first tick in OBSERVE mode (no merges); confirm the bot reads
+  config and classifies open PRs without acting.
+Step 8 — [HUMAN] Go-live: once I confirm observe output looks right, set the repo
+  variable \`MERGE_GATE_MERGE_ENABLED=true\`.
+Step 9 — End-to-end test: open a trivial PR that should auto-merge, confirm the
+  bot merges it, then give me a short handover report (what is live, what I own).
+
+App slug to register in Step 4: \`${slug}\`.
+
+The 6 config files to write in Step 2:
+
+${embedded}
 `;
 }
+
+// -----------------------------------------------------------------------------
+// Preferences step: dynamic UI (language "other" toggle + vocabulary warning)
+// -----------------------------------------------------------------------------
+
+// Show or hide the free-text language input based on the select.
+function syncPrimaryLangOther() {
+  const sel = document.getElementById("prefs-primary-lang").value;
+  const wrap = document.getElementById("prefs-primary-lang-other-wrap");
+  if (sel === "other") {
+    wrap.classList.remove("hidden");
+  } else {
+    wrap.classList.add("hidden");
+  }
+}
+
+// Recompute and display the inline warning for malformed vocabulary lines.
+// Gentle: it never blocks generation — malformed lines are simply skipped.
+function refreshVocabWarning() {
+  const el = document.getElementById("prefs-vocab-warning");
+  if (!el) return;
+  const parsed = parseVocabulary(document.getElementById("prefs-vocabulary").value);
+  if (parsed.malformed.length === 0) {
+    el.classList.add("hidden");
+    el.textContent = "";
+    return;
+  }
+  const template = t("prefs.vocab_warning");
+  el.textContent = template.replace("{lines}", parsed.malformed.join(", "));
+  el.classList.remove("hidden");
+}
+
+document.getElementById("prefs-primary-lang").addEventListener("change", syncPrimaryLangOther);
+document.getElementById("prefs-vocabulary").addEventListener("input", refreshVocabWarning);
+syncPrimaryLangOther();
 
 // -----------------------------------------------------------------------------
 // Wire up the button handlers

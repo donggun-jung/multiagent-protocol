@@ -1,177 +1,213 @@
-# Quick start (15분)
+# 빠른 시작
 
-이 가이드는 `multiagent-protocol`을 본인 repo 하나에 설치하는 데 15분이 걸립니다. 끝나면:
+`multiagent-protocol`을 설치하는 방법은 두 가지입니다:
 
-- `main`에 대한 merge 권한을 보유한 GitHub App
-- 5분마다 실행되는 cron workflow
-- 본인 `multiagent-protocol` fork에 Decision Inbox
-- 1개 built-in skill 작동 중
+- **위임 설치(권장): 내 AI 에이전트가 대신 설치합니다.**
+  [웹 위저드](../../wizard/index.html)를 실행해 생성된 **에이전트
+  프롬프트**를 복사한 뒤, 내 에이전트(Claude Code, Codex 등)에게
+  붙여넣으세요. 에이전트가
+  [`docs/agent-setup/AGENT_SETUP.md`](../../agent-setup/AGENT_SETUP.md)를
+  처음부터 끝까지 실행합니다. 사람이 필요한 순간은 딱 두 번입니다 —
+  GitHub App 등록 클릭과, 실동작 최종 확인. 아래 수동 설치를 사람이
+  직접 하면 **1–2시간**쯤 걸리지만, 에이전트는 몇 분 만에 끝내고
+  단계마다 검증까지 합니다. 한국어 안내:
+  [에이전트 대행 설치](../agent-setup/README.md).
+- **수동 설치: 직접 합니다.** 이 문서의 나머지. 처음이라면 15분이 아니라
+  1–2시간을 잡으세요.
 
-아직 없는 것 (별도 가이드): self-hosted runner 배포, multi-repo cascade, custom skill. 각각 `docs/guide/multi-repo.md`, `docs/guide/skills.md`, `docs/guide/self-hosted-runner.md` 참고.
+어느 쪽이든 끝나면:
 
-## 필요한 것
+- 내 설정을 담고 봇을 돌리는 **비공개 거버넌스 저장소**
+- 감독 대상 저장소의 merge 권한을 쥔 GitHub App
+- 내 Actions 예산에 맞는 주기로 도는 cron workflow
+- 되돌리기 어려운 변경이 나를 기다리는 결재함(Decision Inbox)
 
-- GitHub 계정 (Free tier OK).
-- 봇이 감시할 repo. 이하 `<your-supervised-repo>`로 지칭.
-- 15분.
-- 로컬 Python 3.10+ (선택 — 배포 전 봇 테스트하고 싶다면).
+## 준비물
 
-## Step 1 — 프로토콜 repo fork (1분)
+- GitHub 계정 (Free 요금제 가능 — 3단계의 주기 표를 꼭 읽으세요)
+- 감독할 저장소 (`<내-감독-저장소>`)
+- 로컬 `git`, `gh`(본인 계정으로 로그인), Python 3.10+
 
-GitHub에서 프로토콜 repo 열고 **Fork** 클릭. 본인 fork: `<your-github-login>/multiagent-protocol`. 이하 `<your-protocol-fork>`.
+## 1단계 — 비공개 거버넌스 저장소 만들기 (fork가 아니라 미러)
 
-이 fork가 본인 설치의 **governance repo**입니다.
-
-## Step 2 — Web wizard 실행 (5분)
-
-브라우저에서 다음 중 하나로 [`<your-protocol-fork>/docs/wizard/index.html`](../../wizard/index.html) 열기:
-
-- GitHub Pages 활성화돼 있으면 `https://<your-github-login>.github.io/multiagent-protocol/wizard/` 접속, 또는
-- Fork 다운로드 + `docs/wizard/index.html` 로컬에서 열기.
-
-Wizard가 물어보는 것:
-
-1. **본인 GitHub login** (본인 fork에 쓸 권한)
-2. **감시할 repo 목록.** 처음엔 1개로 시작: `<your-supervised-repo>`
-3. **Runner tier**: quick start는 "T1 — GitHub Actions Free" 선택
-4. **활성화할 skill**: 기본값 그대로 유지
-
-Wizard가 5 파일 생성:
-
-- `config/owner.yml`
-- `config/projects.yml`
-- `config/env.yml`
-- `config/skills.yml`
-- `config/agent_registry.yml`
-
-추가로 **1-click GitHub App 등록 URL** 생성. 저장해 두기 (Step 4에서 사용).
-
-"Download config.zip" 클릭, fork root에 unzip. Commit:
+거버넌스 저장소에는 내 신원과 저장소 목록이 들어가므로 반드시
+**비공개**여야 합니다. 그런데 GitHub에서는 공개 저장소의 fork를
+비공개로 바꿀 수 없습니다. 그래서 **미러**를 만듭니다:
 
 ```bash
-cd <your-protocol-fork>
-unzip ~/Downloads/multiagent-protocol-config.zip
-git add -f config/   # config/ 는 .gitignore 대상이므로 -f 로 강제 스테이징
-git commit -m "config: initial owner + projects + env + skills + agent_registry"
-git push
+gh repo create <내-로그인>/multiagent-protocol-gov --private
+git clone --bare https://github.com/donggun-jung/multiagent-protocol.git /tmp/map-mirror
+git -C /tmp/map-mirror push --mirror https://github.com/<내-로그인>/multiagent-protocol-gov.git
+rm -rf /tmp/map-mirror
+git clone https://github.com/<내-로그인>/multiagent-protocol-gov.git
+cd multiagent-protocol-gov
+git remote add upstream https://github.com/donggun-jung/multiagent-protocol.git
 ```
 
-## Step 3 — GitHub App 생성 (3분)
+이후 업데이트: `git fetch upstream && git merge upstream/main`
+(미러에는 "Sync fork" 버튼이 없습니다 — 이 명령이 그 역할입니다).
 
-Wizard가 준 URL 열기:
+## 2단계 — 설정 생성 (웹 위저드, 6개 파일)
 
-```
-https://github.com/settings/apps/new?manifest=<URL-encoded-manifest>
-```
+위저드를 엽니다 —
+[호스팅판](https://donggun-jung.github.io/multiagent-protocol/wizard/)
+또는 내 미러의 `docs/wizard/index.html`. 모든 것이 브라우저 안에서만
+일어나고, 어디로도 전송되지 않습니다.
 
-GitHub의 App Manifest flow. 권한, webhook, description이 미리 채워짐.
+위저드는 GitHub 로그인, 감독할 저장소, 러너 티어, 켤 스킬 — 그리고
+**나의 업무 취향**(에이전트가 나에게 쓸 언어, 보고 스타일, 어디까지
+알아서 할지)을 묻고 6개 파일을 생성합니다:
 
-1. GitHub 리뷰 페이지에서 **Create GitHub App for me** 클릭.
-2. 다음 페이지 왼쪽 사이드바에서 **Install App** 클릭.
-3. **Only select repositories** 선택, 다음 둘 선택:
-   - `<your-protocol-fork>` (governance repo)
-   - `<your-supervised-repo>` (감시 대상)
-4. **Install** 클릭.
+`owner.yml` · `projects.yml` · `env.yml` · `skills.yml` ·
+`agent_registry.yml` · `preferences.yml`
 
-App 설정 페이지 (`https://github.com/settings/apps/<your-app-name>`)에서:
+zip을 받아 **비공개 거버넌스 저장소**에 커밋합니다:
 
-5. **App ID** 복사 (예: `123456`). 저장.
-6. **Private keys** 섹션으로 스크롤. **Generate a private key** 클릭. `.pem` 파일 다운로드.
-
-## Step 4 — Actions secrets 추가 (2분)
-
-`<your-protocol-fork>` GitHub 페이지:
-
-1. **Settings → Secrets and variables → Actions → New repository secret** 이동.
-2. `MERGE_GATE_APP_ID` 추가 (Step 3.5의 App ID 값).
-3. `MERGE_GATE_PRIVATE_KEY` 추가 (`.pem` 파일 전체 내용, `-----BEGIN/END RSA PRIVATE KEY-----` 줄 포함).
-
-Downloads 폴더의 `.pem` 파일 삭제 (더 이상 필요 없음; GitHub이 secret으로 보관).
-
-## Step 5 — 봇 활성화 (1분)
-
-`<your-protocol-fork>`에서:
-
-1. **Actions** 탭.
-2. **multiagent-protocol-cron** workflow 찾기. "Workflow disabled" 표시되면 **Enable workflow**.
-3. **Run workflow → Run workflow** 클릭으로 첫 실행 수동 트리거 (cron 대기 X).
-
-~30초 안에 workflow 로그에 다음 표시:
-
-```
-[multiagent-protocol] cron tick start at <timestamp>
-[multiagent-protocol] scanning 1 supervised repo(s): <your-supervised-repo>
-[multiagent-protocol] tick complete: 0 PRs evaluated, 0 actions taken
+```bash
+unzip ~/Downloads/multiagent-protocol-config.zip -d .
+git add -f config/          # config/는 업스트림에서 의도적으로 git-ignore됨
+python3 -m pip install -e . && python3 -m multiagent_protocol check-config
+git commit -m "config: initial owner + projects + env + preferences" && git push
 ```
 
-봇이 실행 중입니다.
+> ⚠️ `config/`를 공개 저장소에 커밋하지 마세요. 공개 업스트림에서는 CI
+> (`no-config-in-public`)가 이를 강제하고, 내 배포에서의 프라이버시는
+> 거버넌스 저장소가 **비공개**라는 사실에서 나옵니다.
 
-## Step 6 — Sample PR로 테스트 (3분)
+## 3단계 — cron workflow 배포 (정직한 주기 선택)
 
-`<your-supervised-repo>`에서:
+프레임워크 자체의 `.github/workflows/bot-cron.yml`은 **의도적으로
+dispatch 전용**입니다(공개 저장소가 merge 엔진을 돌리면 안 되므로).
+실제 배포는 배선된 예시 파일을 씁니다:
 
-1. Branch: `git checkout -b protocol-test`.
-2. No-op 변경 + commit:
+```bash
+cp deploy/bot-cron.example.yml .github/workflows/bot-cron.yml
 ```
-echo "" >> README.md && git add README.md && git commit -m "test: verify bot evaluates PRs
 
-Agent-Tool: manual
-Agent-Model: n/a
-Agent-Session: s_quickstart-test
-Agent-Machine: localhost
-Task-Ref: round-0/quick-start
-"
+파일을 열어 `cron:` 주기를 고르세요. 정직한 계산 — 틱 1회는 러너
+시간 30–60초를 씁니다:
+
+| 주기 | 러너 시간/월 | GitHub Free(2,000분, 비공개)? |
+|---|---|---|
+| `*/5` | 약 72–144시간 | 불가 — self-hosted 전용 ([가이드](../../guide/self-hosted-runner.md)) |
+| `*/15` | 약 24–48시간 | 아슬아슬 |
+| `*/30` (기본값) | 약 12–24시간 | 가능 |
+| 매시 | 약 6–12시간 | 가능, 반응은 느림 |
+
+커밋하고 push합니다. (GitHub `schedule`은 혼잡 시간에 지연될 수 있고,
+저장소가 60일쯤 조용하면 자동 비활성화됩니다 — 파일에 남겨둔
+`workflow_dispatch`가 수동 백스톱입니다.)
+
+## 4단계 — GitHub App 만들기 (3분)
+
+위저드가 준 등록 URL을 엽니다(GitHub App Manifest 방식 — 브라우저에서
+실패하면 위저드의 **수동 폴백** 섹션에 있는 권한 목록으로
+*Settings → Developer settings → GitHub Apps*에서 직접 등록).
+
+1. **Create GitHub App for me** 클릭.
+2. **Install App** → **Only select repositories** → 거버넌스 저장소 **및**
+   `<내-감독-저장소>` 선택.
+3. **App ID**를 복사하고, **Generate a private key**로 `.pem`을 내려받습니다.
+
+## 5단계 — 시크릿 (3개)
+
+```bash
+gh secret set MERGE_GATE_APP_ID      -R <내-로그인>/multiagent-protocol-gov --body "<app-id>"
+gh secret set MERGE_GATE_PRIVATE_KEY -R <내-로그인>/multiagent-protocol-gov < ~/Downloads/<app>.pem
+openssl rand -hex 32 | gh secret set MERGE_GATE_RECEIPT_KEY -R <내-로그인>/multiagent-protocol-gov
+rm ~/Downloads/<app>.pem
 ```
-3. Push + GitHub UI로 PR 열기.
 
-~5분 안에 봇이:
+`MERGE_GATE_RECEIPT_KEY`는 승인 영수증과 결재함 본문을 HMAC으로
+봉인합니다 — 없으면 App 토큰이 유출됐을 때 승인 위조가 가능해집니다.
+셋 다 설정하세요.
 
-- PR에 L1 평가 결과 comment. 예상:
-  ```
-  Merge Gate L1 — merge blocked:
-  - C1: ready-to-merge label not set
-  Fix the items above and the bot will re-evaluate on the next cron tick.
-  ```
+## 6단계 — 첫 틱 (관찰 모드)
 
-GitHub UI로 `ready-to-merge` 라벨 추가. 다시 ~5분 대기. 봇이 재평가; supervised repo에 다른 required CI check가 없으면 봇이 PR 머지.
+봇은 **관찰 모드**로 시작합니다: 분류하고, 코멘트하고, 감사하지만,
+스위치를 켜기 전까지(다음 단계) **머지는 하지 않습니다**. 첫 실행:
+
+*Actions 탭 → `bot-cron` → Run workflow*, 또는
+`gh workflow run bot-cron.yml -R <내-로그인>/multiagent-protocol-gov`.
+
+실행이 초록으로 끝나고 로그에 `tick complete` 줄이 보여야 합니다.
+시크릿 누락·설정 오류는 설계상 **시끄럽게 실패**합니다.
+
+## 7단계 — 실동작 전환
+
+봇이 실제로 머지하게 하려면:
+
+```bash
+gh variable set MERGE_GATE_MERGE_ENABLED -R <내-로그인>/multiagent-protocol-gov --body true
+```
+
+## 8단계 — 샘플 PR로 테스트
+
+`<내-감독-저장소>`에서: `ready-to-merge` 라벨이 있는지 확인하고
+(`gh label create ready-to-merge --color 0e8a16`), 다음을 수행합니다:
+
+1. 브랜치: `git checkout -b protocol-test`
+2. **트레일러 5종을 포함한** 무해한 커밋:
+   ```
+   test: verify bot evaluates PRs
+
+   Agent-Tool: manual
+   Agent-Model: n/a
+   Agent-Session: s_quickstart-test
+   Agent-Machine: localhost
+   Task-Ref: none
+   ```
+3. push → PR 생성 → `ready-to-merge` 라벨 적용.
+
+다음 틱에서 봇이 **머지**(squash)하거나, 어떤 조건이 미달인지 정확히
+나열한 **진단 코멘트**를 답니다 — 그 항목들을 고치면 다음 틱에 머지됩니다.
+
+**저장소에 CI가 하나도 없다면:** CI 조건은 fail-closed입니다 — 체크가
+0개면 자동 머지도 없습니다(설계). 최소한의 워크플로 하나를 추가하거나,
+`config/env.yml`에 `allow_no_ci: true`로 의식적으로 옵트아웃하세요.
 
 ## 다음 단계
 
-- **Multi-repo cascade** — 2+ repos + canonical file mirror: 영문 docs.
-- **Custom skill 작성** — 본인 validator: 영문 docs.
-- **Self-hosted runner** — GitHub Actions Free 분 한도 도달 시: 영문 docs.
-- **Break-glass** — 봇 깨졌을 때: 영문 docs.
+- **에이전트에게 규율 가르치기** —
+  [`templates/adopter/`](../../../templates/adopter/)(AGENTS.md + CLAUDE.md,
+  내 취향 반영본)를 감독 저장소마다 설치.
+  위임 설치에서는 [AGENT_SETUP 6단계](../../agent-setup/AGENT_SETUP.md)가 수행.
+- **다중 저장소** — [`docs/guide/multi-repo.md`](../../guide/multi-repo.md)
+- **커스텀 스킬** — [`docs/guide/skills.md`](../../guide/skills.md)
+- **셀프호스트 러너** — [`docs/guide/self-hosted-runner.md`](../../guide/self-hosted-runner.md)
 
 ## 문제 해결
 
-### Workflow 안 돌아감
+### workflow가 돌지 않음
+- 시크릿 3종(`MERGE_GATE_*`)이 모두 있는지 (`gh secret list`)
+- 3단계의 배포판 파일인지, 아직 업스트림의 dispatch 전용 파일인지
+  (배포판에는 `schedule:` 블록이 있음)
+- 예약 실행은 지연될 수 있고 60일 무활동이면 꺼집니다 —
+  `gh workflow run`이 백스톱
+- App이 **두 저장소 모두**(거버넌스+감독)에 설치됐는지
 
-- `Settings → Secrets and variables → Actions` — `MERGE_GATE_APP_ID` + `MERGE_GATE_PRIVATE_KEY` 둘 다 listed.
-- `Settings → Actions → General → Workflow permissions` — workflow가 `Read and write permissions` 필요.
-- App이 protocol repo + supervised repo 둘 다 설치돼 있는지 확인.
+### 봇이 코멘트만 하고 머지하지 않음
+- `MERGE_GATE_MERGE_ENABLED`가 `true`인지 (7단계) — 관찰 모드는
+  `observe-only: would have merged …`를 로그에 남깁니다
+- `ready-to-merge` 라벨이 **allowlist 계정**(`config/owner.yml`)에 의해
+  적용됐는지
+- 필요한 체크가 모두 초록인지 — 또는 `allow_no_ci`를 의식적으로 켰는지
+- base가 `main` 최신인지, 트레일러 5종이 형식에 맞는지 — 진단 코멘트가
+  정확한 미달 항목을 알려줍니다
 
-### 봇이 comment는 하지만 머지 안 함
-
-- PR에 `ready-to-merge` 라벨 있는지 (C1).
-- 모든 required check가 green인지 (C2).
-- PR base SHA가 `main`과 최신인지 (C4) — rebase push.
-- PR commits 모두 5개 `Agent-*` trailer 있는지 (C5).
-
-### "PEM private key" auth 실패
-
-- `MERGE_GATE_PRIVATE_KEY` secret이 **전체** PEM 포함 (header/footer 줄 포함). base64 body만 복사하면 실패.
-- PEM이 RSA여야 함 (Ed25519 아님). GitHub App은 default로 RSA 발급.
-
-### Wizard "브라우저가 App Manifest URL 생성 못함"
-
-- Wizard는 JS-only로 브라우저에서 실행. 팝업 차단이나 URL이 너무 길어 안 열리면, Step 7의 **Manual fallback (수동 대체)** 섹션을 펼치세요: 등록 URL 전체(주소창에 복사)와, `https://github.com/settings/apps/new`에서 App을 직접 등록할 때 쓸 manifest JSON이 표시됩니다.
+### "PEM private key" 인증 실패
+- 시크릿에 BEGIN/END 줄을 포함한 **PEM 전체**가 들어가야 합니다
+- GitHub이 App용으로 생성한 RSA 키여야 합니다
 
 ## 자주 묻는 질문
 
-**Protocol fork를 upstream과 sync 유지해야 하나요?** 네 — 주기적으로. GitHub UI의 "Sync fork" 버튼으로 upstream 변경사항 가져오기. Cascade workflow가 갱신된 canonical 파일을 supervised repos에 전파합니다.
+**거버넌스 저장소를 업스트림과 계속 맞춰야 하나요?** 주기적으로 —
+`git fetch upstream && git merge upstream/main`. `config/`와 배포한
+workflow는 내 것입니다. workflow 파일이 충돌하면 **내 버전**을 유지하세요.
 
-**Private repo와 사용 가능?** 네 — 주요 use case입니다. App 설치 시 "Only select repositories"로 private repo 선택. 봇은 App token으로 read/write; public 공개 불필요.
+**비공개 감독 저장소에도 되나요?** 네 — 그게 핵심 사용처입니다.
+GitHub Free의 비공개 저장소에 없는 branch protection을 스스로 만드는
+것이니까요.
 
-**App 제거하면?** 봇이 다음 tick에 즉시 중단 (GitHub token 없음). Supervised repo의 PR은 더 이상 gating 안 됨; merge가 repo branch-protection (또는 없음) 기본값으로 폴백.
-
-**GitLab / Bitbucket / Codeberg와 동작?** 아직. 봇의 API client는 GitHub-specific. 다른 forge adapter는 Issue 제안 가치 있음 — `CONTRIBUTING.md` 참고.
+**App을 제거하면?** 다음 틱부터 봇이 멈춥니다. 머지는 저장소의 기존
+branch protection(Free+비공개라면: 없음)으로 돌아갑니다.

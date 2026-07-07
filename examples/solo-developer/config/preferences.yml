@@ -1,0 +1,35 @@
+# Operator working preferences — the personal layer of this installation.
+# Read by YOUR agents (installed into supervised repos via templates/adopter,
+# see docs/agent-setup/AGENT_SETUP.md step 6). The bot never reads this file.
+#
+# This example uses invented values. Yours lives in your PRIVATE governance
+# repo only — like every other config/ file, it never goes upstream.
+# Schema: schemas/preferences.schema.json
+
+language:
+  primary: en          # what language your agents speak to you
+  reports: primary     # written deliverables: primary | english | bilingual
+
+communication:
+  report_style: conclusion-first   # verdict first, details after
+  decision_format: options-menu    # decisions as 2-4 labeled options w/ pros+cons
+  batch_questions: true            # collect questions, ask together
+
+autonomy:
+  profile: standard        # cautious | standard | delegating
+  quiet_hours: "22:30-07:30"
+  timezone: "Europe/Berlin"
+
+# Append-only: every time you catch yourself repeating an instruction to an
+# agent, it belongs here — dated, one line, actionable.
+taste_ledger:
+  - date: "2026-01-15"
+    rule: "Weekly status summaries on Friday afternoon, never Monday morning."
+  - date: "2026-02-02"
+    rule: "When a chart and a table can show the same thing, use the chart."
+    quote: "I think in pictures - tables make me re-read everything twice."
+
+# Your shorthand, so agents understand requests like a colleague would.
+vocabulary:
+  - term: "the storefront"
+    meaning: "the customer-facing website repo (as opposed to the admin tools)"

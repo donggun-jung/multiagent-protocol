@@ -1,5 +1,6 @@
 enabled: []
 disabled: []
 severity_overrides:
-  # Team policy: WIP markers must block, not warn.
-  no_wip_markers: P0
+  # Team policy: an unregistered tool/model/machine must block the merge,
+  # not just warn (promotes the L4 registry gate from advisory to hard).
+  validator_agent_registry: P0

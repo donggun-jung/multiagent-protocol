@@ -1,18 +1,21 @@
 # Status — what works today, what is planned
 
-Updated 2026-05-30. Authoritative when the README banner cites it.
+Updated 2026-07-07. Authoritative when the README banner cites it.
 
 This file is the single source of "what does `multiagent-protocol` actually do,
-today, when an external operator forks and installs it?". The README and
+today, when an external operator installs it?". The README and
 concept docs describe the **target** design; this file describes the
-**shipping** behaviour. As of **v1.0.0** the cron orchestrator is live: a fork
-evaluates PRs, merges the auto-approvable quadrants, routes Quadrant D to the
-owner, and audits `main`. The "1.0 scope decisions" section below records what
+**shipping** behaviour. As of **v1.1.0** the cron orchestrator is live: your
+private installation (a **mirror**, not a fork — see the quick start) evaluates
+PRs, merges the auto-approvable quadrants, routes Quadrant D to the
+owner, and audits `main` — and the standard install path is **delegated**: your
+own AI agent executes [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md).
+The "1.0 scope decisions" section below records what
 is intentionally left for a later release.
 
 ## Implementation matrix
 
-| Feature                                            | Doctrine        | v0.0.2 | v1.0.0 (current) |
+| Feature                                            | Doctrine        | v0.0.2 | v1.1.0 (current) |
 |----------------------------------------------------|-----------------|--------|----------------------|
 | 4-quadrant classifier (path heuristic, max-vote)   | implemented     | ✅      | ✅                |
 | 4-module bot package layout                        | implemented     | ✅      | ✅                |
@@ -53,19 +56,26 @@ is intentionally left for a later release.
 | GitHub Pages site                                  | implemented     | ✅      | ✅                |
 | Config: `env.allow_no_ci` (no-CI repos auto-merge) | implemented     | ❌      | ✅ (opt-in)           |
 | Release pipeline: GHCR image on tag                | implemented     | ❌      | ✅ (`release.yml`)    |
-| PyPI publish (OIDC trusted publishing)             | implemented     | ❌      | 🚧 gated to v1.0.0    |
+| PyPI publish (OIDC trusted publishing)             | implemented     | ❌      | 🚧 gated behind `PYPI_PUBLISH_ENABLED` (publisher not configured yet) |
 | Composite GitHub Action (`action.yml`)             | implemented     | ❌      | ✅                    |
+| Delegated install runbook (`docs/agent-setup/`)    | implemented     | ❌      | ✅ v1.1               |
+| Deployed-workflow example (`deploy/`)              | implemented     | ❌      | ✅ v1.1               |
+| Operator preferences layer (`config/preferences.yml` + schema) | implemented | ❌ | ✅ v1.1              |
+| Adopter agent kit (`templates/adopter/`)           | implemented     | ❌      | ✅ v1.1               |
+| Wizard v2 (preferences step + delegation prompt)   | implemented     | ❌      | ✅ v1.1               |
 
 Legend: ✅ shipped · 🚧 partial · ❌ not yet. *planned* means we intend to ship
 it on the version listed.
 
-Test coverage: **167 pytest cases** (was 110 at v0.0.2) — orchestrator
-decisions, L2 re-validation, L4 registry, Decision-Inbox resolution, runtime
-toggles, and the no-secrets no-op are now under test.
+Test coverage: **435 pytest cases** (was 110 at v0.0.2, 167 at the RC) —
+orchestrator decisions, L2 re-validation, L4 registry, Decision-Inbox
+resolution, runtime toggles, required-checks threading, published-verdict
+rule, unauthorized-push hook, and the no-secrets no-op are under test.
 
-## What it means to fork this today (v1.0.0)
+## What it means to install this today (v1.1.0)
 
-If you fork at v1.0.0 and follow the [Quick start](docs/guide/quick-start.md),
+If you install at v1.1.0 — delegated ([AGENT_SETUP](docs/agent-setup/AGENT_SETUP.md))
+or manual ([Quick start](docs/guide/quick-start.md)) —
 you get a **working gate**:
 
 - The cron tick lists open PRs, classifies each, evaluates L1 (label by an
