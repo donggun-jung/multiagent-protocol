@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>multiagent-protocol — AI 팀을 운영하는 법</title>
+<meta name="description" content="여러 AI 에이전트가 한 프로젝트에서 사고 없이 일하게 만드는 1인 운영자용 안전장치. 비개발자를 위해 설계됐고, 설치는 당신의 AI 에이전트가 대신합니다.">
+<meta property="og:title" content="multiagent-protocol — AI 팀을 운영하는 법">
+<meta property="og:description" content="AI에게 시키는 사람은 많습니다. AI 팀을 운영하는 사람은 드뭅니다.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚦%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preload" as="font" type="font/woff2" crossorigin
+      href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.woff2">
+<style>
+@font-face{
+  font-family:'SUIT Variable';font-weight:100 900;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.woff2') format('woff2-variations');
+}
+:root{
+  --ink:#182026;--ink-soft:#46525c;--sub:#6b7680;--bg:#fbfaf7;--paper:#ffffff;
+  --accent:#0d6b87;--accent-deep:#0a5064;--accent-soft:#e7f2f6;
+  --line:#e6e4de;--warn-bg:#fdf6ec;--good:#1a7f4e;--good-bg:#edf8f1;
+  --danger:#b3372e;--danger-bg:#fbf0ee;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:17px;line-height:1.85;
+  font-family:'SUIT Variable',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;
+  word-break:keep-all;overflow-wrap:break-word}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+.narrow{max-width:720px;margin:0 auto}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* top bar */
+.top{position:sticky;top:0;background:rgba(251,250,247,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:10}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:56px}
+.brand{font-weight:700;font-size:15.5px;letter-spacing:-.01em;color:var(--ink)}
+.brand .dot{color:var(--accent)}
+.topnav{display:flex;gap:18px;align-items:center;font-size:14px}
+.topnav a{color:var(--ink-soft);white-space:nowrap}
+.lang-toggle{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;font-family:inherit;color:var(--ink-soft)}
+.lang-toggle:hover{border-color:var(--accent);color:var(--accent)}
+
+/* hero */
+.hero{padding:88px 0 64px;text-align:center}
+.hero .kicker{display:inline-block;background:var(--accent-soft);color:var(--accent-deep);border-radius:999px;padding:6px 16px;font-size:13.5px;font-weight:600;margin-bottom:26px}
+.hero h1{font-size:42px;line-height:1.3;letter-spacing:-.03em;font-weight:800;margin:0 0 20px}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero .sub{font-size:19px;color:var(--ink-soft);max-width:640px;margin:0 auto 36px;line-height:1.8}
+.cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-block;border-radius:12px;padding:14px 26px;font-size:16px;font-weight:600;transition:transform .1s ease}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 4px 14px rgba(13,107,135,.25)}
+.btn-primary:hover{background:var(--accent-deep)}
+.btn-ghost{border:1.5px solid var(--line);color:var(--ink);background:var(--paper)}
+.hero .fineprint{margin-top:18px;font-size:13px;color:var(--sub)}
+
+/* sections */
+section{padding:72px 0}
+section.alt{background:var(--paper);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sec-kicker{color:var(--accent);font-weight:700;font-size:14px;letter-spacing:.02em;text-transform:uppercase;margin-bottom:10px}
+h2{font-size:30px;letter-spacing:-.02em;line-height:1.4;margin:0 0 14px;font-weight:750}
+.sec-lede{font-size:17.5px;color:var(--ink-soft);max-width:680px;margin:0 0 40px}
+
+/* pain cards */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.pain{background:var(--danger-bg);border:1px solid #f0ddd9;border-radius:14px;padding:22px 24px}
+.pain .q{font-weight:700;font-size:16.5px;margin-bottom:6px;color:var(--danger)}
+.pain p{margin:0;font-size:15px;color:var(--ink-soft);line-height:1.75}
+.turn{margin-top:36px;background:var(--paper);border-left:4px solid var(--accent);border-radius:0 12px 12px 0;padding:20px 26px;font-size:17px}
+
+/* principles */
+.prin{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:28px;box-shadow:0 1px 4px rgba(0,0,0,.03)}
+section.alt .card{background:var(--bg)}
+.card .emoji{font-size:34px;line-height:1;margin-bottom:14px}
+.card h3{margin:0 0 8px;font-size:19px;letter-spacing:-.01em}
+.card .tag{font-size:12.5px;color:var(--sub);margin-bottom:10px}
+.card p{margin:0;font-size:15.3px;color:var(--ink-soft);line-height:1.8}
+.card .analogy{margin-top:12px;font-size:13.8px;color:var(--accent-deep);background:var(--accent-soft);border-radius:8px;padding:8px 12px;display:inline-block}
+
+/* preferences */
+.pref-flex{display:grid;grid-template-columns:1.1fr .9fr;gap:36px;align-items:start}
+.pref-list{list-style:none;padding:0;margin:0}
+.pref-list li{padding:12px 0;border-bottom:1px dashed var(--line);font-size:16px}
+.pref-list li strong{display:block;font-size:15.5px}
+.pref-list li span{color:var(--sub);font-size:14px}
+.ledger{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px;font-size:14px;line-height:1.9;box-shadow:0 6px 24px rgba(0,0,0,.05)}
+.ledger .lh{font-weight:700;font-size:13px;color:var(--sub);letter-spacing:.03em;margin-bottom:10px}
+.ledger .row{padding:8px 10px;border-radius:8px}
+.ledger .row:nth-child(even){background:var(--bg)}
+.ledger .d{color:var(--accent);font-weight:600;margin-right:8px;font-size:12.5px}
+.privacy-note{margin-top:26px;background:var(--good-bg);border:1px solid #d7ecdf;border-radius:12px;padding:16px 20px;font-size:14.5px;color:#14532d}
+
+/* steps */
+.steps{counter-reset:s;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+.step{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:26px}
+.step::before{counter-increment:s;content:counter(s);display:inline-flex;width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;align-items:center;justify-content:center;font-weight:700;margin-bottom:14px}
+.step h3{margin:0 0 8px;font-size:17.5px}
+.step p{margin:0;font-size:14.8px;color:var(--ink-soft);line-height:1.75}
+.human-chip{display:inline-block;background:var(--warn-bg);border:1px solid #eadfc8;color:#8a6d1d;font-size:12px;border-radius:999px;padding:2px 10px;font-weight:600;margin-top:10px}
+.boot{margin-top:34px;background:var(--paper);border:1.5px solid var(--accent);border-radius:16px;padding:24px 26px}
+.boot .boot-label{font-weight:700;font-size:16.5px;margin-bottom:4px}
+.boot .boot-sub{font-size:13.8px;color:var(--sub);margin-bottom:14px}
+.boot pre{margin:0 0 14px;white-space:pre-wrap;word-break:break-word;background:#f3f6f2;border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:12.3px;line-height:1.7;font-family:'SF Mono','JetBrains Mono',Consolas,monospace;color:#2f3b33}
+.boot .btn{padding:10px 20px;font-size:14.5px}
+
+/* honest status */
+.honest{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.h-col{border-radius:14px;padding:24px;border:1px solid var(--line);background:var(--paper)}
+.h-col h3{margin:0 0 12px;font-size:16.5px}
+.h-col ul{margin:0;padding-left:20px;font-size:15px;color:var(--ink-soft)}
+.h-col li{margin:7px 0}
+.h-col.does h3{color:var(--good)}
+.h-col.doesnt h3{color:var(--sub)}
+.honest-line{margin-top:24px;font-size:15.5px;color:var(--ink-soft)}
+
+/* footer */
+footer{border-top:1px solid var(--line);padding:44px 0 60px;font-size:14px;color:var(--sub)}
+footer .cols{display:flex;gap:40px;flex-wrap:wrap;justify-content:space-between}
+footer a{color:var(--ink-soft)}
+
+@media (max-width:760px){
+  body{font-size:16px}
+  .hero{padding:56px 0 44px}
+  .hero h1{font-size:30px}
+  .hero .sub{font-size:16.5px}
+  h2{font-size:24px}
+  .grid2,.prin,.steps,.honest,.pref-flex{grid-template-columns:1fr}
+  section{padding:52px 0}
+  .topnav a.hide-m,.topnav a[href="#why"]{display:none}
+  .topnav{gap:12px}
+  .brand{font-size:14px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="wrap">
+    <div class="brand">multiagent<span class="dot">·</span>protocol</div>
+    <nav class="topnav">
+      <a href="#why" data-i18n="nav.why">왜 필요한가</a>
+      <a href="#how" data-i18n="nav.how" class="hide-m">작동 원리</a>
+      <a href="#start" data-i18n="nav.start">시작하기</a>
+      <a href="https://github.com/donggun-jung/multiagent-protocol" rel="noopener">GitHub</a>
+      <button class="lang-toggle" id="lang-toggle" aria-label="language">EN</button>
+    </nav>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap narrow">
+    <span class="kicker" data-i18n="hero.kicker">비개발자를 위한 AI 팀 운영 안전장치 · 오픈소스</span>
+    <h1 data-i18n-html="hero.h1">AI에게 시키는 사람은 많습니다.<br><em>AI 팀을 운영하는</em> 사람은 드뭅니다.</h1>
+    <p class="sub" data-i18n="hero.sub">여러 AI 에이전트에게 하나의 프로젝트를 맡기는 순간, 충돌·조용한 사고·책임 불명이 시작됩니다. multiagent-protocol은 그 모든 변경 앞에 신호등을 세우고, 중요한 결정만 당신의 결재함으로 보내는 1인 운영자용 규율입니다 — 장난감 프로젝트를 넘어서고 싶은 비개발자를 위해 만들어졌습니다.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#start" data-i18n="hero.cta1">시작하기 — 설치는 내 에이전트가</a>
+      <a class="btn btn-ghost" href="#how" data-i18n="hero.cta2">원리 먼저 이해하기</a>
+    </div>
+    <p class="fineprint" data-i18n="hero.fine">Apache-2.0 · 서버 없음 · 내 GitHub 계정 안에서만 작동 · 어떤 데이터도 밖으로 나가지 않음</p>
+  </div>
+</header>
+
+<section id="why">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="why.kicker">왜 필요한가</div>
+    <h2 data-i18n="why.h2">AI가 나빠서가 아닙니다. 규칙이 없어서 생기는 일입니다.</h2>
+    <p class="sec-lede" data-i18n="why.lede">AI 에이전트 하나로 뭔가를 만들어 본 사람이라면, 두 개를 쓰기 시작한 순간 이 장면들을 만나게 됩니다.</p>
+    <div class="grid2">
+      <div class="pain"><div class="q" data-i18n="why.p1t">"둘이 같은 파일을 고치고 있었다"</div><p data-i18n="why.p1">서로의 존재를 모르는 두 에이전트가 같은 곳을 수정합니다. 발견은 늘 한 시간 뒤, 수습은 당신 몫입니다.</p></div>
+      <div class="pain"><div class="q" data-i18n="why.p2t">"테스트를 '고친다'며 지웠다"</div><p data-i18n="why.p2">AI가 문제를 없애는 가장 빠른 길을 택했고, 그 변경은 이미 본선에 반영된 뒤에야 눈에 띄었습니다. 되돌릴 수 있을 때 잡았어야 합니다.</p></div>
+      <div class="pain"><div class="q" data-i18n="why.p3t">"밤새 바뀌었는데 누가 왜 했는지 모른다"</div><p data-i18n="why.p3">아침에 열어 보니 변경이 잔뜩. 어느 도구가, 어떤 세션에서, 무슨 근거로 했는지 아무 기록이 없습니다.</p></div>
+      <div class="pain"><div class="q" data-i18n="why.p4t">"완료됐다더니, 열어보니 미완성"</div><p data-i18n="why.p4">"다 됐습니다"라는 말과 실제 완료 사이의 간격 — AI와 일할 때 가장 비싼 간격입니다.</p></div>
+    </div>
+    <div class="turn" data-i18n-html="why.turn"><strong>사람 팀도 규칙 없이 일하면 똑같이 됩니다.</strong> 회사가 결재·기록·권한으로 사고를 막듯, AI 팀에도 같은 장치가 필요합니다. multiagent-protocol은 그 장치를 코드로 만든 것입니다 — 당신이 개발자가 아니어도 운영할 수 있도록.</div>
+  </div>
+</section>
+
+<section class="alt" id="how">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="how.kicker">작동 원리 — 네 가지 장치</div>
+    <h2 data-i18n="how.h2">기술이 아니라 규율입니다. 회사에서 이미 본 것들입니다.</h2>
+    <p class="sec-lede" data-i18n="how.lede">내부는 정교하지만, 당신이 이해해야 할 것은 이 네 가지가 전부입니다.</p>
+    <div class="prin">
+      <div class="card">
+        <div class="emoji">🚦</div>
+        <h3 data-i18n="how.c1t">신호등 — 초록불 없이는 합쳐지지 않는다</h3>
+        <div class="tag" data-i18n="how.c1tag">머지 게이트</div>
+        <p data-i18n="how.c1">모든 변경은 "완성됐고, 검사를 통과했고, 최신 상태"일 때만 초록불을 받습니다. 초록불이 없으면 어떤 에이전트도 본선(main)에 아무것도 합칠 수 없습니다 — 예외 없이, 모든 AI에게 똑같이.</p>
+        <div class="analogy" data-i18n="how.c1a">회사로 치면: 품질검수 없이 출고 불가</div>
+      </div>
+      <div class="card">
+        <div class="emoji">📥</div>
+        <h3 data-i18n="how.c2t">결재함 — 중요한 결정만 당신에게 온다</h3>
+        <div class="tag" data-i18n="how.c2tag">Decision Inbox · 4분면 분류</div>
+        <p data-i18n="how.c2">모든 변경은 두 가지 질문으로 분류됩니다: 되돌릴 수 있는가? 중요한 부분을 건드리는가? 평범한 것은 알아서 진행되고 기록만 남습니다. 되돌릴 수 없으면서 중요한 것 — 그것만 멈춰서 당신을 기다립니다. 승인은 👍 하나면 됩니다.</p>
+        <div class="analogy" data-i18n="how.c2a">회사로 치면: 전결 규정 — 대표 결재는 큰 건만</div>
+      </div>
+      <div class="card">
+        <div class="emoji">🏷️</div>
+        <h3 data-i18n="how.c3t">이름표 — 모든 변경에 서명이 남는다</h3>
+        <div class="tag" data-i18n="how.c3tag">신원 트레일러</div>
+        <p data-i18n="how.c3">어떤 AI 도구가, 어떤 모델로, 어떤 작업 세션에서, 무엇을 근거로 바꿨는지가 변경마다 서명으로 붙습니다. 서명 없는 변경은 신호등을 통과하지 못합니다. "밤새 무슨 일이 있었나"가 아침에 다 읽힙니다.</p>
+        <div class="analogy" data-i18n="how.c3a">회사로 치면: 기안자 없는 문서는 접수 불가</div>
+      </div>
+      <div class="card">
+        <div class="emoji">🧾</div>
+        <h3 data-i18n="how.c4t">영수증 — "했다"가 아니라 증빙이 남는다</h3>
+        <div class="tag" data-i18n="how.c4tag">감사 기록 · 사후 재검증</div>
+        <p data-i18n="how.c4">합쳐진 뒤에도 검사가 한 번 더 돌고, 이상하면 사건 기록이 열립니다. 규칙을 우회하는 비상 조치조차 흔적 없이는 불가능합니다 — 24시간 안에 사유서를 요구합니다. 완료는 주장이 아니라 기록입니다.</p>
+        <div class="analogy" data-i18n="how.c4a">회사로 치면: 지출은 영수증, 예외는 경위서</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="prefs">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="pref.kicker">당신의 방식대로</div>
+    <h2 data-i18n="pref.h2">에이전트가 당신의 취향을 배웁니다 — 그리고 그 취향은 당신 것으로만 남습니다</h2>
+    <p class="sec-lede" data-i18n="pref.lede">같은 도구라도 쓰는 사람의 방식은 다 다릅니다. 설치할 때 당신의 업무 취향을 입력하면, 모든 에이전트가 매 세션 그것을 읽고 따릅니다.</p>
+    <div class="pref-flex">
+      <ul class="pref-list">
+        <li><strong data-i18n="pref.l1t">말하는 언어</strong><span data-i18n="pref.l1">보고서·대화 모두 당신의 언어로</span></li>
+        <li><strong data-i18n="pref.l2t">보고 스타일</strong><span data-i18n="pref.l2">결론부터 한 줄로? 자세한 서술로?</span></li>
+        <li><strong data-i18n="pref.l3t">결정을 받는 방식</strong><span data-i18n="pref.l3">열린 질문 대신, 장단점이 붙은 2–4개 선택지 메뉴로</span></li>
+        <li><strong data-i18n="pref.l4t">맡기는 정도</strong><span data-i18n="pref.l4">신중하게 하나하나 확인 ↔ 규칙 안에서는 알아서 진행</span></li>
+        <li><strong data-i18n="pref.l5t">조용한 시간</strong><span data-i18n="pref.l5">밤에는 알림 대신 아침 보고로</span></li>
+        <li><strong data-i18n="pref.l6t">취향 원장</strong><span data-i18n="pref.l6">에이전트에게 반복해서 시키던 말, 한 줄씩 적어두면 끝 — 모든 에이전트가 따릅니다</span></li>
+      </ul>
+      <div class="ledger">
+        <div class="lh" data-i18n="pref.exh">취향 원장 — 예시</div>
+        <div class="row"><span class="d">01-15</span><span data-i18n="pref.ex1">주간 정리는 금요일 오후에, 월요일 아침엔 금지</span></div>
+        <div class="row"><span class="d">02-02</span><span data-i18n="pref.ex2">표와 그래프가 둘 다 가능하면 그래프로</span></div>
+        <div class="row"><span class="d">03-11</span><span data-i18n="pref.ex3">결과물 파일은 지정 폴더에만 — 바탕화면 금지</span></div>
+        <div class="row"><span class="d">04-07</span><span data-i18n="pref.ex4">확신 없는 결론엔 반드시 "확실하지 않음"을 붙일 것</span></div>
+      </div>
+    </div>
+    <div class="privacy-note" data-i18n-html="pref.privacy">🔒 <strong>취향은 개인정보입니다.</strong> 이 설정은 당신의 <strong>비공개 저장소</strong>에만 저장됩니다. 공개 코드에는 어떤 개인 정보도 들어가지 않으며, 자동 검사가 모든 공개 파일을 상시 감시합니다 — 만든 사람의 취향조차 단 한 줄도 들어 있지 않습니다.</div>
+  </div>
+</section>
+
+<section class="alt" id="start">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="start.kicker">시작하기</div>
+    <h2 data-i18n="start.h2">설치는 사람이 하지 않습니다. 당신의 에이전트가 합니다.</h2>
+    <p class="sec-lede" data-i18n="start.lede">이 프로토콜의 설치 표준은 "당신의 AI 에이전트에게 통째로 맡기기"입니다. 사람이 직접 하는 일은 딱 두 번입니다.</p>
+    <div class="steps">
+      <div class="step">
+        <h3 data-i18n="start.s1t">위저드에서 질문에 답하기</h3>
+        <p data-i18n="start.s1">내 GitHub 계정, 지킬 저장소, 그리고 내 취향. 전부 브라우저 안에서만 처리되고 어디로도 전송되지 않습니다. 설정 파일 6개와 에이전트용 위임 프롬프트가 생성됩니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="start.s2t">프롬프트를 내 에이전트에게 붙여넣기</h3>
+        <p data-i18n="start.s2">Claude Code, Codex — 뭐든 좋습니다. 에이전트가 공식 런북(0–9단계)을 따라 저장소 생성부터 최종 검증까지 실행하고, 단계마다 스스로 검증합니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="start.s3t">두 번만 직접 하기</h3>
+        <p data-i18n="start.s3">① GitHub App 등록 화면에서 클릭 몇 번 ② "이제 진짜로 켜자"는 최종 확인. 그 사이의 모든 것 — 설정, 배선, 검사, 시운전 — 은 에이전트의 일입니다.</p>
+        <span class="human-chip" data-i18n="start.s3chip">사람이 하는 유일한 두 순간</span>
+      </div>
+    </div>
+    <div class="boot">
+      <div class="boot-label" data-i18n="start.bootlabel">위저드조차 필요 없습니다 — 이 한 문단을 복사해 내 에이전트에게 붙여넣으세요</div>
+      <div class="boot-sub" data-i18n="start.bootsub">에이전트가 당신의 언어로 인터뷰해서 설정을 만들고, 사람이 할 두 순간은 클릭 단위로 안내합니다. (프롬프트는 영문 — 에이전트가 가장 안정적으로 따르는 언어일 뿐, 대화는 당신의 언어로 진행됩니다.)</div>
+      <pre id="bootstrap-prompt">You are my AI coding agent. Set up multiagent-protocol for me.
+Fetch and follow: https://raw.githubusercontent.com/donggun-jung/multiagent-protocol/main/docs/agent-setup/AGENT_SETUP.md
+I have not prepared any config. Start with the runbook's Interview Mode:
+interview me in my own language (one batched round, offer defaults), build
+the six config files from my answers, confirm the summary back to me, then
+execute steps 0-9. Involve me only at the [HUMAN] steps, and when we reach
+them, walk me through the clicks step by step.</pre>
+      <button class="btn btn-primary" id="copy-bootstrap" data-i18n="start.bootcopy">프롬프트 복사</button>
+    </div>
+    <div class="cta-row" style="margin-top:26px">
+      <a class="btn btn-ghost" href="https://donggun-jung.github.io/multiagent-protocol/wizard/" rel="noopener" data-i18n="start.cta1">위저드로 시작하기 (폼 입력을 선호한다면)</a>
+      <a class="btn btn-ghost" href="https://github.com/donggun-jung/multiagent-protocol/blob/main/docs/agent-setup/AGENT_SETUP.md" rel="noopener" data-i18n="start.cta2">에이전트가 따르는 런북 보기</a>
+    </div>
+  </div>
+</section>
+
+<section id="honest">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="honest.kicker">정직한 상태 표시</div>
+    <h2 data-i18n="honest.h2">되는 것과 안 되는 것</h2>
+    <p class="sec-lede" data-i18n="honest.lede">신뢰를 다루는 도구가 스스로 과장하면 그걸로 끝입니다. 이 목록은 실제 출하 상태와 함께 갱신됩니다.</p>
+    <div class="honest">
+      <div class="h-col does">
+        <h3 data-i18n="honest.doesh">✓ 지금 됩니다</h3>
+        <ul>
+          <li data-i18n="honest.d1">신호등(머지 게이트) — 라벨·검사·최신성·서명 확인 후에만 병합</li>
+          <li data-i18n="honest.d2">결재함 — 중요 결정만 이슈로 도착, 👍 또는 /approve로 응답</li>
+          <li data-i18n="honest.d3">이름표 — 서명(5종) 없는 변경 차단; 등록 도구·모델 대조는 기본 '권고'이며 설정 한 줄로 차단 승격 가능</li>
+          <li data-i18n="honest.d4">영수증 — 병합 후 재검증, 비상조치 24시간 사유서 감사</li>
+          <li data-i18n="honest.d5">에이전트 대행 설치 + 취향 레이어 + 위저드</li>
+        </ul>
+      </div>
+      <div class="h-col doesnt">
+        <h3 data-i18n="honest.doesnth">− 아직 안 됩니다 (숨기지 않습니다)</h3>
+        <ul>
+          <li data-i18n="honest.n1">사고 난 병합의 자동 되돌리기 — 지금은 감지 + 되돌리기 명령 안내까지</li>
+          <li data-i18n="honest.n2">GitHub 외의 GitLab/Bitbucket 지원</li>
+          <li data-i18n="honest.n3">개념 문서의 한국어 번역(안내·설치 문서는 한국어 있음)</li>
+          <li data-i18n="honest.n4">pip 한 줄 설치(PyPI) — 지금은 미러 방식으로 설치</li>
+        </ul>
+      </div>
+    </div>
+    <p class="honest-line" data-i18n-html="honest.line">전체 상태표는 <a href="https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md" rel="noopener">STATUS.md</a>에 있습니다. 안 되는 것을 된다고 쓰지 않는 것 — 그것도 이 프로토콜이 강제하는 규율의 일부입니다.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap cols">
+    <div>
+      <div class="brand" style="margin-bottom:8px">multiagent<span class="dot">·</span>protocol</div>
+      <div data-i18n="foot.line">한 사람, 여러 에이전트, 하나의 규율.</div>
+    </div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap">
+      <a href="https://github.com/donggun-jung/multiagent-protocol" rel="noopener">GitHub</a>
+      <a href="https://donggun-jung.github.io/multiagent-protocol/" rel="noopener" data-i18n="foot.docs">문서</a>
+      <a href="https://donggun-jung.github.io/multiagent-protocol/wizard/" rel="noopener" data-i18n="foot.wizard">설정 위저드</a>
+      <a href="https://github.com/donggun-jung/multiagent-protocol/blob/main/LICENSE" rel="noopener">Apache-2.0</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var EN = {
+    "nav.why": "Why", "nav.how": "How it works", "nav.start": "Get started",
+    "hero.kicker": "Guardrails for running an AI team · open source · for non-developers",
+    "hero.h1": "Plenty of people give AI instructions.<br>Few people <em>run an AI team</em>.",
+    "hero.sub": "The moment you point several AI agents at one project, the accidents begin: collisions, silent damage, changes nobody can explain. multiagent-protocol puts a traffic light in front of every change and routes only the decisions that matter to your inbox — built for non-developers who want to get past toy projects.",
+    "hero.cta1": "Get started — your agent installs it",
+    "hero.cta2": "Understand the principles first",
+    "hero.fine": "Apache-2.0 · no servers · runs entirely inside your GitHub account · nothing leaves it",
+    "why.kicker": "Why you need this",
+    "why.h2": "It's not that AI is bad. It's that there are no rules.",
+    "why.lede": "If you've built something with one AI agent, these are the scenes waiting for you the day you start using two.",
+    "why.p1t": "\"They were both editing the same file\"",
+    "why.p1": "Two agents that don't know about each other change the same place. You find out an hour later, and the cleanup is yours.",
+    "why.p2t": "\"It 'fixed' the test by deleting it\"",
+    "why.p2": "The AI took the fastest path to making the problem disappear — and the change was already on the main line before anyone saw it. It should have been caught while it was still reversible.",
+    "why.p3t": "\"Everything changed overnight and nobody can say why\"",
+    "why.p3": "You open the project in the morning to a pile of changes with no record of which tool, which session, or what reasoning produced them.",
+    "why.p4t": "\"It said 'done' — it wasn't\"",
+    "why.p4": "The gap between \"all done!\" and actually done is the most expensive gap in working with AI.",
+    "why.turn": "<strong>Human teams fail the same way without rules.</strong> Companies prevent these accidents with approvals, records, and permissions. An AI team needs the same machinery — multiagent-protocol is that machinery, written as code, operable without being a developer.",
+    "how.kicker": "How it works — four devices",
+    "how.h2": "Not technology — discipline. You've seen all of it at work before.",
+    "how.lede": "The internals are intricate, but these four ideas are everything you need to understand.",
+    "how.c1t": "Traffic light — nothing merges without a green",
+    "how.c1tag": "the merge gate",
+    "how.c1": "A change gets a green light only when it is complete, has passed its checks, and is up to date. Without the green, no agent can merge anything into the main line — no exceptions, every AI treated the same.",
+    "how.c1a": "At a company: no shipping without QA",
+    "how.c2t": "Approval inbox — only the big decisions reach you",
+    "how.c2tag": "Decision Inbox · four-quadrant triage",
+    "how.c2": "Every change is sorted by two questions: can it be undone? does it touch something critical? Ordinary work proceeds on its own, leaving records. Irreversible-and-critical work stops and waits for you. Approval is one 👍.",
+    "how.c2a": "At a company: delegation rules — the CEO signs only the big ones",
+    "how.c3t": "Name tags — every change carries a signature",
+    "how.c3tag": "identity trailers",
+    "how.c3": "Which AI tool, which model, which working session, tied to which task — every change carries this signature, and unsigned changes don't pass the light. \"What happened overnight\" becomes a morning read.",
+    "how.c3a": "At a company: unsigned paperwork isn't accepted",
+    "how.c4t": "Receipts — proof, not claims",
+    "how.c4tag": "audit trail · post-merge re-check",
+    "how.c4": "Checks run again after merging, and anomalies open an incident. Even the emergency override leaves a trace — and demands a written reason within 24 hours. Done is a record, not an assertion.",
+    "how.c4a": "At a company: expenses need receipts, exceptions need memos",
+    "pref.kicker": "Your way",
+    "pref.h2": "Your agents learn your preferences — and your preferences stay yours",
+    "pref.lede": "The same tool is used differently by every person. State your working preferences once at install, and every agent reads and follows them at the start of every session.",
+    "pref.l1t": "The language they speak",
+    "pref.l1": "Reports and conversation in your language",
+    "pref.l2t": "Reporting style",
+    "pref.l2": "Verdict-first one-liners? Full detail?",
+    "pref.l3t": "How decisions reach you",
+    "pref.l3": "Not open questions — 2-4 labeled options with pros and cons",
+    "pref.l4t": "How much they decide alone",
+    "pref.l4": "Confirm everything ↔ proceed freely within the rules",
+    "pref.l5t": "Quiet hours",
+    "pref.l5": "No pings at night — a morning report instead",
+    "pref.l6t": "The taste ledger",
+    "pref.l6": "The instructions you keep repeating, one line each — every agent follows them",
+    "pref.exh": "Taste ledger — example",
+    "pref.ex1": "Weekly summaries on Friday afternoon, never Monday morning",
+    "pref.ex2": "When a chart and a table both work, use the chart",
+    "pref.ex3": "Deliverables go in the designated folder only — never the desktop",
+    "pref.ex4": "Uncertain conclusions must be labeled \"not certain\"",
+    "pref.privacy": "🔒 <strong>Preferences are personal data.</strong> They live only in <strong>your private repository</strong>. The public code contains no personal information — an automated scan watches every public file, and not even the author's own preferences appear anywhere in it.",
+    "start.kicker": "Get started",
+    "start.h2": "Humans don't do the install. Your agent does.",
+    "start.lede": "The standard installation path is delegation: hand the whole thing to your own AI agent. You act exactly twice.",
+    "start.s1t": "Answer the questions — in the wizard, or just in chat",
+    "start.s1": "Your GitHub account, the repos to protect, your preferences. Use the browser wizard (nothing is sent anywhere) — or skip it: with the bootstrap prompt below, your agent interviews you conversationally and builds the same 6 config files from your answers.",
+    "start.s2t": "Paste the prompt to your agent",
+    "start.s2": "Claude Code, Codex — any capable agent. It follows the official runbook (steps 0-9) from repo creation to final verification, checking its own work at every step.",
+    "start.s3t": "Act twice, yourself",
+    "start.s3": "① A few clicks on the GitHub App registration page ② the final \"turn it on for real\" confirmation. Everything in between — config, wiring, checks, the trial run — is your agent's job.",
+    "start.s3chip": "the only two human moments",
+    "start.cta1": "Start with the wizard (if you prefer forms)",
+    "start.cta2": "Read the runbook your agent follows",
+    "start.bootlabel": "You don't even need the wizard — copy this one paragraph to your agent",
+    "start.bootsub": "Your agent interviews you in your own language, builds your config from the answers, and walks you click-by-click through the two human moments.",
+    "start.bootcopy": "Copy the prompt",
+    "honest.kicker": "Honest status",
+    "honest.h2": "What works, and what doesn't yet",
+    "honest.lede": "A tool that manages trust is finished the moment it oversells itself. This list is updated with what actually ships.",
+    "honest.doesh": "✓ Works today",
+    "honest.d1": "The traffic light (merge gate) — merges only after label, checks, freshness, and signatures",
+    "honest.d2": "The approval inbox — only critical decisions arrive, answered with 👍 or /approve",
+    "honest.d3": "Name tags — unsigned changes blocked (all five trailers); registry tool/model matching ships advisory, promotable to a hard block with one config line",
+    "honest.d4": "Receipts — post-merge re-validation, 24-hour written-reason audit on overrides",
+    "honest.d5": "Delegated agent install + the preference layer + the wizard",
+    "honest.doesnth": "− Not yet (and not hidden)",
+    "honest.n1": "Automatic revert of a bad merge — today: detection + the exact revert command",
+    "honest.n2": "GitLab / Bitbucket support (GitHub only)",
+    "honest.n3": "Korean translations of the concept docs (the guides and install docs do exist in Korean)",
+    "honest.n4": "One-line pip install (PyPI) — install via mirror for now",
+    "honest.line": "The full status matrix lives in <a href=\"https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md\" rel=\"noopener\">STATUS.md</a>. Refusing to claim what doesn't work is part of the same discipline this protocol enforces.",
+    "foot.line": "One human, many agents, one discipline.",
+    "foot.docs": "Docs", "foot.wizard": "Setup wizard"
+  };
+  var KO = {}; // Korean lives in the markup itself.
+
+  var current = "ko";
+  var koCache = {};
+
+  function snapshotKorean() {
+    var nodes = document.querySelectorAll("[data-i18n],[data-i18n-html]");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var key = el.getAttribute("data-i18n") || el.getAttribute("data-i18n-html");
+      if (el.hasAttribute("data-i18n-html")) koCache[key] = el.innerHTML;
+      else koCache[key] = el.textContent;
+    }
+  }
+
+  function apply(lang) {
+    var dict = lang === "en" ? EN : koCache;
+    var nodes = document.querySelectorAll("[data-i18n],[data-i18n-html]");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var isHtml = el.hasAttribute("data-i18n-html");
+      var key = el.getAttribute(isHtml ? "data-i18n-html" : "data-i18n");
+      var val = dict[key];
+      if (val == null) continue;
+      if (isHtml) el.innerHTML = val;
+      else el.textContent = val;
+    }
+    document.documentElement.lang = lang;
+    document.getElementById("lang-toggle").textContent = lang === "en" ? "한국어" : "EN";
+    current = lang;
+    try { localStorage.setItem("map_site_lang", lang); } catch (e) {}
+  }
+
+  snapshotKorean();
+  document.getElementById("lang-toggle").addEventListener("click", function () {
+    apply(current === "ko" ? "en" : "ko");
+  });
+
+  document.getElementById("copy-bootstrap").addEventListener("click", function () {
+    var text = document.getElementById("bootstrap-prompt").textContent;
+    var btn = document.getElementById("copy-bootstrap");
+    function flash(msg) {
+      btn.textContent = msg;
+      setTimeout(function () { apply(current); }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { flash(current === "en" ? "✓ copied — paste it to your agent" : "✓ 복사됨 — 에이전트에게 붙여넣으세요"); },
+        function () { flash(current === "en" ? "copy blocked — select the text manually" : "복사가 막혔습니다 — 직접 드래그해 주세요"); }
+      );
+    } else {
+      flash(current === "en" ? "copy blocked — select the text manually" : "복사가 막혔습니다 — 직접 드래그해 주세요");
+    }
+  });
+
+  // Language resolution: ?lang=en|ko (or #en/#ko) > saved choice > browser language.
+  var qlang = null;
+  try {
+    var m = window.location.search.match(/[?&]lang=(en|ko)\b/);
+    if (m) qlang = m[1];
+    else if (window.location.hash === "#en" || window.location.hash === "#ko") qlang = window.location.hash.slice(1);
+  } catch (e) {}
+  var saved = null;
+  try { saved = localStorage.getItem("map_site_lang"); } catch (e) {}
+  if (qlang) apply(qlang);
+  else if (saved === "en") apply("en");
+  else if (!saved && navigator.language && navigator.language.slice(0, 2) !== "ko") apply("en");
+})();
+</script>
+</body>
+</html>
