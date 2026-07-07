@@ -58,6 +58,13 @@ label/approval checks are tied to the operator's identity.
 gh repo create <login>/multiagent-protocol-gov --private \
   --description "multiagent-protocol governance (private config layer)"
 
+# Disable Actions BEFORE the mirror push: the mirror carries upstream's
+# tags (v0.2.0, v0.9.9, ...) and pushing them would otherwise fire
+# release.yml in YOUR repo (publishing a container image to your GHCR)
+# plus a doomed Pages deploy and a test-matrix burst.
+gh api -X PUT repos/<login>/multiagent-protocol-gov/actions/permissions \
+  -F enabled=false
+
 git clone --bare https://github.com/donggun-jung/multiagent-protocol.git /tmp/map-mirror
 git -C /tmp/map-mirror push --mirror https://github.com/<login>/multiagent-protocol-gov.git
 rm -rf /tmp/map-mirror
@@ -65,19 +72,19 @@ rm -rf /tmp/map-mirror
 git clone https://github.com/<login>/multiagent-protocol-gov.git
 cd multiagent-protocol-gov
 git remote add upstream https://github.com/donggun-jung/multiagent-protocol.git
-```
 
-Then disable the workflows inherited from upstream that a private deployment
-does not want (Pages deploy will fail on a private Free repo; the test matrix
-burns minutes on every push — keep it if minutes allow):
-
-```bash
+# Re-enable Actions now that the burst window is over, then switch off the
+# inherited workflows a private deployment does not want (Pages deploy fails
+# on a private Free repo; keep tests.yml only if your minutes allow).
+gh api -X PUT repos/<login>/multiagent-protocol-gov/actions/permissions \
+  -F enabled=true -F allowed_actions=all
 gh workflow disable docs.yml -R <login>/multiagent-protocol-gov || true
 ```
 
 **Verify:** `gh repo view <login>/multiagent-protocol-gov --json visibility
 -q .visibility` prints `PRIVATE`; `git remote -v` shows `origin` (gov) and
-`upstream` (framework).
+`upstream` (framework); `gh api repos/<login>/multiagent-protocol-gov/branches/main -q .name`
+prints `main` (the mirror actually arrived).
 
 **Later upgrades** (replaces the fork "Sync" button):
 `git fetch upstream && git merge upstream/main` — your `config/` and your
@@ -95,6 +102,7 @@ preference fields of `schemas/preferences.schema.json`).
 
 ```bash
 git add -f config/   # config/ is git-ignored upstream; -f is required and correct here
+python3 -m venv .venv && . .venv/bin/activate   # avoids PEP 668 "externally managed" failures
 python3 -m pip install -e . --quiet
 python3 -m multiagent_protocol check-config
 python3 - <<'EOF'
@@ -134,8 +142,10 @@ a tick costs roughly 30–60 s of runner time:
 | `*/30` | ~720–1,440   | Yes (default for `actions-free`) |
 | hourly | ~360–720     | Yes, with slower reaction time |
 
-Also set in the file: `MERGE_GATE_MERGE_ENABLED` stays `'false'` for now
-(observe mode — step 8 flips it). Commit and push.
+No edit is needed for the merge switch: the file already defaults to observe
+mode via the `vars.MERGE_GATE_MERGE_ENABLED || 'false'` fallback — do NOT
+hardcode `'false'` there, or step 8's variable flip will have no effect.
+Commit and push.
 
 > GitHub reality check: `schedule` triggers can lag minutes-to-tens-of-minutes
 > at peak, and GitHub disables schedules after ~60 days without repo activity.
@@ -233,13 +243,15 @@ remaining `{{` markers.
 
 ```bash
 gh workflow run bot-cron.yml -R <login>/multiagent-protocol-gov
-sleep 90
-gh run list -R <login>/multiagent-protocol-gov --workflow bot-cron.yml --limit 1
-gh run view -R <login>/multiagent-protocol-gov --log $(gh run list -R <login>/multiagent-protocol-gov --workflow bot-cron.yml --limit 1 --json databaseId -q '.[0].databaseId') | grep -i "tick"
+RUN_ID=$(gh run list -R <login>/multiagent-protocol-gov --workflow bot-cron.yml --limit 1 --json databaseId -q '.[0].databaseId')
+gh run watch "$RUN_ID" -R <login>/multiagent-protocol-gov --exit-status
+gh run view "$RUN_ID" -R <login>/multiagent-protocol-gov --log | grep -Ei "tick complete|supervised="
 ```
 
-**Verify:** the run concluded `success` and the log contains a
-`tick complete` line naming your supervised repo count. Missing secrets or
+**Verify (two lines, exactly these shapes):** the watch exits 0 (run
+`success`), and the grep shows BOTH a `config: … supervised=N …` line with
+N ≥ 1 AND a `tick complete: {...}` line (a metrics dict — it does not repeat
+the repo count; the `supervised=` line carries that). Missing secrets or
 invalid config **fail loudly** here by design — if the run is red, read the
 log's first error, fix, and re-run this step.
 
@@ -294,7 +306,7 @@ Close by giving the operator a short handover **in their language**:
 | PR blocked on C2 (CI) | The supervised repo has zero completed checks (add the sanity workflow) or a required check failed. `allow_no_ci: true` only if the operator accepted that trade. |
 | PR blocked on C5 (trailers) | One of the five trailers is missing or malformed — the diagnostic comment names which. Formats: `templates/adopter/AGENTS.md` §2. |
 | Quadrant D issue opened for a routine change | The classifier read the paths as critical (rules/workflows/data). This is the designed pause — have the operator answer the issue rather than re-labeling. |
-| Tick green but "0 supervised repos" | `config/projects.yml` not committed to the governance repo (step 2's `git add -f`), or the App isn't installed on the supervised repo (step 4.2). |
+| Tick green but the log shows `supervised=0` | `config/projects.yml` not committed to the governance repo (step 2's `git add -f`), or the App isn't installed on the supervised repo (step 4.2). |
 
 *This runbook is the executable counterpart of
 [`docs/guide/quick-start.md`](../guide/quick-start.md). When they disagree,

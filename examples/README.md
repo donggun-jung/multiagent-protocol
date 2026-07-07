@@ -1,6 +1,6 @@
 # Examples — which one should I start from?
 
-Three progressive starter configurations. Pick the one whose shape matches your fleet today; switch later by editing your fork's `config/*.yml` (no migration needed — schemas are additive).
+Three progressive starter configurations. Pick the one whose shape matches your fleet today; switch later by editing your governance repo's `config/*.yml` (no migration needed — schemas are additive).
 
 ## Decision tree
 
@@ -32,7 +32,7 @@ If unsure, **start with `solo-developer/`**. You can graduate to `small-team/` o
 # 1. Pick the example you want.
 EXAMPLE=solo-developer
 
-# 2. Copy its config/ into your fork's root.
+# 2. Copy its config/ into your governance repo's root.
 cp -r examples/$EXAMPLE/config/ ./config/
 
 # 3. Edit each *.yml — every placeholder (your-github-login, your-github-login/some-repo,

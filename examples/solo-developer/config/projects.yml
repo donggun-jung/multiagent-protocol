@@ -1,6 +1,6 @@
 # Repos this installation supervises.
 
-# Holds canonical doctrine + Decision Inbox issues. Usually your fork of
+# Holds canonical doctrine + Decision Inbox issues. Usually your private mirror of
 # multiagent-protocol.
 governance_repo: your-github-login/multiagent-protocol
 

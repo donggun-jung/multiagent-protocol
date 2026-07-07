@@ -66,7 +66,10 @@ zip을 받아 **비공개 거버넌스 저장소**에 커밋합니다:
 ```bash
 unzip ~/Downloads/multiagent-protocol-config.zip -d .
 git add -f config/          # config/는 업스트림에서 의도적으로 git-ignore됨
+python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e . && python3 -m multiagent_protocol check-config
+# check-config는 봇 설정 5개를 검증합니다. preferences.yml(에이전트용)은 스키마로 별도 검증:
+python3 -c "import json,yaml,jsonschema;jsonschema.validate(yaml.safe_load(open('config/preferences.yml')),json.load(open('schemas/preferences.schema.json')));print('preferences OK')"
 git commit -m "config: initial owner + projects + env + preferences" && git push
 ```
 
@@ -175,6 +178,8 @@ gh variable set MERGE_GATE_MERGE_ENABLED -R <내-로그인>/multiagent-protocol-
 - **다중 저장소** — [`docs/guide/multi-repo.md`](../../guide/multi-repo.md)
 - **커스텀 스킬** — [`docs/guide/skills.md`](../../guide/skills.md)
 - **셀프호스트 러너** — [`docs/guide/self-hosted-runner.md`](../../guide/self-hosted-runner.md)
+- **비상 우회(break-glass)** — 봇이 고장났을 때의 규율:
+  [`docs/concepts/break-glass.md`](../../concepts/break-glass.md)
 
 ## 문제 해결
 
@@ -199,6 +204,10 @@ gh variable set MERGE_GATE_MERGE_ENABLED -R <내-로그인>/multiagent-protocol-
 - 시크릿에 BEGIN/END 줄을 포함한 **PEM 전체**가 들어가야 합니다
 - GitHub이 App용으로 생성한 RSA 키여야 합니다
 
+### 위저드가 App-manifest URL을 못 여는 경우
+- 위저드의 **수동 폴백** 섹션을 쓰세요: 전체 등록 URL과 권한 목록이 있어
+  *Settings → Developer settings → GitHub Apps*에서 직접 등록할 수 있습니다.
+
 ## 자주 묻는 질문
 
 **거버넌스 저장소를 업스트림과 계속 맞춰야 하나요?** 주기적으로 —
@@ -211,3 +220,7 @@ GitHub Free의 비공개 저장소에 없는 branch protection을 스스로 만�
 
 **App을 제거하면?** 다음 틱부터 봇이 멈춥니다. 머지는 저장소의 기존
 branch protection(Free+비공개라면: 없음)으로 돌아갑니다.
+
+**GitLab / Bitbucket / Codeberg에서도 되나요?** 아직 안 됩니다 — API
+클라이언트가 GitHub 전용입니다. 어댑터 기여는 환영합니다
+(`CONTRIBUTING.md`).

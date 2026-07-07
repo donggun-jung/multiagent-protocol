@@ -21,7 +21,7 @@ step 6 does this for you (your setup agent substitutes the values):
 |---|---|
 | `{{REPO_NAME}}` | the supervised repo (`owner/name`) |
 | `{{AGENT_TOOLS}}` | `config/agent_registry.yml` → registered tool names |
-| `{{MACHINE_HANDLE}}` | `config/agent_registry.yml` → the machine handle for that workstation |
+| `{{MACHINE_HANDLE}}` | an operator-chosen stable pseudonym for that workstation (e.g. `main-desktop`) — record it in `config/agent_registry.yml` `machines:` if you maintain that list; never a real hostname |
 | `{{TICK_MINUTES}}` | your cron cadence (from the schedule you deployed) |
 | `{{PREFERENCES_BLOCK}}` | rendered from `config/preferences.yml` (language, report style, autonomy profile, taste ledger, vocabulary) |
 

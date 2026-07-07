@@ -112,10 +112,10 @@ you get a **working gate**:
   auto-merge (by design — "no gate" should not silently mean "merge anything").
   Add any one status check, configure required checks, or set `env.yml`
   `allow_no_ci: true` to opt into a vacuous C2 for repos with no CI by design.
-- **Statelessness + idempotency.** The bot keeps no DB. Watermarks persist
-  within a run and via the tick artifact; across runs, duplicate incidents are
-  prevented by checking for an existing open issue referencing the same commit,
-  not by durable state.
+- **Statelessness + idempotency.** The bot keeps no DB. Durable watermarks
+  live on a dedicated `bot-state` branch in the governance repo (plus the
+  tick artifact for audit); duplicate incidents are additionally prevented by
+  checking for an existing issue (open or closed) referencing the same commit.
 
 ## 1.0 scope decisions for external review
 

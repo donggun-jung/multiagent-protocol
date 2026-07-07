@@ -15,7 +15,7 @@ This guide assumes you have completed [`quick-start.md`](quick-start.md) for a s
 
 ## Step 1 — Add the repo to `projects.yml`
 
-In your governance fork, edit `config/projects.yml`:
+In your governance repo, edit `config/projects.yml`:
 
 ```yaml
 governance_repo: <your-github-login>/multiagent-protocol
@@ -39,7 +39,7 @@ The bot will pick up the new installation on the next tick.
 
 ## Step 3 — Decide which files cascade
 
-The set of files that must be **byte-identical** across every supervised repo is `canonical_paths` in `schemas/mirror_paths.json` (in your governance repo). Defaults are conservative — point them at files that actually exist in your governance fork, since the seed loop in Step 4 copies each one:
+The set of files that must be **byte-identical** across every supervised repo is `canonical_paths` in `schemas/mirror_paths.json` (in your governance repo). Defaults are conservative — point them at files that actually exist in your governance repo, since the seed loop in Step 4 copies each one:
 
 ```json
 {
@@ -73,11 +73,11 @@ When you first add an adopter, it does not yet contain the canonical files. The 
 
 ```bash
 # In the new adopter repo:
-cd <your-fork>/repo-b
+cd <your-workspace>/repo-b
 git checkout -b setup/mirror-canonical-files
 
-# Copy the canonical files from your governance fork.
-# (Replace $HOME/repos/multiagent-protocol with your governance fork's path.)
+# Copy the canonical files from your governance repo.
+# (Replace $HOME/repos/multiagent-protocol with your governance repo's path.)
 for p in $(jq -r '.canonical_paths[]' "$HOME/repos/multiagent-protocol/schemas/mirror_paths.json"); do
   mkdir -p "$(dirname "$p")"
   cp "$HOME/repos/multiagent-protocol/$p" "$p"
@@ -100,12 +100,12 @@ Merge the PR. The next cron tick re-runs `drift_check` and the incident Issue au
 
 ## Step 5 — Ongoing cascade
 
-When you change a canonical file in your governance fork, every supervised repo must receive the update. The bot does **not** automatically open cascade PRs in adopters (this is intentional — auto-PRs into adopters would be a Quadrant D operation, and the default policy is detection-only). Instead, drift opens an Issue, and you cascade manually.
+When you change a canonical file in your governance repo, every supervised repo must receive the update. The bot does **not** automatically open cascade PRs in adopters (this is intentional — auto-PRs into adopters would be a Quadrant D operation, and the default policy is detection-only). Instead, drift opens an Issue, and you cascade manually.
 
 If you want to automate cascade PRs anyway:
 
 1. Wait for a future release + an explicit ADR in `docs/decisions/` that authorizes the bot to open critical-path PRs in adopters. The ADR will define an opt-in `drift_check:` block in `config/projects.yml`; the schema does not yet contain it.
-2. Or hand-roll a workflow in your governance fork that, on push to `main`, opens a PR in each adopter with the canonical files copied over. This is operator-specific and we do not ship a default template — the right design depends on whether your adopters share a common owner, who reviews cascade PRs, etc.
+2. Or hand-roll a workflow in your governance repo that, on push to `main`, opens a PR in each adopter with the canonical files copied over. This is operator-specific and we do not ship a default template — the right design depends on whether your adopters share a common owner, who reviews cascade PRs, etc.
 
 ## Sizing notes
 
@@ -129,7 +129,7 @@ consumed by the bot drop to zero.
 ## Things to watch
 
 - **Decision Inbox issue volume.** With more supervised repos, more Quadrant D PRs land in `<governance_repo>` Issues. If the inbox grows past ~20 open issues, audit your classifier rules — too many false-positive Ds usually means a path heuristic is mislabelled.
-- **Cron tick duration.** The default 5-minute interval assumes each tick takes < 2 minutes. With 6+ repos and ~10 open PRs per repo, ticks may run long. Use the workflow's `metrics_summary.json` artifact to track tick duration; if it exceeds 4 minutes consistently, either prune empty/abandoned PRs or move to self-hosted.
+- **Cron tick duration.** Whatever cadence you chose assumes each tick finishes well inside the interval. With 6+ repos and ~10 open PRs per repo, ticks may run long. Use the workflow's `metrics_summary.json` artifact to track tick duration; if it exceeds 4 minutes consistently, either prune empty/abandoned PRs or move to self-hosted.
 - **Cross-repo drift incidents.** A drift incident in repo A does not stop the bot from gating PRs in repo B. The incidents are independent.
 
 ## Per-repo configuration (v1.1)

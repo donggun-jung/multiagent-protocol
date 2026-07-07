@@ -2,8 +2,8 @@
 
 <!--
   Installed by multiagent-protocol AGENT_SETUP (step 6).
-  {{PLACEHOLDERS}} are filled in during installation from the operator's
-  private config layer. Re-run AGENT_SETUP step 6 after changing
+  The double-brace tokens below are filled in during installation from the
+  operator's private config layer. Re-run AGENT_SETUP step 6 after changing
   config/preferences.yml in the governance repo.
 -->
 

@@ -527,8 +527,8 @@ Step 2 — Write the 6 config files below into \`config/\` exactly as given, the
   validate with \`python -m multiagent_protocol check-config\`. Fix and re-run
   until it prints "config OK".
 Step 3 — Deploy the cron workflow from \`deploy/bot-cron.example.yml\` into the
-  governance repo's \`.github/workflows/\` (fill the schedule/runner from
-  config/env.yml).
+  governance repo's \`.github/workflows/\` (pick the cron cadence from the
+  runbook's step-3 table; the runner tier comes from config/env.yml).
 Step 4 — [HUMAN] GitHub App: prepare the App-manifest registration URL and give
   it to me to click (this is the ONE human-click step). After I register the App
   and hand you the App ID + private key, set the repo secrets:

@@ -1,12 +1,8 @@
 name: bot-cron
 
-# Runs the bot every 5 minutes. Operators select the runner via
-# config/env.yml `runner_tier`; this workflow uses GitHub Actions Free
-# (ubuntu-latest) by default. For self-hosted, replace the runs-on
-# selector with `[self-hosted, multiagent-protocol]`.
-
-# DISPATCH-ONLY. Production ticks run from the PRIVATE governance/deploy repo
-# (e.g. company-operations) on its own runner — NOT from this public repo, which
+# DISPATCH-ONLY. Production ticks run from the operator's PRIVATE governance
+# repo using deploy/bot-cron.example.yml (which carries the schedule, cadence
+# guidance, and env wiring) — NOT from this public repo, which
 # ships no deploy config or secrets, so a scheduled tick here is only a no-op
 # that burns Actions minutes. Do NOT add MERGE_GATE_* secrets + config/ here:
 # that would arm a second, GitHub-hosted merge engine. Manual workflow_dispatch

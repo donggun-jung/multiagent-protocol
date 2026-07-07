@@ -64,7 +64,11 @@ Download the zip and commit it **in your private governance repo**:
 ```bash
 unzip ~/Downloads/multiagent-protocol-config.zip -d .
 git add -f config/          # -f: config/ is git-ignored upstream on purpose
+python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e . && python3 -m multiagent_protocol check-config
+# check-config validates the five bot files; preferences.yml is agent-layer —
+# validate it against its schema too:
+python3 -c "import json,yaml,jsonschema;jsonschema.validate(yaml.safe_load(open('config/preferences.yml')),json.load(open('schemas/preferences.schema.json')));print('preferences OK')"
 git commit -m "config: initial owner + projects + env + preferences" && git push
 ```
 

@@ -68,7 +68,7 @@ In GitHub UI **Settings → Actions → Runners**, you should now see one runner
 
 ## Step 3 — Point the bot-cron workflow at the runner
 
-Edit `.github/workflows/bot-cron.yml` in your governance fork:
+Edit `.github/workflows/bot-cron.yml` in your governance repo:
 
 ```yaml
 jobs:
