@@ -1,9 +1,10 @@
 name: release
 
 # Fires when a version tag is pushed. The Docker image publishes for every
-# v* tag. PyPI publishing is gated to v1.0.0+ (any pre-1.0 v0.x tag is skipped)
-# so a tag cannot attempt a publish before the PyPI trusted publisher is
-# configured.
+# v* tag. PyPI publishing requires BOTH a v1+ tag AND the repo variable
+# PYPI_PUBLISH_ENABLED=true — set the variable only after configuring the
+# trusted publisher on PyPI, so a tag can never fail red on a publisher that
+# does not exist yet.
 on:
   push:
     tags: ["v*"]
@@ -14,8 +15,10 @@ permissions:
 jobs:
   pypi:
     name: Publish to PyPI (trusted publishing)
-    # Skip any pre-1.0 v0.x tag; publish for v1.0.0 and later.
-    if: ${{ !startsWith(github.ref_name, 'v0.') }}
+    # Gate 1: no pre-1.0 v0.x tag ever publishes.
+    # Gate 2: PYPI_PUBLISH_ENABLED repo variable — flip to 'true' only AFTER
+    # the trusted publisher exists (https://pypi.org/manage/account/publishing/).
+    if: ${{ !startsWith(github.ref_name, 'v0.') && vars.PYPI_PUBLISH_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # OIDC trusted publishing — NO token stored in the repo

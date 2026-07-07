@@ -11,7 +11,7 @@ The simplest setup: one person, one repo they want supervised. The bot runs on G
 
 ## How to use
 
-1. Copy `config/*.yml` into your fork of `multiagent-protocol`.
+1. Copy `config/*.yml` into your private governance repo (a mirror of `multiagent-protocol`).
 2. Replace `your-github-login` with your actual GitHub login.
 3. Replace `your-github-login/some-repo` with your supervised repo's path.
 4. Push to `main`, install the GitHub App, set Actions secrets, enable the cron workflow.

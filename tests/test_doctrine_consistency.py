@@ -137,6 +137,9 @@ def schemas() -> dict:
         "agent_registry.yml": json.loads(
             (SCHEMAS / "agent_registry.schema.json").read_text()
         ),
+        "preferences.yml": json.loads(
+            (SCHEMAS / "preferences.schema.json").read_text()
+        ),
     }
 
 

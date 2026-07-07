@@ -28,7 +28,7 @@ built-in skills, not in your config, because they apply to everyone. You *tune*
 them in `config/skills.yml`; you do not re-state them. See
 [`general-preferences.md`](general-preferences.md).
 
-## Your config: five files + optional skills
+## Your config: six files + optional skills
 
 All under `config/` (see [`../../config/README.md`](../../config/README.md)):
 
@@ -39,6 +39,11 @@ All under `config/` (see [`../../config/README.md`](../../config/README.md)):
 - **`agent_registry.yml`** — which agent tools / models / machines the L4
   identity gate trusts. May name your machines → personal.
 - **`skills.yml`** — enable/disable built-ins, severity overrides. Preference.
+- **`preferences.yml`** — your working preferences (language, report style,
+  autonomy profile, taste ledger). Read by **your agents** via the
+  [`templates/adopter/`](../../templates/adopter/) kit, never by the bot.
+  The most personal file of all — which is exactly why it exists as config,
+  not framework.
 - **`config/skills/`** — optional: your own validator / classifier / branch-hook
   plugins. Loaded by `src/multiagent_protocol/skills/loader.py`.
 
@@ -74,13 +79,14 @@ tracked). Two rules:
 
 | Shape | How config is supplied | Good for |
 |---|---|---|
-| **Private fork** (simplest) | Fork this repo *private*, force-add `config/` | Most solo devs |
+| **Private mirror** (simplest) | Mirror this repo into a *private* repo ([quick-start step 1](../guide/quick-start.md) — a fork cannot be made private), force-add `config/` | Most solo devs |
 | **Separate private config repo** | Framework stays upstream; a private repo holds only `config/`, checked out in CI | Keeping framework + config in separate histories |
-| **Actions secrets** | Inject individual values as secrets/vars at runtime | Minimal-footprint, no committed config |
 
 The protocol does not force one shape. It only requires that, at bot runtime, a
 valid `config/` is present in the working directory (`load_config()` in
-`src/multiagent_protocol/config/loader.py`).
+`src/multiagent_protocol/config/loader.py`). Injecting config purely through
+Actions secrets/variables is **not** supported today — `load_config()` reads
+files, and only the four `MERGE_GATE_*` values come from the environment.
 
 ## Creating your config
 

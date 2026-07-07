@@ -4,7 +4,7 @@ title: Self-hosted runner deployment
 
 # Self-hosted runner: when GitHub Actions Free is not enough
 
-GitHub Actions Free gives **2,000 minutes/month** on private repos. The bot-cron workflow burns roughly **6-9 hours/month per supervised repo**, so once you cross ~4-5 repos you exhaust the free tier mid-month and the cron stops running.
+GitHub Actions Free gives **2,000 minutes/month** on private repos. At the classic `*/5` cadence the bot-cron workflow burns roughly **4,300-8,600 minutes/month (72-144 hours)** — more than four times the entire free tier, regardless of repo count (one tick scans all supervised repos). That is why the Free-tier default cadence is `*/30` (~720-1,440 min/month); if you want 5-minute reactions, you need your own runner.
 
 This guide explains how to move the cron tick onto your own always-on machine. After this, the per-tick Actions minutes consumed by your bot is **zero**.
 
@@ -68,7 +68,7 @@ In GitHub UI **Settings → Actions → Runners**, you should now see one runner
 
 ## Step 3 — Point the bot-cron workflow at the runner
 
-Edit `.github/workflows/bot-cron.yml` in your governance fork:
+Edit `.github/workflows/bot-cron.yml` in your governance repo:
 
 ```yaml
 jobs:

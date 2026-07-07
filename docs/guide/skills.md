@@ -16,7 +16,7 @@ Three choices:
 
 ## Step 2 — Write the file
 
-Create `config/skills/validators/no_wip_markers.py` in your fork of the protocol:
+Create `config/skills/validators/no_wip_markers.py` in your governance repo:
 
 ```python
 """Refuse to merge a PR whose commit subjects contain WIP markers."""

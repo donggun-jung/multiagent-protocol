@@ -15,7 +15,7 @@ This guide assumes you have completed [`quick-start.md`](quick-start.md) for a s
 
 ## Step 1 — Add the repo to `projects.yml`
 
-In your governance fork, edit `config/projects.yml`:
+In your governance repo, edit `config/projects.yml`:
 
 ```yaml
 governance_repo: <your-github-login>/multiagent-protocol
@@ -39,7 +39,7 @@ The bot will pick up the new installation on the next tick.
 
 ## Step 3 — Decide which files cascade
 
-The set of files that must be **byte-identical** across every supervised repo is `canonical_paths` in `schemas/mirror_paths.json` (in your governance repo). Defaults are conservative — point them at files that actually exist in your governance fork, since the seed loop in Step 4 copies each one:
+The set of files that must be **byte-identical** across every supervised repo is `canonical_paths` in `schemas/mirror_paths.json` (in your governance repo). Defaults are conservative — point them at files that actually exist in your governance repo, since the seed loop in Step 4 copies each one:
 
 ```json
 {
@@ -73,11 +73,11 @@ When you first add an adopter, it does not yet contain the canonical files. The 
 
 ```bash
 # In the new adopter repo:
-cd <your-fork>/repo-b
+cd <your-workspace>/repo-b
 git checkout -b setup/mirror-canonical-files
 
-# Copy the canonical files from your governance fork.
-# (Replace $HOME/repos/multiagent-protocol with your governance fork's path.)
+# Copy the canonical files from your governance repo.
+# (Replace $HOME/repos/multiagent-protocol with your governance repo's path.)
 for p in $(jq -r '.canonical_paths[]' "$HOME/repos/multiagent-protocol/schemas/mirror_paths.json"); do
   mkdir -p "$(dirname "$p")"
   cp "$HOME/repos/multiagent-protocol/$p" "$p"
@@ -100,27 +100,36 @@ Merge the PR. The next cron tick re-runs `drift_check` and the incident Issue au
 
 ## Step 5 — Ongoing cascade
 
-When you change a canonical file in your governance fork, every supervised repo must receive the update. The bot does **not** automatically open cascade PRs in adopters (this is intentional — auto-PRs into adopters would be a Quadrant D operation, and the default policy is detection-only). Instead, drift opens an Issue, and you cascade manually.
+When you change a canonical file in your governance repo, every supervised repo must receive the update. The bot does **not** automatically open cascade PRs in adopters (this is intentional — auto-PRs into adopters would be a Quadrant D operation, and the default policy is detection-only). Instead, drift opens an Issue, and you cascade manually.
 
 If you want to automate cascade PRs anyway:
 
 1. Wait for a future release + an explicit ADR in `docs/decisions/` that authorizes the bot to open critical-path PRs in adopters. The ADR will define an opt-in `drift_check:` block in `config/projects.yml`; the schema does not yet contain it.
-2. Or hand-roll a workflow in your governance fork that, on push to `main`, opens a PR in each adopter with the canonical files copied over. This is operator-specific and we do not ship a default template — the right design depends on whether your adopters share a common owner, who reviews cascade PRs, etc.
+2. Or hand-roll a workflow in your governance repo that, on push to `main`, opens a PR in each adopter with the canonical files copied over. This is operator-specific and we do not ship a default template — the right design depends on whether your adopters share a common owner, who reviews cascade PRs, etc.
 
 ## Sizing notes
 
-| Supervised repos | Recommended runner tier                  |
-|------------------|-------------------------------------------|
-| 1-3              | `actions-free` (the default)              |
-| 4-6              | `actions-free` works until late month; consider `self-hosted` |
-| 7+               | `self-hosted` (see [`self-hosted-runner.md`](self-hosted-runner.md)) |
+The number that matters is your **cron cadence**, not your repo count: one
+tick scans *all* supervised repos in a single run, and tick duration grows
+only mildly with each added repo.
 
-GitHub Actions Free tier gives **2,000 minutes/month** on private repos. A single bot-cron tick takes ~30-60 seconds × 12 ticks/hour × 24 hours/day × 30 days ≈ **6-9 hours/month per repo**, which exhausts the free tier around the 4-5 supervised-repo mark. The self-hosted-runner guide explains how to move the cron tick onto your own machine to escape this limit.
+| Cadence | Runner time/month (tick ≈ 30-60 s) | GitHub Free (2,000 min, private)? |
+|---------|-------------------------------------|-----------------------------------|
+| `*/5`   | ~4,300-8,600 min (72-144 h)         | No — self-hosted only             |
+| `*/15`  | ~1,400-2,900 min                    | Borderline                        |
+| `*/30`  | ~720-1,440 min                      | Yes (the `actions-free` default)  |
+| hourly  | ~360-720 min                        | Yes, slower reactions             |
+
+Many supervised repos with many open PRs stretch each tick longer (watch the
+`metrics_summary.json` artifact); when ticks pass ~2 minutes or you want
+5-minute reactions, move to a
+[self-hosted runner](self-hosted-runner.md) — after that, Actions minutes
+consumed by the bot drop to zero.
 
 ## Things to watch
 
 - **Decision Inbox issue volume.** With more supervised repos, more Quadrant D PRs land in `<governance_repo>` Issues. If the inbox grows past ~20 open issues, audit your classifier rules — too many false-positive Ds usually means a path heuristic is mislabelled.
-- **Cron tick duration.** The default 5-minute interval assumes each tick takes < 2 minutes. With 6+ repos and ~10 open PRs per repo, ticks may run long. Use the workflow's `metrics_summary.json` artifact to track tick duration; if it exceeds 4 minutes consistently, either prune empty/abandoned PRs or move to self-hosted.
+- **Cron tick duration.** Whatever cadence you chose assumes each tick finishes well inside the interval. With 6+ repos and ~10 open PRs per repo, ticks may run long. Use the workflow's `metrics_summary.json` artifact to track tick duration; if it exceeds 4 minutes consistently, either prune empty/abandoned PRs or move to self-hosted.
 - **Cross-repo drift incidents.** A drift incident in repo A does not stop the bot from gating PRs in repo B. The incidents are independent.
 
 ## Per-repo configuration (v1.1)

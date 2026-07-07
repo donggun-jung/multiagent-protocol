@@ -1,179 +1,230 @@
-# Quick start (15 minutes)
+# Quick start
 
-This guide gets `multiagent-protocol` installed on one of your repos in 15 minutes. You will have:
+There are two ways to install `multiagent-protocol`:
 
-- A GitHub App that holds merge permission on `main`.
-- A cron workflow that runs every 5 minutes.
-- A Decision Inbox in your `multiagent-protocol` fork.
-- One built-in skill ready to run.
+- **Delegated (recommended): your AI agent installs it for you.** Two ways in:
+  run the [web wizard](../wizard/index.html) and paste its generated **agent
+  prompt** — or skip even that and paste the **Interview-Mode bootstrap
+  prompt** ([README § Quick start](../../README.md#quick-start), also in
+  [`AGENT_SETUP.md`](../agent-setup/AGENT_SETUP.md)): your agent interviews
+  you conversationally in your language, builds the config from your answers,
+  then executes the runbook end to end. Either way you are needed for exactly
+  two things (GitHub App clicks + the go-live confirmation). This path exists
+  because the setup below, done by hand, takes a human roughly **1–2 hours** —
+  an agent does it in minutes and verifies each step.
+- **Manual: you do the steps yourself.** The rest of this page. Budget 1–2
+  hours for a first install, not 15 minutes.
 
-You will NOT have (yet): self-hosted runner deployment, multi-repo cascade, custom skills. See `docs/guide/multi-repo.md` and `docs/guide/skills.md` for those.
+Either way you end with:
+
+- A **private governance repo** holding your config and running the bot.
+- A GitHub App that holds merge permission on your supervised repo(s).
+- A cron workflow ticking at a cadence your Actions budget can afford.
+- A Decision Inbox where irreversible/critical changes wait for you.
 
 ## What you need
 
-- A GitHub account (Free tier is fine).
-- A repository you want to supervise. We will refer to it as `<your-supervised-repo>` below.
-- 15 minutes.
-- Local Python 3.10+ (optional — only if you want to test the bot before deploying).
+- A GitHub account (Free tier works — read the cadence table in Step 3).
+- A repository you want supervised (`<your-supervised-repo>` below).
+- Local `git`, `gh` (authenticated as you), Python 3.10+.
 
-## Step 1 — Fork the protocol repo (1 min)
+## Step 1 — Create your private governance repo (mirror, NOT a fork)
 
-Open the protocol repo on GitHub and click **Fork**. Your fork lives at `<your-github-login>/multiagent-protocol`. We will refer to this as `<your-protocol-fork>`.
-
-The fork is the **governance repo** for your installation.
-
-## Step 2 — Run the web wizard (5 min)
-
-Open [`<your-protocol-fork>/docs/wizard/index.html`](../../docs/wizard/index.html) by:
-
-- Browsing to `https://<your-github-login>.github.io/multiagent-protocol/wizard/` if you have GitHub Pages enabled, OR
-- Downloading the fork and opening `docs/wizard/index.html` in your browser locally.
-
-The wizard asks for:
-
-1. **Your GitHub login** (so it can write back to your fork).
-2. **The repos you want supervised.** Start with just one: `<your-supervised-repo>`.
-3. **Runner tier**: pick "T1 — GitHub Actions Free" for the quick start.
-4. **Skills to enable**: leave the defaults.
-
-The wizard generates five files:
-
-- `config/owner.yml`
-- `config/projects.yml`
-- `config/env.yml`
-- `config/skills.yml`
-- `config/agent_registry.yml` — the tools/models the L4 identity gate trusts
-
-It also generates a **1-click GitHub App registration URL**. Save it; you will use it in Step 4.
-
-Click "Download config.zip" and unzip it into the root of your fork.
-
-> ⚠️ **Keep your fork PRIVATE.** `config/` holds your identity and repo list —
-> personal data. It is git-ignored by default so it can never leak into the
-> public upstream; in your **private** governance fork you force-add it (`-f`).
-> See [`../concepts/configuration-model.md`](../concepts/configuration-model.md).
+Your governance repo carries your identity and repo list, so it must be
+**private** — and GitHub cannot make a fork of a public repo private. Create
+a **mirror** instead:
 
 ```bash
-cd <your-protocol-fork>
-unzip ~/Downloads/multiagent-protocol-config.zip
-git add -f config/          # -f: config/ is git-ignored by default
-git commit -m "config: initial owner + projects + env"
-git push
+gh repo create <your-login>/multiagent-protocol-gov --private
+git clone --bare https://github.com/donggun-jung/multiagent-protocol.git /tmp/map-mirror
+git -C /tmp/map-mirror push --mirror https://github.com/<your-login>/multiagent-protocol-gov.git
+rm -rf /tmp/map-mirror
+git clone https://github.com/<your-login>/multiagent-protocol-gov.git
+cd multiagent-protocol-gov
+git remote add upstream https://github.com/donggun-jung/multiagent-protocol.git
 ```
 
-## Step 3 — Create the GitHub App (3 min)
+Updates later: `git fetch upstream && git merge upstream/main` (there is no
+"Sync fork" button for a mirror — this replaces it).
 
-Open the URL the wizard gave you. It looks like:
+## Step 2 — Generate your config (web wizard, 6 files)
 
-```
-https://github.com/settings/apps/new?manifest=<URL-encoded-manifest>
-```
+Open the wizard — hosted at
+[https://donggun-jung.github.io/multiagent-protocol/wizard/](https://donggun-jung.github.io/multiagent-protocol/wizard/)
+or locally from your mirror (`docs/wizard/index.html`). Everything happens in
+your browser; nothing is transmitted anywhere.
 
-This is GitHub's App Manifest flow. It pre-fills the App's permissions, webhook settings, and description.
+It asks for your GitHub login, the repos to supervise, your runner tier, the
+skills to enable — and **your working preferences** (language, report style,
+how much your agents decide alone). It generates six files:
 
-1. GitHub shows a review page. Click **Create GitHub App for me**.
-2. On the next page, click **Install App** in the left sidebar.
-3. Choose **Only select repositories** and pick:
-   - `<your-protocol-fork>` (the governance repo)
-   - `<your-supervised-repo>` (the repo you want gated)
-4. Click **Install**.
+`owner.yml` · `projects.yml` · `env.yml` · `skills.yml` ·
+`agent_registry.yml` · `preferences.yml`
 
-On the App's settings page (`https://github.com/settings/apps/<your-app-name>`):
+Download the zip and commit it **in your private governance repo**:
 
-5. Copy the **App ID** (a number like `123456`). Save it.
-6. Scroll to **Private keys**. Click **Generate a private key**. A `.pem` file downloads.
-
-## Step 4 — Add Actions secrets (2 min)
-
-In `<your-protocol-fork>` on GitHub:
-
-1. Go to **Settings → Secrets and variables → Actions → New repository secret**.
-2. Add `MERGE_GATE_APP_ID` with the App ID from Step 3.5.
-3. Add `MERGE_GATE_PRIVATE_KEY` with the entire contents of the `.pem` file (including `-----BEGIN/END RSA PRIVATE KEY-----` lines).
-
-Delete the `.pem` file from your Downloads folder (it is no longer needed; GitHub stores the secret).
-
-## Step 5 — Enable the bot (1 min)
-
-In `<your-protocol-fork>`:
-
-1. Go to **Actions** tab.
-2. Find the **multiagent-protocol-cron** workflow. If it shows "Workflow disabled", click **Enable workflow**.
-3. Click **Run workflow** → **Run workflow** to trigger the first run manually (so you do not have to wait for the cron).
-
-Within ~30 seconds, the workflow logs should show:
-
-```
-[multiagent-protocol] cron tick start at <timestamp>
-[multiagent-protocol] scanning 1 supervised repo(s): <your-supervised-repo>
-[multiagent-protocol] tick complete: 0 PRs evaluated, 0 actions taken
+```bash
+unzip ~/Downloads/multiagent-protocol-config.zip -d .
+git add -f config/          # -f: config/ is git-ignored upstream on purpose
+python3 -m venv .venv && . .venv/bin/activate
+python3 -m pip install -e . && python3 -m multiagent_protocol check-config
+# check-config validates the five bot files; preferences.yml is agent-layer —
+# validate it against its schema too:
+python3 -c "import json,yaml,jsonschema;jsonschema.validate(yaml.safe_load(open('config/preferences.yml')),json.load(open('schemas/preferences.schema.json')));print('preferences OK')"
+git commit -m "config: initial owner + projects + env + preferences" && git push
 ```
 
-The bot is now running.
+> ⚠️ Never commit `config/` to a public repo. The framework's CI
+> (`no-config-in-public`) enforces this on the public upstream; your privacy
+> in your own deployment comes from the governance repo being **private**.
 
-## Step 6 — Test with a sample PR (3 min)
+## Step 3 — Deploy the cron workflow (and pick an honest cadence)
 
-In `<your-supervised-repo>`:
+The framework ships its own `.github/workflows/bot-cron.yml` **dispatch-only**
+(the public repo must not run a merge engine). Your deployment uses the wired
+example:
 
-1. Create a branch: `git checkout -b protocol-test`.
-2. Add a no-op change: `echo "" >> README.md && git add README.md && git commit -m "test: verify bot evaluates PRs
+```bash
+cp deploy/bot-cron.example.yml .github/workflows/bot-cron.yml
+```
 
-Agent-Tool: manual
-Agent-Model: n/a
-Agent-Session: s_quickstart-test
-Agent-Machine: localhost
-Task-Ref: round-0/quick-start
-"`.
-3. Push and open a PR via the GitHub UI.
+Open the file and pick the `cron:` cadence. Honest arithmetic — one tick costs
+~30–60 s of runner time:
 
-Within ~5 minutes, the bot will:
+| Cadence | Runner time/month | GitHub Free (2,000 min, private repos)? |
+|---|---|---|
+| `*/5` | ~72–144 h | No — self-hosted only ([guide](self-hosted-runner.md)) |
+| `*/15` | ~24–48 h | Borderline |
+| `*/30` (default) | ~12–24 h | Yes |
+| hourly | ~6–12 h | Yes, slower reactions |
 
-- Comment on the PR with the L1 evaluation result. Expect something like:
-  ```
-  Merge Gate L1 — merge blocked:
-  - C1: ready-to-merge label not set
-  Fix the items above and the bot will re-evaluate on the next cron tick.
-  ```
+Commit and push. (GitHub `schedule` can lag at peak and is auto-disabled
+after ~60 days of repo inactivity; the file keeps `workflow_dispatch` as the
+manual backstop.)
 
-Add the `ready-to-merge` label via the GitHub UI. Wait another ~5 minutes. The bot evaluates again; if your supervised repo has no other required CI checks, the bot should merge the PR.
+## Step 4 — Create the GitHub App (3 min)
+
+Open the registration URL the wizard gave you (GitHub's App Manifest flow —
+if it fails in your browser, the wizard's **Manual fallback** section lists
+the exact permission set for registering by hand at
+*Settings → Developer settings → GitHub Apps*).
+
+1. Click **Create GitHub App for me**.
+2. **Install App** → **Only select repositories** → pick your governance repo
+   **and** `<your-supervised-repo>`.
+3. Copy the **App ID**; **Generate a private key** (a `.pem` downloads).
+
+## Step 5 — Secrets (3 of them)
+
+```bash
+gh secret set MERGE_GATE_APP_ID      -R <your-login>/multiagent-protocol-gov --body "<app-id>"
+gh secret set MERGE_GATE_PRIVATE_KEY -R <your-login>/multiagent-protocol-gov < ~/Downloads/<app>.pem
+openssl rand -hex 32 | gh secret set MERGE_GATE_RECEIPT_KEY -R <your-login>/multiagent-protocol-gov
+rm ~/Downloads/<app>.pem
+```
+
+`MERGE_GATE_RECEIPT_KEY` protects approval receipts and Decision-Inbox bodies
+with an HMAC — without it, a leaked App token could forge approvals. Set all
+three.
+
+## Step 6 — First tick (observe mode)
+
+The bot starts in **observe mode**: it classifies, comments, and audits, but
+does **not** merge until you flip the switch (next step). Trigger a first run:
+
+*Actions tab → `bot-cron` → Run workflow*, or
+`gh workflow run bot-cron.yml -R <your-login>/multiagent-protocol-gov`.
+
+The run should end green, with a `tick complete` line in the log. Missing
+secrets or broken config fail loudly by design.
+
+## Step 7 — Go live
+
+When you are ready for the bot to actually merge:
+
+```bash
+gh variable set MERGE_GATE_MERGE_ENABLED -R <your-login>/multiagent-protocol-gov --body true
+```
+
+## Step 8 — Test with a sample PR
+
+In `<your-supervised-repo>`: make sure the `ready-to-merge` label exists
+(`gh label create ready-to-merge --color 0e8a16`), then:
+
+1. Branch: `git checkout -b protocol-test`.
+2. Commit a no-op change **with the five trailers**:
+   ```
+   test: verify bot evaluates PRs
+
+   Agent-Tool: manual
+   Agent-Model: n/a
+   Agent-Session: s_quickstart-test
+   Agent-Machine: localhost
+   Task-Ref: none
+   ```
+3. Push, open a PR, apply `ready-to-merge`.
+
+On the next tick the bot either **merges** (squash) or posts a **diagnostic
+comment** listing exactly which conditions failed — fix those and it merges
+on the following tick.
+
+**If your repo has no CI at all:** the CI condition is fail-closed — zero
+checks means no auto-merge, by design. Either add any minimal workflow to the
+repo, or consciously opt out with `allow_no_ci: true` in `config/env.yml`.
 
 ## What's next
 
-- **Multi-repo cascade** — supervise 2+ repos with canonical-file mirroring: [`docs/guide/multi-repo.md`](multi-repo.md).
-- **Custom skills** — write your own validators: [`docs/guide/skills.md`](skills.md).
-- **Self-hosted runner** — when GitHub Actions Free minutes run out: [`docs/guide/self-hosted-runner.md`](self-hosted-runner.md).
-- **Break-glass** — what to do when the bot is broken: [`docs/concepts/break-glass.md`](../concepts/break-glass.md).
+- **Teach your agents the rules** — install
+  [`templates/adopter/`](../../templates/adopter/) (AGENTS.md + CLAUDE.md,
+  with your preferences materialized) into each supervised repo. The
+  delegated path does this as
+  [AGENT_SETUP step 6](../agent-setup/AGENT_SETUP.md).
+- **Multi-repo cascade** — [`docs/guide/multi-repo.md`](multi-repo.md).
+- **Custom skills** — [`docs/guide/skills.md`](skills.md).
+- **Self-hosted runner** — [`docs/guide/self-hosted-runner.md`](self-hosted-runner.md).
+- **Break-glass** — [`docs/concepts/break-glass.md`](../concepts/break-glass.md).
 
 ## Troubleshooting
 
 ### The workflow does not run
-
-- Check `Settings → Secrets and variables → Actions` — both `MERGE_GATE_APP_ID` and `MERGE_GATE_PRIVATE_KEY` should be listed.
-- Check `Settings → Actions → General → Workflow permissions` — the workflow needs `Read and write permissions` (or use the App's permissions, which is the default).
-- Check the App is installed on **both** the protocol repo and the supervised repo, not just one.
+- Secrets present? (`gh secret list`) — all three `MERGE_GATE_*`.
+- Are you on the deployed workflow (Step 3) or still on upstream's
+  dispatch-only file? The deployed one has a `schedule:` block.
+- Scheduled runs lag at peak and die after ~60 days of inactivity —
+  `gh workflow run` is the backstop.
+- App installed on **both** repos (governance + supervised)?
 
 ### The bot comments but does not merge
-
-- Verify the PR has the `ready-to-merge` label (C1).
-- Verify all required checks are green (C2).
-- Verify the PR base SHA is current with `main` (C4) — push a rebase if not.
-- Verify the PR's commits have all 5 `Agent-*` trailers (C5).
+- Is `MERGE_GATE_MERGE_ENABLED` set to `true` (Step 7)? Observe mode logs
+  `observe-only: would have merged …` instead of merging.
+- `ready-to-merge` label present, and applied by an **allowlisted** account
+  (`config/owner.yml`)?
+- All required checks green — or `allow_no_ci` consciously set?
+- Base up to date with `main`? All five trailers well-formed? The diagnostic
+  comment names the exact failing condition.
 
 ### "PEM private key" auth failure
+- The secret must contain the **entire** PEM including the BEGIN/END lines.
+- The key must be the RSA key GitHub generated for the App.
 
-- The `MERGE_GATE_PRIVATE_KEY` secret must contain the **entire** PEM, including the header and footer lines. If you copied only the base64 body, it will fail.
-- The PEM must be RSA, not Ed25519. GitHub Apps issue RSA keys by default; if you swapped to something else manually, swap back.
+### The wizard cannot open the App-manifest URL
+- Use the wizard's **Manual fallback**: it prints the full registration URL
+  and the permission set for registering the App by hand.
 
-### The wizard says my browser cannot generate the App Manifest URL
+## FAQ
 
-- The wizard is JavaScript-only and runs in your browser. If the pop-up is blocked or the URL is too long, expand the wizard's **Manual fallback** section under Step 7: it shows the full registration URL (copy it into your address bar) plus the raw manifest JSON for registering the App by hand at `https://github.com/settings/apps/new`.
+**Do I need to keep my governance repo up to date with upstream?**
+Periodically, yes: `git fetch upstream && git merge upstream/main`. Your
+`config/` and your deployed workflow are yours; if the workflow file
+conflicts, keep your version.
 
-## Frequently asked questions
+**Can I use this with a private supervised repo?** Yes — that is the primary
+use case, and exactly what GitHub Free's missing branch protection leaves
+unprotected.
 
-**Do I need to keep the protocol fork up-to-date with upstream?** Yes — periodically. Use the GitHub UI's "Sync fork" button to pull upstream changes. The cascade workflow then propagates updated canonical files to your supervised repos.
+**What happens if I uninstall the App?** The bot stops on the next tick.
+Merging falls back to whatever branch protection your repo has (on Free +
+private: none).
 
-**Can I use this with a private repo?** Yes — that is the primary use case. Set the App installation to "Only select repositories" and pick your private repo. The bot reads/writes via the App's token; no public visibility required.
-
-**What happens if I uninstall the App?** The bot stops immediately on the next tick (no GitHub token). PRs in your supervised repo are no longer gated; merging falls back to whatever your repo's branch-protection (or lack of it) allows.
-
-**Does this work on GitLab / Bitbucket / Codeberg?** Not yet. The bot's API client is GitHub-specific. Adding adapter support for another forge is an Issue-worthy proposal — see `CONTRIBUTING.md`.
+**Does this work on GitLab / Bitbucket / Codeberg?** Not yet — the API client
+is GitHub-specific. Adapters are welcome, see `CONTRIBUTING.md`.

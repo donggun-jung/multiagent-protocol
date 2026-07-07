@@ -35,7 +35,7 @@ Source files under `src/`, `tests/`, `schemas/`, `.github/workflows/`, top-level
 
 **Why**: Personal data leaks through example code more often than people realize. A real GitHub login or email left in a fork's example becomes a real attack surface (someone could spear-phish the address, or use the handle to build a believable social-engineering pretext) once the fork is public. The protocol refuses to ship its own embarrassment.
 
-**How to disable**: edit `.github/workflows/tests.yml` to drop the `no-personal-data` job. The scan script (`scripts/scan_no_personal_data.py`) is itself a regular file; you can also edit its patterns. But the default is "on" for every fresh fork.
+**How to disable**: edit `.github/workflows/tests.yml` to drop the `no-personal-data` job. The scan script (`.github/scripts/scan_no_personal_data.py`) is itself a regular file; you can also edit its patterns. But the default is "on" for every fresh fork.
 
 ## 3. Agent-* commit trailers required
 

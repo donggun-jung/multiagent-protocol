@@ -17,6 +17,7 @@ for the full model.
 | `env.yml` | Runner tier + your GitHub App slug |
 | `agent_registry.yml` | Agent tools / models / machines the L4 gate trusts |
 | `skills.yml` | Which built-in skills to enable/disable + severity overrides |
+| `preferences.yml` | Your working preferences (language, report style, autonomy profile, taste ledger) — read by **your agents**, not the bot. See [`../docs/agent-setup/AGENT_SETUP.md`](../docs/agent-setup/AGENT_SETUP.md) |
 | `skills/` | Optional: your own validator / classifier / branch-hook plugins |
 
 ## Privacy

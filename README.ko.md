@@ -5,11 +5,11 @@
 > 사람 1명, 에이전트 여럿. 서로 다른 세션, 서로 다른 머신, 서로 다른 모델 — 같은 `main`. 이 프로토콜은 그들이 서로를 밟지 않도록 막고, merge를 self-built check로 게이트하며, **돌이킬 수 없는 결정은 에이전트가 아니라 사람에게 라우팅합니다.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: v1.0](https://img.shields.io/badge/status-v1.0-brightgreen.svg)](STATUS.md)
+[![Status: v1.1](https://img.shields.io/badge/status-v1.1-brightgreen.svg)](STATUS.md)
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 
-> **v1.0.0.** Cron 오케스트레이터가 **가동 중**입니다: fork가 열린 PR을 평가하고, auto-approve 가능한 quadrant(A/B/C)를 머지하며, 비가역+critical 변경(D)은 Decision Inbox로 라우팅하고, `main`을 감사(L2+L5)합니다. 여러 차례 독립 외부 리뷰로 hardening했습니다(Quadrant D 승인 우회 1건 발견·차단 포함). 일부 기능은 의도적으로 **post-1.0**입니다 — 자동 revert-PR 생성, 자동 60일 L4 burn-in(현재는 `severity_overrides`로 수동 승격), concept 문서 한국어 미러 — [`STATUS.md`](STATUS.md) 참고.
+> **v1.1.0.** Cron 오케스트레이터가 **가동 중**입니다: 당신의 비공개 설치본이 열린 PR을 평가하고, auto-approve 가능한 quadrant(A/B/C)를 머지하며, 비가역+critical 변경(D)은 Decision Inbox로 라우팅하고, `main`을 감사(L2+L5)합니다. **1.1의 핵심: 위임 설치** — [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)를 **당신의 AI 에이전트에게 건네면 에이전트가 전 과정을 설치**합니다(사람은 두 번만: App 등록 클릭, 실동작 확인). 여기에 **운영자 취향 레이어**(`config/preferences.yml`)가 추가되어 에이전트들이 당신의 언어·보고 스타일·자율성 수위를 따릅니다. 일부 기능은 의도적으로 이후 릴리스입니다 — 자동 revert-PR 생성, 자동 60일 L4 burn-in(현재는 `severity_overrides`로 수동 승격), PyPI 배포 — [`STATUS.md`](STATUS.md) 참고.
 
 ---
 
@@ -18,95 +18,76 @@
 여러 AI 에이전트를 같은 repo에 쓰다가 다음 중 하나라도 겪었다면:
 
 1. **동시 편집 충돌**: 에이전트 A가 `app/auth.py`를 고치는 동안 에이전트 B(다른 머신, 다른 모델)가 같은 파일을 고치고 있음. 아무도 몰랐고, 한 시간을 reconcile에 쓰게 됩니다.
-2. **에이전트가 조용히 비가역적 변경을 머지**: "flaky test 고침"이라고 한 게 사실은 그 테스트를 삭제. 본인이 알기 전에 `main`에 이미 들어가 있음.
-3. **누가 뭘 했는지 모름**: 밤 사이 3개 commit이 `Claude` / `Codex` / `Cursor` 로 서명되어 들어왔는데, 어느 세션이 무슨 reasoning으로 했는지 추적 불가.
-4. **GitHub Free private repo에 branch protection 없음**: required status checks + bot-only merge 원하지만, Pro 결제 하기 싫거나 repo public화 하기 싫음.
+2. **비가역 변경의 조용한 merge**: 어떤 모델이 "flaky 테스트를 고친다"며 테스트를 삭제. 발견했을 때는 이미 `main`에 올라간 뒤.
+3. **누가 뭘 했는지 알 수 없음**: 밤새 커밋 3개가 `Claude`/`Codex`/`Cursor` 서명으로 올라왔는데, 어떤 세션이 어떤 근거로 했는지 추적 불가.
+4. **GitHub Free는 private repo에 branch protection이 없음**: "required status checks + bot 경유 merge만 허용"을 원하지만 GitHub Pro 결제는 원치 않음.
 
-`multiagent-protocol`은 **GitHub Free 위에서 동작하는, vendor-neutral, portable한 self-built branch protection**입니다. 다음을 강제합니다:
+`multiagent-protocol`은 **이식 가능하고, 벤더 중립적이며, Free tier에서 전부 자기 계정 안에서 도는 self-built branch protection**입니다:
 
-- **L1 사전 머지 게이트**: PR이 머지되기 전에 5 조건 (`ready-to-merge` 라벨, CI green, owner 승인 또는 classifier auto-approve, base up-to-date, identity trailer)
-- **L2 사후 재검증**: 머지된 commit에서 같은 체크 재실행; 실패(인프라성 실패 제외)는 `git revert` 명령을 담은 incident Issue로 보고 — 자동 revert-PR 생성은 post-1.0
-- **L3 race-guard**: PR base를 머지 직전에 `origin/main` HEAD와 재비교; drift 시 auto-rebase + 재CI
-- **L4 identity gate**: 모든 commit의 `Agent-Tool`, `Agent-Model`, `Agent-Session`, `Agent-Machine`, `Task-Ref` trailer를 등록한 registry와 대조
-- **L5 break-glass auditor**: `[break-glass-*]` 접두 commit을 `main`에서 스캔하고 24시간 내 ADR 요구
+- **머지 전 게이트 (L1)** — 라벨(허용 계정이 붙였는지 확인), CI green, 오너 승인(분류기 판정 연동), base 최신성, 신원 트레일러 5종.
+- **머지 후 재검증 (L2)** — 머지된 커밋에 필수 체크를 재실행; 실패 시 인시던트 이슈(+ revert 명령 안내).
+- **레이스 가드 (L3)** — 머지 직전 base 재확인 + 서버측 `sha` 전제조건; 뒤처진 브랜치는 자동 rebase.
+- **신원 게이트 (L4)** — 모든 커밋의 `Agent-*` 트레일러 형식 검증(하드블록) + 레지스트리 도구/모델 대조(기본 advisory, `severity_overrides`로 하드블록 승격 가능).
+- **비상 우회 감사 (L5)** — `main`의 `[break-glass-*]` 커밋을 탐지하고 24시간 내 ADR을 요구.
 
-프로토콜은 작은 봇 (Python ~3 kLOC, plugin 확장)과 doctrine layer (에이전트가 세션 시작 시 읽는 Markdown)로 나뉩니다. 봇은 GitHub App + 5분 cron으로 동작 — 작은 repo는 GitHub Actions Free tier, 큰 워크로드는 self-hosted runner.
+## 왜 "Claude"/"Codex"가 아니라 "multiagent"인가
 
-## 왜 "Claude" / "Codex"가 아니고 "multiagent"인가?
+의도적으로 벤더 중립입니다. 모든 에이전트는 `config/agent_registry.yml`에 등록된 도구 중 하나일 뿐이고, 신원은 API가 아니라 **커밋 트레일러**로 강제됩니다. 어떤 벤더도 특별 대우 없음 — 전부 기본 불신(untrusted-by-default).
 
-프로토콜은 의도적으로 vendor-neutral입니다. 모든 에이전트를 다음 중 하나로 취급합니다:
+## 프레임워크 vs 나의 설정
 
-- `claude-code`, `codex`, `cursor`, `gemini-cli`, `aider`, `<직접 등록한 새 에이전트>`
+이 repo는 **프레임워크**(공개·공유·범용)입니다. 당신의 **설정**(신원, repo 목록, 에이전트 레지스트리, **업무 취향**)은 별도의 **비공개** 데이터 레이어 `config/`에 삽니다. 제품 = 프레임워크 + 당신의 설정 — 코드의 "공개판/개인판"은 없고 설정만 다릅니다. 웹 위저드가 그 설정 레이어를 만들어 줍니다. [`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md) 참고.
 
-identity는 commit trailer로 강제되지 (API endpoint X), 새 에이전트 vendor 추가는 `config/agent_registry.yml`에 한 줄 등록입니다. 어떤 에이전트도 특권 없음; 모두 동등하게 untrusted-by-default.
+## 빠른 시작
 
-## 이게 아닌 것
+권장 경로는 **위임 설치 — 당신의 AI 에이전트가 전부 설치**합니다:
 
-- **CI/CD 시스템 X**: 본인 test 가져와야; 봇은 GitHub에서 CI status를 읽기만 합니다.
-- **코드 리뷰어 X**: 본인에게 또는 auto-approval classifier에게 PR을 라우팅; diff 품질에 의견 안 냄.
-- **GitHub Pro branch protection 대체 X**: 결제 가능하면 GitHub 내장 protection이 더 간단. 이건 Free tier 또는 self-build 이유 있는 사용자용.
-- **Multi-tenant SaaS X**: 각 사용자가 본인 copy 운영. 계정/서버 없음 (optional web wizard는 브라우저에서 도는 정적 사이트).
+1. [웹 위저드](https://donggun-jung.github.io/multiagent-protocol/wizard/)를 열고 답합니다: GitHub 로그인, 감독할 repo, 러너 티어, 켤 스킬, 그리고 **업무 취향**(언어·보고 스타일·자율성). 전부 브라우저 안에서만 처리됩니다.
+2. 위저드가 **6개 YAML 설정 파일**(`owner`, `projects`, `env`, `skills`, `agent_registry`, `preferences`) + GitHub App 등록 URL + **에이전트 프롬프트**를 생성합니다.
+3. 그 프롬프트를 당신의 에이전트(Claude Code, Codex 등)에게 붙여넣습니다. 에이전트가 [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)를 실행합니다: 비공개 **미러** 거버넌스 repo(포크 아님 — 공개 repo의 포크는 private 전환 불가), 설정, cron 워크플로, 시크릿 3종, 라벨, 에이전트 규율 킷, 관찰 모드 시운전, 실동작 전환, E2E 검증까지.
+4. 사람이 하는 일은 정확히 두 번: GitHub App 등록 클릭, 그리고 실동작 최종 확인.
 
-## Framework vs. 내 config
+**위저드조차 필요 없습니다 — 완전 대화형 설치:** 아래 문단을 에이전트에게
+붙여넣으면, 에이전트가 **당신의 언어로 인터뷰**해서 답변으로 설정을 만들고,
+사람이 해야 하는 두 순간은 클릭 단위로 안내합니다(프롬프트 자체는 영문 —
+에이전트가 가장 안정적으로 따르는 언어일 뿐, 대화는 한국어로 진행됩니다):
 
-이 repo는 **framework** (공유·공개·generic)입니다. 내 **config** (identity, repo 목록, agent registry, custom skill)는 `config/` 아래 별도의 **private** 데이터 레이어입니다. 제품 = framework + 내 config; *코드*의 "공개 버전"과 "내 버전"이 따로 있는 게 아니라 config만 다릅니다. Web wizard가 이 config 레이어를 생성해 줍니다. [`docs/concepts/configuration-model.md`](docs/concepts/configuration-model.md) (영문) 참고.
+```text
+You are my AI coding agent. Set up multiagent-protocol for me.
+Fetch and follow: https://raw.githubusercontent.com/donggun-jung/multiagent-protocol/main/docs/agent-setup/AGENT_SETUP.md
+I have not prepared any config. Start with the runbook's Interview Mode:
+interview me in my own language (one batched round, offer defaults), build
+the six config files from my answers, confirm the summary back to me, then
+execute steps 0-9. Involve me only at the [HUMAN] steps, and when we reach
+them, walk me through the clicks step by step.
+```
 
-## Quick start (15분)
+손으로 직접 하고 싶다면: [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) — 1–2시간을 잡으세요.
 
-가장 빠른 길은 **web wizard**:
+## 아키텍처 (한 문단)
 
-1. [https://donggun-jung.github.io/multiagent-protocol/wizard/](https://donggun-jung.github.io/multiagent-protocol/wizard/) 브라우저에서 열기.
-2. 입력: GitHub login, supervised할 repos, 선호 runner tier, 활성화할 built-in skills.
-3. wizard가 5 YAML config (`owner.yml`, `projects.yml`, `env.yml`, `skills.yml`, `agent_registry.yml`) + 1-click GitHub App 등록 URL 생성.
-4. `.zip` 다운로드, 본인 fork에 drop, App 등록, Actions secret 2개 설정, push.
-
-또는 wizard 건너뛰고 [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) 수동 가이드.
-
-## Architecture (한 문단)
-
-봇은 **4 모듈** (의도적으로 5-layer 아님 — layer는 1-to-1로 매핑되지만 `pr_validator.py`가 L1+L3+L4 통합, `branch_supervisor.py`가 L2+L5 통합). 상태는 GitHub에 (PR 객체, Decision Inbox용 Issue, repo 파일의 canonical doctrine). 봇 자신은 cron tick 간 stateless. 사용자가 결정해야 할 것(Quadrant D: 비가역 + critical)은 `decision:pending-owner` 라벨 Issue로 도착; 나머지(A/B/C)는 classifier가 auto-approve.
-
-전체 설계: [`docs/concepts/architecture.md`](docs/concepts/architecture.md) (영문).
+봇은 **4개 모듈**입니다(L1+L3+L4는 `pr_validator.py`, L2+L5는 `branch_supervisor.py`로 통합). 상태는 GitHub에 삽니다(PR 객체, Decision Inbox 이슈, 거버넌스 repo의 `bot-state` 브랜치). 봇 자체는 틱 간 무상태·멱등입니다. 당신이 결정해야 하는 것(Quadrant D: 비가역+critical)만 `decision:pending-owner` 이슈로 도착하고, 나머지(A/B/C)는 분류기가 자동 처리하며 기록을 남깁니다.
 
 ## 상태
 
-- **v1.0.0 (현재)**: 첫 stable release. L1–L5 end-to-end 강제, Decision Inbox open + poll/resolve, 배포 파이프라인(Docker/Action 가동, tag 시 PyPI), 167 테스트. 여러 차례 독립 외부 리뷰로 hardening.
-- **Post-1.0**: 자동 revert-PR 생성, 자동 60일 L4 burn-in, concept 문서 한국어 미러, multi-account 설치 ([`STATUS.md`](STATUS.md) 참고).
-- **Maintenance**: best-effort, SLA 없음. [`MAINTAINERS.md`](MAINTAINERS.md) 참고.
+- **v1.1.0** (현재): 위임 설치(AGENT_SETUP 런북 + deploy 예시), 운영자 취향 레이어, 위저드 v2(6파일 + 위임 프롬프트), Free tier 케이던스 정직화, RC 이후 신뢰성·보안 하드닝. 태그마다 GHCR Docker 이미지; GitHub Action은 `@v1.1.0` 핀. 테스트 435개.
+- **이후**: PyPI 배포(트러스티드 퍼블리셔 설정 대기 — 그동안은 미러 설치), 자동 revert-PR, 자동 60일 L4 burn-in, concept 문서 한국어 미러, 다중 계정 설치 — [`STATUS.md`](STATUS.md).
+- **유지보수**: best-effort, no SLA — [`MAINTAINERS.md`](MAINTAINERS.md).
 
 ## 문서
 
-- [`docs/ko/guide/quick-start.md`](docs/ko/guide/quick-start.md) — 15분 셋업 (한국어 ✓)
+- [에이전트 대행 설치 안내 (한국어)](docs/ko/agent-setup/README.md) — 설치를 에이전트에게 맡기는 법
+- [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) — 에이전트가 실행하는 런북 (영문)
+- [빠른 시작 (한국어)](docs/ko/guide/quick-start.md) — 위임 + 수동 경로
+- [`templates/adopter/`](templates/adopter/) — 감독 repo용 에이전트 규율 킷(트레일러·라벨·취향 반영)
+- [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — 4모듈 설계 (영문)
+- [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — 자율성 분류기 (영문)
+- [Korean mirror](docs/ko/) — 한국어 문서 목록
 
-다음 concept/guide 문서들은 현재 **영어 only**이며 한국어 미러는 **post-1.0** 로드맵입니다:
+## 기여 / 보안 / 라이선스
 
-- [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — 봇 4-module 구조
-- [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — 자율성 classifier
-- [`docs/concepts/five-tier-files.md`](docs/concepts/five-tier-files.md) — repo 5-tier 파일 구조
-- [`docs/concepts/decision-inbox.md`](docs/concepts/decision-inbox.md) — Quadrant D human-in-loop
-- [`docs/concepts/break-glass.md`](docs/concepts/break-glass.md) — 봇 우회 doctrine
-- [`docs/concepts/skills-plugin.md`](docs/concepts/skills-plugin.md) — plugin 인터페이스
-- [`docs/concepts/mirror-cascade.md`](docs/concepts/mirror-cascade.md) — canonical-paths cascade
-- [`docs/concepts/general-preferences.md`](docs/concepts/general-preferences.md) — built-in default 10가지
-- [`docs/guide/multi-repo.md`](docs/guide/multi-repo.md) — multi-repo cascade
-- [`docs/guide/self-hosted-runner.md`](docs/guide/self-hosted-runner.md) — self-hosted runner 배포
-- [`docs/guide/skills.md`](docs/guide/skills.md) — custom validator 작성
-- [`docs/guide/break-glass.md`](docs/guide/break-glass.md) — break-glass 절차
-
-한국어 번역이 필요한 부분이 있으면 Issue로 알려주세요.
-
-## 기여
-
-[`CONTRIBUTING.md`](CONTRIBUTING.md) 참고. PR 환영. 이 프로젝트는 자기 프로토콜을 자기에게 적용합니다 (eat your own dog food).
-
-## 보안
-
-취약점 발견 시 [`SECURITY.md`](SECURITY.md)의 responsible-disclosure 절차.
-
-## 라이선스
-
-Apache License 2.0 — [`LICENSE`](LICENSE) 참고.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) · Apache License 2.0 ([`LICENSE`](LICENSE))
 
 ---
 
-*이 프로젝트는 한 사용자의 identity, VPS, 개인 프로젝트가 hardcode된 private predecessor에서 얻은 교훈을 바탕으로 만들어졌습니다. 교훈은 살아남았고, 개인 데이터는 살아남지 않았습니다.*
+*이 프로젝트는 한 오너의 신원·서버·프로젝트가 하드코딩돼 있던 비공개 전신(前身)의 실수에서 배웠습니다. 교훈은 살아남았고, 개인정보는 남지 않았습니다.*

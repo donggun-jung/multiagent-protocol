@@ -46,7 +46,7 @@
 
   <label>
     <span data-i18n="step2.governance">Governance repo (where doctrine + Decision Inbox live)</span>
-    <input type="text" id="governance-repo" placeholder="your-github-login/multiagent-protocol">
+    <input type="text" id="governance-repo" placeholder="your-github-login/multiagent-protocol-gov">
   </label>
 
   <label>
@@ -61,7 +61,155 @@
 </section>
 
 <section class="step" data-step="3">
-  <h2><span class="step-num">3</span> <span data-i18n="step3.title">Runner tier</span></h2>
+  <h2><span class="step-num">3</span> <span data-i18n="prefs.title">Preferences — your working style</span></h2>
+  <p class="step-help" data-i18n="prefs.help">How your agents talk to you and how much they decide on their own. This is the personal layer — it goes into your private governance repo and is read by your agents, never by the bot. Everything here has a sensible default; skip fields you do not care about.</p>
+
+  <fieldset class="prefs-group">
+    <legend data-i18n="prefs.lang_legend">Language</legend>
+
+    <label>
+      <span data-i18n="prefs.primary_lang">Language your agents speak to you</span>
+      <select id="prefs-primary-lang">
+        <option value="en" data-i18n="prefs.lang_en">English (en)</option>
+        <option value="ko" data-i18n="prefs.lang_ko">Korean (ko)</option>
+        <option value="other" data-i18n="prefs.lang_other">Other…</option>
+      </select>
+    </label>
+
+    <label id="prefs-primary-lang-other-wrap" class="hidden">
+      <span data-i18n="prefs.primary_lang_other">Language code (2-16 characters, e.g. ja, de, fr)</span>
+      <input type="text" id="prefs-primary-lang-other" placeholder="ja" autocomplete="off" maxlength="16">
+    </label>
+
+    <span class="field-label" data-i18n="prefs.reports_lang">Language for written deliverables (reports, docs)</span>
+    <label class="radio">
+      <input type="radio" name="prefs-reports" value="primary" checked>
+      <span>
+        <strong data-i18n="prefs.reports_primary">Same as primary</strong>
+        <small data-i18n="prefs.reports_primary_help">Reports come back in the language above.</small>
+      </span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="prefs-reports" value="english">
+      <span>
+        <strong data-i18n="prefs.reports_english">English</strong>
+        <small data-i18n="prefs.reports_english_help">Deliverables always in English, even if you talk in another language.</small>
+      </span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="prefs-reports" value="bilingual">
+      <span>
+        <strong data-i18n="prefs.reports_bilingual">Bilingual</strong>
+        <small data-i18n="prefs.reports_bilingual_help">Primary language and English side by side.</small>
+      </span>
+    </label>
+  </fieldset>
+
+  <fieldset class="prefs-group">
+    <legend data-i18n="prefs.comm_legend">Communication</legend>
+
+    <span class="field-label" data-i18n="prefs.report_style">Report style</span>
+    <label class="radio">
+      <input type="radio" name="prefs-report-style" value="conclusion-first" checked>
+      <span>
+        <strong data-i18n="prefs.report_style_conclusion">Conclusion first</strong>
+        <small data-i18n="prefs.report_style_conclusion_help">Verdict in the first sentence, details after.</small>
+      </span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="prefs-report-style" value="detailed">
+      <span>
+        <strong data-i18n="prefs.report_style_detailed">Detailed narrative</strong>
+        <small data-i18n="prefs.report_style_detailed_help">A full walk-through is fine; no need to lead with the answer.</small>
+      </span>
+    </label>
+
+    <span class="field-label" data-i18n="prefs.decision_format">How decisions reach you</span>
+    <label class="radio">
+      <input type="radio" name="prefs-decision-format" value="options-menu" checked>
+      <span>
+        <strong data-i18n="prefs.decision_options">Options menu</strong>
+        <small data-i18n="prefs.decision_options_help">2-4 labeled options with pros and cons. Good if you are not a developer.</small>
+      </span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="prefs-decision-format" value="direct-question">
+      <span>
+        <strong data-i18n="prefs.decision_direct">Direct question</strong>
+        <small data-i18n="prefs.decision_direct_help">Plain questions are fine; you will weigh the trade-offs yourself.</small>
+      </span>
+    </label>
+
+    <label class="checkbox">
+      <input type="checkbox" id="prefs-batch-questions" checked>
+      <span>
+        <strong data-i18n="prefs.batch_questions">Batch questions</strong>
+        <small data-i18n="prefs.batch_questions_help">Collect questions and ask them together instead of interrupting one at a time.</small>
+      </span>
+    </label>
+  </fieldset>
+
+  <fieldset class="prefs-group">
+    <legend data-i18n="prefs.autonomy_legend">Autonomy</legend>
+    <p class="step-help" data-i18n="prefs.autonomy_help">How much your agents do without asking. This does not change what the bot enforces — Quadrant D always waits for you — it only tunes how your agents behave below that line.</p>
+
+    <label class="radio">
+      <input type="radio" name="prefs-autonomy" value="cautious">
+      <span>
+        <strong data-i18n="prefs.autonomy_cautious">Cautious</strong>
+        <small data-i18n="prefs.autonomy_cautious_help">Confirm before anything outward-facing or hard to undo, even when the bot would allow it.</small>
+      </span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="prefs-autonomy" value="standard" checked>
+      <span>
+        <strong data-i18n="prefs.autonomy_standard">Standard</strong>
+        <small data-i18n="prefs.autonomy_standard_help">Follow the four-quadrant model as-is.</small>
+      </span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="prefs-autonomy" value="delegating">
+      <span>
+        <strong data-i18n="prefs.autonomy_delegating">Delegating</strong>
+        <small data-i18n="prefs.autonomy_delegating_help">Proceed on everything the bot allows and report afterward.</small>
+      </span>
+    </label>
+
+    <label>
+      <span data-i18n="prefs.quiet_hours">Quiet hours (optional, 24h clock, e.g. 22:30-07:30)</span>
+      <input type="text" id="prefs-quiet-hours" placeholder="22:30-07:30" autocomplete="off">
+    </label>
+
+    <label>
+      <span data-i18n="prefs.timezone">Timezone (optional, IANA name)</span>
+      <input type="text" id="prefs-timezone" placeholder="Europe/Berlin" autocomplete="off">
+    </label>
+  </fieldset>
+
+  <fieldset class="prefs-group">
+    <legend data-i18n="prefs.ledger_legend">Taste ledger seed (optional)</legend>
+    <p class="step-help" data-i18n="prefs.ledger_help">Working rules you already know you repeat to agents — one per line. Each becomes a dated entry your agents follow from session one. You can keep adding to it later.</p>
+
+    <label>
+      <span data-i18n="prefs.ledger_field">One rule per line</span>
+      <textarea id="prefs-taste-ledger" rows="4" placeholder="Weekly status summaries on Friday afternoon, never Monday morning.&#10;When a chart and a table show the same thing, use the chart."></textarea>
+    </label>
+  </fieldset>
+
+  <fieldset class="prefs-group">
+    <legend data-i18n="prefs.vocab_legend">Vocabulary seed (optional)</legend>
+    <p class="step-help" data-i18n="prefs.vocab_help">Your shorthand — nicknames, acronyms, internal terms — so agents read your requests like a colleague would. One per line as <code>term: meaning</code>.</p>
+
+    <label>
+      <span data-i18n="prefs.vocab_field">One "term: meaning" per line</span>
+      <textarea id="prefs-vocabulary" rows="4" placeholder="the storefront: the customer-facing website repo (not the admin tools)&#10;EOD: end of day, my time"></textarea>
+    </label>
+    <p class="warn hidden" id="prefs-vocab-warning" data-i18n="prefs.vocab_warning"></p>
+  </fieldset>
+</section>
+
+<section class="step" data-step="4">
+  <h2><span class="step-num">4</span> <span data-i18n="step3.title">Runner tier</span></h2>
   <p class="step-help" data-i18n="step3.help">Where does the bot's cron tick run? Most users start with the Free tier.</p>
 
   <label class="radio">
@@ -89,8 +237,8 @@
   </label>
 </section>
 
-<section class="step" data-step="4">
-  <h2><span class="step-num">4</span> <span data-i18n="step4.title">Built-in skills</span></h2>
+<section class="step" data-step="5">
+  <h2><span class="step-num">5</span> <span data-i18n="step4.title">Built-in skills</span></h2>
   <p class="step-help" data-i18n="step4.help">Toggle the built-in skills. Leave defaults unless you have a specific reason to disable.</p>
 
   <label class="checkbox">
@@ -126,8 +274,8 @@
   </label>
 </section>
 
-<section class="step" data-step="5">
-  <h2><span class="step-num">5</span> <span data-i18n="step5.title">Agent registry</span></h2>
+<section class="step" data-step="6">
+  <h2><span class="step-num">6</span> <span data-i18n="step5.title">Agent registry</span></h2>
   <p class="step-help" data-i18n="step5.help">Which AI agents do you use? The bot accepts commits only from these agents' identities.</p>
 
   <div class="agent-checkboxes">
@@ -141,14 +289,14 @@
   </div>
 
   <label>
-    <span data-i18n="step5.bot_slug">GitHub App slug (you'll register the App in Step 7; pick a lowercase hyphenated name)</span>
+    <span data-i18n="step5.bot_slug">GitHub App slug (you'll register the App in Step 8; pick a lowercase hyphenated name)</span>
     <input type="text" id="bot-app-slug" placeholder="your-merge-gate" pattern="[a-z0-9][a-z0-9-]*[a-z0-9]">
   </label>
 </section>
 
-<section class="step" data-step="6">
-  <h2><span class="step-num">6</span> <span data-i18n="step6.title">Download config files</span></h2>
-  <p class="step-help" data-i18n="step6.help">When you click Generate, the wizard creates the 5 config files. Either download as a ZIP and unzip into your repo, or copy each file individually and open the pre-filled GitHub "create file" link.</p>
+<section class="step" data-step="7">
+  <h2><span class="step-num">7</span> <span data-i18n="step6.title">Download config files</span></h2>
+  <p class="step-help" data-i18n="step6.help">When you click Generate, the wizard creates the 6 config files. Either download as a ZIP and unzip into your repo, or copy each file individually and open the pre-filled GitHub "create file" link.</p>
 
   <button type="button" id="generate" class="primary" data-i18n="step6.generate">Generate config files</button>
 
@@ -165,12 +313,12 @@
   </div>
 </section>
 
-<section class="step" data-step="7">
-  <h2><span class="step-num">7</span> <span data-i18n="step7.title">Register the GitHub App</span></h2>
+<section class="step" data-step="8">
+  <h2><span class="step-num">8</span> <span data-i18n="step7.title">Register the GitHub App</span></h2>
   <p class="step-help" data-i18n="step7.help">After applying the config files, click below to register the GitHub App with the right permissions pre-filled. GitHub will open in a new tab.</p>
 
   <button type="button" id="open-manifest" class="primary" disabled data-i18n="step7.open">Open GitHub App registration</button>
-  <p class="note" data-i18n="step7.note">This button activates after you generate config files (Step 6). The manifest is built from your inputs.</p>
+  <p class="note" data-i18n="step7.note">This button activates after you generate config files (Step 7). The manifest is built from your inputs.</p>
 
   <details id="manifest-fallback" class="hidden">
     <summary data-i18n="step7.fallback_summary">Manual fallback (button blocked or URL too long)</summary>

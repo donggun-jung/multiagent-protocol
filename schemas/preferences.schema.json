@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://donggun-jung.github.io/multiagent-protocol/schemas/preferences.schema.json",
+  "title": "preferences.yml",
+  "description": "Operator working preferences — the personal layer of an installation. Consumed by the operator's AI agents (via the templates/adopter kit and AGENT_SETUP step 6), never by the bot itself. Lives ONLY in the operator's private governance repo, like every other config/ file. The public framework ships the schema and blank examples; each operator's values stay their own.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["language"],
+  "properties": {
+    "language": {
+      "type": "object",
+      "description": "What language your agents speak to you in.",
+      "additionalProperties": false,
+      "required": ["primary"],
+      "properties": {
+        "primary": {
+          "type": "string",
+          "description": "Language your agents use when talking to you (IETF-style code).",
+          "minLength": 2,
+          "maxLength": 16,
+          "examples": ["en", "ko", "ja", "de"]
+        },
+        "reports": {
+          "type": "string",
+          "description": "Language for written deliverables (reports, docs). 'primary' = same as primary; 'bilingual' = primary + English side by side.",
+          "enum": ["primary", "english", "bilingual"],
+          "default": "primary"
+        }
+      }
+    },
+    "communication": {
+      "type": "object",
+      "description": "How your agents should report and ask.",
+      "additionalProperties": false,
+      "properties": {
+        "report_style": {
+          "type": "string",
+          "description": "'conclusion-first' = verdict in the first sentence, details after. 'detailed' = full narrative acceptable.",
+          "enum": ["conclusion-first", "detailed"],
+          "default": "conclusion-first"
+        },
+        "decision_format": {
+          "type": "string",
+          "description": "'options-menu' = decisions reach you as 2-4 labeled options with pros/cons (good for non-developers). 'direct-question' = plain questions are fine.",
+          "enum": ["options-menu", "direct-question"],
+          "default": "options-menu"
+        },
+        "batch_questions": {
+          "type": "boolean",
+          "description": "true = collect questions and ask them together instead of one-at-a-time interruptions.",
+          "default": true
+        }
+      }
+    },
+    "autonomy": {
+      "type": "object",
+      "description": "How much your agents decide without you. This does NOT change what the bot enforces (Quadrant D always waits for you); it tunes how your agents behave below that line.",
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "type": "string",
+          "description": "'cautious' = agents confirm before anything outward-facing or hard to undo, even when the bot would allow it. 'standard' = agents follow the four-quadrant model as-is. 'delegating' = agents proceed on everything the bot allows and report after.",
+          "enum": ["cautious", "standard", "delegating"],
+          "default": "standard"
+        },
+        "quiet_hours": {
+          "type": "string",
+          "description": "Daily window when agents must not ping you (24h clock, operator's timezone). Decision Inbox issues still open; notifications wait.",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "examples": ["23:00-08:00"]
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone name used to interpret quiet_hours.",
+          "maxLength": 64,
+          "examples": ["Asia/Seoul", "Europe/Berlin"]
+        }
+      }
+    },
+    "taste_ledger": {
+      "type": "array",
+      "description": "Append-only ledger of your declared working preferences — the things you found yourself repeating to agents. Each entry is dated and quotable. Agents read this at session start and follow it; when you state a new preference, your agent should append it here IMMEDIATELY (one statement is enough — do not wait for a repeat).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date", "rule"],
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "Date the preference was declared."
+          },
+          "rule": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The preference as an actionable one-liner, e.g. 'Never place deliverables in my Downloads folder' or 'Long documents: base font around 14.5px'."
+          },
+          "quote": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional: your original words, so future agents understand the intent, not just the rule."
+          }
+        }
+      }
+    },
+    "vocabulary": {
+      "type": "array",
+      "description": "Your shorthand: project nicknames, acronyms, internal terms — so agents understand requests the way a colleague would.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term", "meaning"],
+        "properties": {
+          "term": { "type": "string", "maxLength": 80 },
+          "meaning": { "type": "string", "maxLength": 300 }
+        }
+      }
+    }
+  }
+}

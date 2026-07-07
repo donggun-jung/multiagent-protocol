@@ -2,15 +2,46 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-07-07
 
-**Fleet-parity additions.** Four additive, backward-compatible capabilities a
-running fleet depends on. Every new behavior is gated on new **optional** config;
-with that config absent, the gate is byte-identical to 1.0.0 (the prior 168 tests
-are unchanged). No existing gate logic changed except to thread in the new
-optional inputs.
+**Fleet-parity additions + the delegated-installation release.** Four additive,
+backward-compatible gate capabilities a running fleet depends on, plus the
+**agent-first adoption path**: an external operator now installs the protocol by
+handing one runbook to their own AI agent. Every new gate behavior is gated on
+new **optional** config; with that config absent, the gate is byte-identical to
+1.0.0 (the prior 168 tests are unchanged; suite now 435). This release also
+repairs the documented install flow, which had drifted from the shipped tree
+(dispatch-only workflow vs. promised cron, undocumented
+`MERGE_GATE_MERGE_ENABLED`/`MERGE_GATE_RECEIPT_KEY`, an impossible
+"private fork" instruction, and a ~12x Actions-minutes underestimate).
 
 ### Added
+
+- **Delegated installation.** [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)
+  — a step-0-to-9 runbook an operator's own AI agent executes end to end
+  (private-mirror governance repo, config, workflow, App + secrets, labels,
+  agent kit, observe tick, go-live, E2E proof). Human involvement: App
+  registration clicks + go-live confirmation. Korean overview at
+  `docs/ko/agent-setup/`.
+- **Deployed-workflow example.** [`deploy/bot-cron.example.yml`](deploy/bot-cron.example.yml)
+  — the workflow an installation actually runs: `schedule` + honest cadence
+  table, `MERGE_GATE_MERGE_ENABLED` variable wiring, `MERGE_GATE_RECEIPT_KEY`,
+  editable install from the mirror checkout (immune to the stale-wheel trap on
+  reused runners). Upstream's own `bot-cron.yml` stays dispatch-only by design.
+- **Operator preference layer.** `config/preferences.yml`
+  (+ [`schemas/preferences.schema.json`](schemas/preferences.schema.json)):
+  language, report style, decision format, autonomy profile, quiet hours, an
+  append-only **taste ledger**, and personal vocabulary — read by the
+  operator's agents, never by the bot; lives only in the private governance
+  repo. Example in `examples/solo-developer/config/`.
+- **Adopter agent kit.** [`templates/adopter/`](templates/adopter/) —
+  AGENTS.md + CLAUDE.md for supervised repos: the five trailers with exact
+  formats, label discipline, quadrant expectations, break-glass boundary, and
+  a materialized operator-preferences block (placeholders filled by
+  AGENT_SETUP step 6).
+- **Wizard v2.** Preferences step (generates the 6th config file) and the
+  agent prompt rewritten as a **delegation prompt** that drives AGENT_SETUP —
+  no fork instruction anywhere.
 
 - **R1 — named required checks.** A new optional `required_checks: [string]`:
   a global default in `env.yml` plus an optional per-repo override in
@@ -107,10 +138,13 @@ is no longer listed as disableable; committer-vs-author identity note added).
   listed in `disabled`, and L5 committer-not-author actor trust. ruff clean; the
   168 prior tests pass unchanged.
 
-## [1.0.0] - 2026-05-30
+## [1.0.0] - 2026-05-30 *(never tagged — first shipped inside v1.1.0)*
 
 First **stable** release, after multiple rounds of independent external review
-(Claude Opus, GPT-5-Codex). Resolves the review's P0/P1 findings.
+(Claude Opus, GPT-5-Codex). Resolves the review's P0/P1 findings. *Release
+housekeeping note (2026-07-07): the v1.0.0 git tag was never cut, so this
+scope reached external users for the first time with the v1.1.0 tag; the
+compare link below reflects that.*
 
 ### Fixed (external-review P0/P1)
 - **check-runs parser:** `github_api.check_runs` returned the
@@ -281,8 +315,8 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
-[1.1.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.0.0
+[1.1.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0
+[1.0.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0
 [0.9.9]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.2.0...v0.9.9
 [0.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.0.2-alpha...v0.2.0
 [0.0.2]: https://github.com/donggun-jung/multiagent-protocol/releases/tag/v0.0.2-alpha
