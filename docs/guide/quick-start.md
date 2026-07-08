@@ -222,9 +222,14 @@ conflicts, keep your version.
 use case, and exactly what GitHub Free's missing branch protection leaves
 unprotected.
 
-**What happens if I uninstall the App?** The bot stops on the next tick.
-Merging falls back to whatever branch protection your repo has (on Free +
-private: none).
+**What happens if I uninstall the App?** The bot stops on the next tick, and
+merging falls back to whatever branch protection your repo has (on Free +
+private: none). Uninstalling the App is **not** a full teardown — your labels,
+the `MERGE_GATE_MERGE_ENABLED` variable, the three secrets, the agent kit in
+your supervised repos, and the governance repo all remain. For a disciplined
+removal (with a clear "what to keep vs. purge"), follow **Step 10 —
+Offboarding** in the delegated runbook
+[`AGENT_SETUP.md`](../agent-setup/AGENT_SETUP.md).
 
 **Does this work on GitLab / Bitbucket / Codeberg?** Not yet — the API client
 is GitHub-specific. Adapters are welcome, see `CONTRIBUTING.md`.

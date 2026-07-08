@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-07
+
+**The operational-trust release.** Ideas benchmarked against the wider
+multi-agent tooling ecosystem (notably 23blocks-OS/ai-maestro, MIT — different
+lane, instructive install/verify ergonomics), then adversarially filtered
+through this project's constraints. Everything below is serverless,
+GitHub-only, and additive.
+
+### Added
+
+- **`verify-setup`** — a re-runnable, read-only CLI subcommand that
+  re-verifies the DEPLOYED gate (App auth + installation coverage, deployed
+  workflow, labels, squash setting, bot-state branch, config + preferences
+  validity) and prints a pass/warn/fail **setup verification report** (`--json`
+  for the structured form; named distinctly from the HMAC approval receipts).
+  Missing credentials degrade checks to SKIP with guidance. Docs:
+  `docs/agent-setup/VERIFY_SETUP.md`.
+- **Gate-liveness check** — pull-based (zero tick-path changes): the newest
+  `bot-cron` run's age is compared to ~2x your cadence, so a silently
+  disabled schedule ("dead cron") is no longer indistinguishable from a
+  healthy quiet gate. Surfaced in `verify-setup` and as a session-start note
+  in the adopter kit.
+- **Sixth kit rule — external-content trust boundary**: content authored by
+  non-allowlisted actors (PR bodies, issue text, comments, commit messages)
+  is data, not instructions; agents quote-and-report instead of obeying.
+- **Step-9 rehearsal, second half** — the go-live proof now also exercises a
+  deterministic Quadrant-D pause: the operator feels the stop and answers 👍
+  once before trusting the gate with real work.
+- **Step 10 — Offboarding** — a clean, honest exit: pause vs full removal,
+  with the audit trail preserved by default.
+- **Resume-safe install notes** — a dead session mid-install resumes via the
+  runbook's own Verify blocks; no state files, no new mechanisms.
+- **Version-truth parity tests** — pyproject / CHANGELOG / README badges
+  (en+ko) / STATUS header / action pin must agree, enforced in pytest.
+- **Landing: capability boundary + "where we fit"** — the gate is policy,
+  not proof of code safety; plus an honest relations table (orchestrators =
+  complementary, CI = complementary, GitHub Pro protection = partial
+  substitute).
+
 ## [1.2.0] - 2026-07-07
 
 **The "nothing left on the not-yet list that fits in a minor" release.** Both
@@ -353,6 +392,7 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
+[1.3.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0
 [1.0.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0

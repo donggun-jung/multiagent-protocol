@@ -5,7 +5,7 @@ Updated 2026-07-07. Authoritative when the README banner cites it.
 This file is the single source of "what does `multiagent-protocol` actually do,
 today, when an external operator installs it?". The README and
 concept docs describe the **target** design; this file describes the
-**shipping** behaviour. As of **v1.1.0** the cron orchestrator is live: your
+**shipping** behaviour. As of **v1.3.0** the cron orchestrator is live: your
 private installation (a **mirror**, not a fork — see the quick start) evaluates
 PRs, merges the auto-approvable quadrants, routes Quadrant D to the
 owner, and audits `main` — and the standard install path is **delegated**: your
@@ -15,7 +15,7 @@ is intentionally left for a later release.
 
 ## Implementation matrix
 
-| Feature                                            | Doctrine        | v0.0.2 | v1.2.0 (current) |
+| Feature                                            | Doctrine        | v0.0.2 | v1.3.0 (current) |
 |----------------------------------------------------|-----------------|--------|----------------------|
 | 4-quadrant classifier (path heuristic, max-vote)   | implemented     | ✅      | ✅                |
 | 4-module bot package layout                        | implemented     | ✅      | ✅                |
@@ -63,18 +63,22 @@ is intentionally left for a later release.
 | Operator preferences layer (`config/preferences.yml` + schema) | implemented | ❌ | ✅ v1.1              |
 | Adopter agent kit (`templates/adopter/`)           | implemented     | ❌      | ✅ v1.1               |
 | Wizard v2 (preferences step + delegation prompt)   | implemented     | ❌      | ✅ v1.1               |
+| `verify-setup` deployed-state audit                | implemented     | ❌      | ✅ v1.3 (read-only re-check: App coverage, workflow, labels, squash, kit, placeholders) |
+| Gate-liveness check                                | implemented     | ❌      | ✅ v1.3 (last-tick age vs 2× cadence; WARN plain, FAIL in `--e2e`; pull-based) |
+| Version-truth parity tests                         | implemented     | ❌      | ✅ v1.3 (pyproject == CHANGELOG / README badges / STATUS header / action pin) |
+| Adopter-kit external-content trust boundary        | implemented     | ❌      | ✅ v1.3 (kit rule 6; defense-in-depth, gate remains the backstop) |
 
 Legend: ✅ shipped · 🚧 partial · ❌ not yet. *planned* means we intend to ship
 it on the version listed.
 
-Test coverage: **465 pytest cases** (was 110 at v0.0.2, 167 at the RC, 435 at v1.1) —
+Test coverage: **518 pytest cases** (was 110 at v0.0.2, 167 at the RC, 435 at v1.1, 465 at v1.2) —
 orchestrator decisions, L2 re-validation, L4 registry, Decision-Inbox
 resolution, runtime toggles, required-checks threading, published-verdict
 rule, unauthorized-push hook, and the no-secrets no-op are under test.
 
-## What it means to install this today (v1.1.0)
+## What it means to install this today (v1.3.0)
 
-If you install at v1.1.0 — delegated ([AGENT_SETUP](docs/agent-setup/AGENT_SETUP.md))
+If you install at v1.3.0 — delegated ([AGENT_SETUP](docs/agent-setup/AGENT_SETUP.md))
 or manual ([Quick start](docs/guide/quick-start.md)) —
 you get a **working gate**:
 

@@ -219,8 +219,13 @@ workflow는 내 것입니다. workflow 파일이 충돌하면 **내 버전**을 
 GitHub Free의 비공개 저장소에 없는 branch protection을 스스로 만드는
 것이니까요.
 
-**App을 제거하면?** 다음 틱부터 봇이 멈춥니다. 머지는 저장소의 기존
-branch protection(Free+비공개라면: 없음)으로 돌아갑니다.
+**App을 제거하면?** 다음 틱부터 봇이 멈추고, 머지는 저장소의 기존
+branch protection(Free+비공개라면: 없음)으로 돌아갑니다. 단, App 제거는
+**완전한 철거가 아닙니다** — 라벨, `MERGE_GATE_MERGE_ENABLED` 변수, 시크릿
+3종, 감독 저장소의 에이전트 킷, 그리고 거버넌스 저장소는 그대로 남습니다.
+무엇을 남기고 무엇을 지울지까지 규율 있게 제거하려면 대행 런북
+[`AGENT_SETUP.md`](../../agent-setup/AGENT_SETUP.md)의 **Step 10 — Offboarding**을
+따르세요.
 
 **GitLab / Bitbucket / Codeberg에서도 되나요?** 아직 안 됩니다 — API
 클라이언트가 GitHub 전용입니다. 어댑터 기여는 환영합니다

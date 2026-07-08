@@ -114,3 +114,81 @@ def test_app_slug_failure_returns_none():
     auth = AppAuth(AppCredentials(app_id="1", private_key_pem="x"), session=_BadSess())
     auth.build_app_jwt = lambda now=None: "fake-jwt"
     assert auth.app_slug() is None      # fails safe → caller uses config fallback
+
+
+# -- verify-setup read helpers: get_repo / list_labels / workflows ------------
+
+
+class _StatusResp:
+    def __init__(self, payload, status: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise AssertionError(f"unexpected raise at status {self.status_code}")
+
+
+class _StatusAPI(GitHubAPI):
+    """GitHubAPI whose ``_request`` returns canned ``(payload, status)`` in order."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls: list[tuple] = []
+
+    def _request(self, method, path, *, params=None, json=None):
+        self.calls.append((method, path, dict(params or {})))
+        payload, status = self._responses.pop(0)
+        return _StatusResp(payload, status)
+
+
+def test_get_repo_returns_json():
+    api = _StatusAPI([({"allow_squash_merge": True, "default_branch": "main"}, 200)])
+    repo = api.get_repo("o", "r")
+    assert repo["allow_squash_merge"] is True
+
+
+def test_get_repo_404_or_403_returns_none():
+    assert _StatusAPI([({}, 404)]).get_repo("o", "r") is None
+    assert _StatusAPI([({}, 403)]).get_repo("o", "r") is None
+
+
+def test_get_workflow_state_and_absence():
+    assert _StatusAPI([({"state": "active"}, 200)]).get_workflow("o", "r", "bot-cron.yml")[
+        "state"
+    ] == "active"
+    assert _StatusAPI([({}, 404)]).get_workflow("o", "r", "bot-cron.yml") is None
+
+
+def test_list_workflow_runs_unwraps_envelope():
+    api = _StatusAPI([
+        ({"total_count": 1, "workflow_runs": [{"created_at": "2027-01-01T00:00:00Z"}]}, 200),
+    ])
+    runs = api.list_workflow_runs("o", "r", "bot-cron.yml", per_page=1)
+    assert runs == [{"created_at": "2027-01-01T00:00:00Z"}]
+    # newest-first single page: the endpoint is the workflow's own runs URL.
+    assert api.calls[0][1] == "/repos/o/r/actions/workflows/bot-cron.yml/runs"
+    assert api.calls[0][2]["per_page"] == 1
+
+
+def test_list_workflow_runs_404_returns_empty():
+    api = _StatusAPI([({}, 404)])
+    assert api.list_workflow_runs("o", "r", "bot-cron.yml") == []
+
+
+def test_list_workflow_runs_paginates_when_asked():
+    api = _StatusAPI([
+        ({"total_count": 3, "workflow_runs": [{"id": 1}, {"id": 2}]}, 200),
+        ({"total_count": 3, "workflow_runs": [{"id": 3}]}, 200),
+    ])
+    runs = api.list_workflow_runs("o", "r", "bot-cron.yml", per_page=2, max_pages=5)
+    assert [r["id"] for r in runs] == [1, 2, 3]
+
+
+def test_list_labels_paginates_over_list_body():
+    api = _StatusAPI([([{"name": "ready-to-merge"}, {"name": "bug"}], 200)])
+    names = {lbl["name"] for lbl in api.list_labels("o", "r")}
+    assert names == {"ready-to-merge", "bug"}

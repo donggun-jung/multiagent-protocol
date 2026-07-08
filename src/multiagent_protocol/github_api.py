@@ -585,6 +585,90 @@ class GitHubAPI:
         data = self.get_contents(owner, repo, path, ref)
         return data if isinstance(data, list) else []
 
+    # -- Repo + labels (read-only; used by the ``verify-setup`` audit) --
+
+    def get_repo(self, owner: str, repo: str) -> dict | None:
+        """Return the repo object, or None if it is not visible to this client.
+
+        A 404 means either the repo does not exist OR the App installation this
+        client is scoped to has no access to it — both are "not covered" from
+        the gate's point of view, which is exactly what ``verify-setup`` wants
+        to report. The returned JSON carries ``allow_squash_merge`` and
+        ``default_branch`` (both consumed by the setup audit)."""
+        r = self._request("GET", f"/repos/{owner}/{repo}")
+        if r.status_code in (403, 404):
+            return None
+        r.raise_for_status()
+        return r.json()
+
+    def list_labels(self, owner: str, repo: str) -> list[dict]:
+        """Return every label defined on a repo (paginated)."""
+        return list(self._paginate(f"/repos/{owner}/{repo}/labels"))
+
+    # -- Actions workflows (read-only; liveness + enabled-state audit) --
+
+    def get_workflow(self, owner: str, repo: str, workflow_file: str) -> dict | None:
+        """Return one workflow's object (carries ``state``), or None if absent.
+
+        ``workflow_file`` is the workflow's file name (e.g. ``bot-cron.yml``);
+        the Actions API accepts it in place of the numeric id. ``state`` is
+        ``active`` / ``disabled_manually`` / ``disabled_inactivity`` — the last
+        is GitHub's ~60-day auto-disable of a scheduled workflow, the silent
+        cessation the gate-liveness check exists to surface. Read-only: needs
+        only the ``Actions: Read`` permission the deploy workflow already grants.
+        """
+        r = self._request(
+            "GET", f"/repos/{owner}/{repo}/actions/workflows/{workflow_file}"
+        )
+        if r.status_code in (403, 404):
+            return None
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, dict) else None
+
+    def list_workflow_runs(
+        self,
+        owner: str,
+        repo: str,
+        workflow_file: str,
+        *,
+        per_page: int = 1,
+        status: str | None = None,
+        max_pages: int = 1,
+    ) -> list[dict]:
+        """Return recent runs of one workflow, newest first (envelope unwrapped).
+
+        The runs endpoint wraps results in a
+        ``{"total_count": N, "workflow_runs": [...]}`` envelope (like
+        ``check-runs``), so the generic ``_paginate`` would yield the envelope's
+        keys — this method unwraps the array itself. Minimal by design: defaults
+        to the single newest run (``per_page=1``, ``max_pages=1``), which is all
+        the gate-liveness check needs; callers wanting more can widen either
+        bound. A 404 (workflow never registered / no Actions) yields ``[]``.
+        Read-only ``Actions: Read``; never touches the tick path.
+        """
+        runs: list[dict] = []
+        page = 1
+        while page <= max_pages:
+            params: dict = {"per_page": per_page, "page": page}
+            if status is not None:
+                params["status"] = status
+            r = self._request(
+                "GET",
+                f"/repos/{owner}/{repo}/actions/workflows/{workflow_file}/runs",
+                params=params,
+            )
+            if r.status_code in (403, 404):
+                return runs
+            r.raise_for_status()
+            data = r.json()
+            batch = data.get("workflow_runs", []) if isinstance(data, dict) else []
+            runs.extend(batch)
+            if len(batch) < per_page:
+                break
+            page += 1
+        return runs
+
     # -- Branch update (L3 auto-rebase) --
 
     def update_branch(self, owner: str, repo: str, number: int) -> bool:
