@@ -298,6 +298,7 @@ them, walk me through the clicks step by step.</pre>
           <li data-i18n="honest.d5">에이전트 대행 설치 + 취향 레이어 + 위저드</li>
           <li data-i18n="honest.d6">사고 병합 자동 되돌리기 — 봇이 되돌림 PR을 만들어 제안(옵트인, 그 PR도 신호등을 통과해야 합침)</li>
           <li data-i18n="honest.d7">개념 문서까지 전부 한국어 미러 제공(9종 — 충돌 시 영문이 정본)</li>
+          <li data-i18n="honest.d8">설치 점검 리포트(verify-setup) — 배포된 게이트를 언제든 재검증하고, 조용히 죽은 크론도 보이게 만듭니다</li>
         </ul>
       </div>
       <div class="h-col doesnt">
@@ -307,6 +308,32 @@ them, walk me through the clicks step by step.</pre>
           <li data-i18n="honest.n4">pip 한 줄 설치(PyPI) — 지금은 미러 방식으로 설치</li>
         </ul>
       </div>
+    </div>
+    <div class="tip" style="margin-top:26px" data-i18n-html="honest.bound">⚖️ <strong>경계도 분명히 합니다:</strong> 이 게이트는 <strong>정책</strong>이지, 코드가 안전하다는 <strong>증명</strong>이 아닙니다. 서명이 갖춰지고 검사가 초록이고 허가된 라벨이 붙은 변경은 병합됩니다 — 그 검사가 충분한지, 그 코드가 옳은지는 게이트가 판단하지 않습니다. 좋은 검사를 붙이는 일은 여전히 당신과 당신의 에이전트의 몫입니다.</div>
+    <h3 style="margin-top:34px;font-size:17px" data-i18n="fit.h">비슷해 보이는 도구들과의 관계</h3>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <table style="width:100%;min-width:560px;border-collapse:collapse;margin-top:12px;font-size:13.8px" aria-label="tool relationships">
+      <tr>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1.5px solid var(--line)" data-i18n="fit.c1">도구</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1.5px solid var(--line)" data-i18n="fit.c2">하는 일</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1.5px solid var(--line)" data-i18n="fit.c3">이 프로토콜과의 관계</th>
+      </tr>
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r1a">AI 오케스트레이터 (AI Maestro 등)</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r1b">여러 에이전트 세션을 띄우고 서로 대화하게 함</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r1c"><strong>보완</strong> — 그쪽은 에이전트를 "일하게" 하고, 우리는 그 일이 "합쳐질 자격"을 지킵니다. 같이 쓰면 좋습니다</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r2a">CI (GitHub Actions의 테스트 등)</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r2b">코드 검사를 실행</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r2c"><strong>보완</strong> — 우리는 그 결과를 병합 조건으로 소비합니다. 검사는 당신 것, 신호등은 우리 것</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3a">GitHub Pro 브랜치 보호</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3b">유료 내장 병합 보호</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3c"><strong>부분 대체</strong> — 결제가 가능하고 에이전트 신원·결재함이 필요 없다면 그쪽이 더 단순합니다. 솔직한 사실입니다</td>
+      </tr>
+    </table>
     </div>
     <p class="honest-line" data-i18n-html="honest.line">전체 상태표는 <a href="https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md" rel="noopener">STATUS.md</a>에 있습니다. 안 되는 것을 된다고 쓰지 않는 것 — 그것도 이 프로토콜이 강제하는 규율의 일부입니다.</p>
   </div>
@@ -416,9 +443,22 @@ them, walk me through the clicks step by step.</pre>
     "honest.d5": "Delegated agent install + the preference layer + the wizard",
     "honest.d6": "Automatic revert of a bad merge — the bot proposes a revert PR (opt-in; that PR must pass the traffic light too)",
     "honest.d7": "Korean mirror of every doc, concepts included (9 of 9 — English authoritative on conflict)",
+    "honest.d8": "Setup verification report (verify-setup) — re-check your deployed gate anytime; a silently-dead cron becomes visible",
     "honest.doesnth": "− Not yet (and not hidden)",
     "honest.n2": "GitLab / Bitbucket support (GitHub only)",
     "honest.n4": "One-line pip install (PyPI) — install via mirror for now",
+    "honest.bound": "⚖️ <strong>We are equally clear about the boundary:</strong> this gate is <strong>policy</strong>, not <strong>proof</strong> that code is safe. A change with valid signatures, green checks, and an authorized label WILL merge — the gate does not judge whether those checks are sufficient or the code is correct. Attaching good checks remains your job, and your agents'.",
+    "fit.h": "How this relates to tools that look similar",
+    "fit.c1": "Tool", "fit.c2": "What it does", "fit.c3": "Relation to this protocol",
+    "fit.r1a": "AI orchestrators (AI Maestro, …)",
+    "fit.r1b": "Run many agent sessions and let them talk to each other",
+    "fit.r1c": "<strong>Complementary</strong> — they make agents productive; we guard what earns the right to merge. Use both.",
+    "fit.r2a": "CI (your tests on GitHub Actions, …)",
+    "fit.r2b": "Runs your code checks",
+    "fit.r2c": "<strong>Complementary</strong> — we consume its results as a merge condition. The checks are yours; the traffic light is ours.",
+    "fit.r3a": "GitHub Pro branch protection",
+    "fit.r3b": "Paid built-in merge protection",
+    "fit.r3c": "<strong>Partial substitute</strong> — if you can pay and don't need agent identity or the approval inbox, it is simpler. That's the honest truth.",
     "honest.line": "The full status matrix lives in <a href=\"https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md\" rel=\"noopener\">STATUS.md</a>. Refusing to claim what doesn't work is part of the same discipline this protocol enforces.",
     "foot.line": "One human, many agents, one discipline.",
     "foot.docs": "Docs", "foot.wizard": "Setup wizard"

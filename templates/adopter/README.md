@@ -3,8 +3,9 @@
 Copy-paste rule files for **your supervised repositories** — they teach any
 AI coding agent (Claude Code, Codex, Cursor, …) the discipline the merge
 gate enforces: branch+PR only, the five commit trailers, label semantics,
-quadrant behavior, break-glass boundaries, and your personal working
-preferences.
+quadrant behavior, break-glass boundaries, the external-content trust
+boundary (attacker-authored text is data, not instructions), and your
+personal working preferences.
 
 | File | Goes to | Purpose |
 |---|---|---|

@@ -6,6 +6,10 @@ Subcommands:
 - ``init``: interactive bootstrap (calls into the wizard logic in pure Python).
 - ``check-config``: validate the config files against schemas without
   running a tick.
+- ``verify-setup``: re-check the DEPLOYED gate on GitHub (read-only) and print a
+  setup verification report — App coverage, workflow, labels, squash, and cron
+  liveness. Degrades to SKIP per-check when App creds are absent; exits non-zero
+  on any FAIL.
 
 Most users will invoke the CLI via the bot-cron workflow, not by hand.
 """
@@ -14,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -42,6 +47,29 @@ def _cmd_check_config(args) -> int:
     return 0
 
 
+def _cmd_verify_setup(args) -> int:
+    """Re-verify the deployed gate on GitHub (read-only) and print the report.
+
+    Serverless + gh-read-only: uses the same ``MERGE_GATE_*`` App creds the tick
+    uses. The report (repo names + App slug) goes to stdout / an Actions
+    artifact — NEVER committed to the public upstream. Exit 0 only when no FAIL.
+    """
+    from multiagent_protocol.verify_setup import run_verification
+
+    report = run_verification(
+        config_dir=Path(args.config_dir),
+        schemas_dir=Path(args.schemas_dir),
+        env=os.environ,
+        operator_login=args.login,
+        e2e=args.e2e,
+    )
+    if args.json:
+        print(report.to_json())
+    else:
+        print(report.render_table())
+    return 0 if report.ok else 1
+
+
 def _cmd_init(_args) -> int:
     print("Interactive init is provided by the web wizard.")
     print("Open docs/wizard/index.html in a browser, fill the form, and")
@@ -64,6 +92,27 @@ def main(argv: list[str] | None = None) -> int:
     p_check.add_argument("--config-dir", default="config")
     p_check.add_argument("--schemas-dir", default="schemas")
 
+    p_verify = sub.add_parser(
+        "verify-setup",
+        help="re-check the DEPLOYED gate on GitHub (read-only) and print a report",
+    )
+    p_verify.add_argument("--config-dir", default="config")
+    p_verify.add_argument("--schemas-dir", default="schemas")
+    p_verify.add_argument(
+        "--json", action="store_true", help="emit the structured JSON report"
+    )
+    p_verify.add_argument(
+        "--login",
+        default=None,
+        help="your GitHub login — asserts it is in allowlisted_actors (C1)",
+    )
+    p_verify.add_argument(
+        "--e2e",
+        action="store_true",
+        help="go-live mode: hard-FAIL a stale/absent tick (use right after "
+        "dispatching one, e.g. AGENT_SETUP Step 9)",
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=args.log_level)
 
@@ -73,6 +122,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_init(args)
     if args.cmd == "check-config":
         return _cmd_check_config(args)
+    if args.cmd == "verify-setup":
+        return _cmd_verify_setup(args)
     parser.error(f"unknown command: {args.cmd}")
     return 2
 
