@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from multiagent_protocol.config.loader import load_config
 
 
@@ -59,6 +61,73 @@ decision_inbox:
 
     cfg = load_config(cfg_dir)
     assert cfg.projects.effective_inbox_repository == "alice/inbox"
+
+
+def test_inbox_lifecycle_defaults_off(tmp_path: Path):
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml",
+           "governance_repo: alice/protocol\nsupervised_repos: []\n")
+    _write(cfg_dir, "env.yml", "bot_app_slug: foo\n")
+
+    cfg = load_config(cfg_dir)
+
+    lifecycle = cfg.projects.decision_inbox.lifecycle
+    assert lifecycle.enabled is False
+    assert lifecycle.reminder_hours == 72
+    assert lifecycle.escalate_hours == 168
+    assert lifecycle.availability is None
+
+
+def test_inbox_lifecycle_and_generic_availability_source_parsed(tmp_path: Path):
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml", """\
+governance_repo: alice/protocol
+supervised_repos: []
+decision_inbox:
+  repository: alice/inbox
+  lifecycle:
+    enabled: true
+    reminder_hours: 48
+    escalate_hours: 120
+    availability:
+      repository: alice/operations
+      path: status/availability.md
+      ref: stable
+      line_prefix: "[TEAM_AVAILABILITY]"
+""")
+    _write(cfg_dir, "env.yml", "bot_app_slug: foo\n")
+
+    cfg = load_config(cfg_dir)
+
+    lifecycle = cfg.projects.decision_inbox.lifecycle
+    assert lifecycle.enabled is True
+    assert lifecycle.reminder_hours == 48
+    assert lifecycle.escalate_hours == 120
+    assert lifecycle.availability.repository == "alice/operations"
+    assert lifecycle.availability.path == "status/availability.md"
+    assert lifecycle.availability.ref == "stable"
+    assert lifecycle.availability.line_prefix == "[TEAM_AVAILABILITY]"
+
+
+def test_inbox_lifecycle_rejects_escalation_not_after_reminder(tmp_path: Path):
+    cfg_dir = tmp_path / "config"
+    _write(cfg_dir, "owner.yml", "github_login: alice\n")
+    _write(cfg_dir, "projects.yml", """\
+governance_repo: alice/protocol
+supervised_repos: []
+decision_inbox:
+  lifecycle:
+    enabled: true
+    reminder_hours: 72
+    escalate_hours: 72
+""")
+    _write(cfg_dir, "env.yml", "bot_app_slug: foo\n")
+
+    import pytest
+    with pytest.raises(ValueError, match="escalate_hours"):
+        load_config(cfg_dir)
 
 
 def test_break_glass_deadline_override(tmp_path: Path):
@@ -135,6 +204,7 @@ machines:
     cfg = load_config(cfg_dir)
     assert not hasattr(cfg.owner, "display_name")
     assert not hasattr(cfg.projects.decision_inbox, "thresholds")
+    assert cfg.projects.decision_inbox.lifecycle.enabled is False
     assert not hasattr(cfg.agent_registry, "machines")
     assert cfg.projects.effective_inbox_repository == "alice/inbox"
     assert cfg.agent_registry.tools == ("manual",)
@@ -370,6 +440,58 @@ def test_projects_schema_accepts_expected_check_publisher_override():
             instance={
                 "governance_repo": "alice/p",
                 "repo_overrides": {"alice/repo-a": {"expected_check_publisher": ""}},
+            },
+            schema=schema,
+        )
+
+
+def test_projects_schema_accepts_default_off_inbox_lifecycle_contract():
+    schema = _load_schema("projects.schema.json")
+    _jsonschema.validate(
+        instance={
+            "governance_repo": "alice/p",
+            "decision_inbox": {
+                "repository": "alice/inbox",
+                "lifecycle": {
+                    "enabled": True,
+                    "reminder_hours": 72,
+                    "escalate_hours": 168,
+                    "availability": {
+                        "repository": "alice/operations",
+                        "path": "status/availability.md",
+                        "ref": "main",
+                        "line_prefix": "[TEAM_AVAILABILITY]",
+                    },
+                },
+            },
+        },
+        schema=schema,
+    )
+
+
+@pytest.mark.parametrize(
+    "lifecycle",
+    [
+        {"enabled": "true"},
+        {"reminder_hours": 0},
+        {"escalate_hours": 1},
+        {"availability": {"path": "status/availability.md"}},
+        {
+            "availability": {
+                "repository": "alice/operations",
+                "path": "../private.md",
+            }
+        },
+        {"unknown_key": True},
+    ],
+)
+def test_projects_schema_rejects_invalid_inbox_lifecycle(lifecycle):
+    schema = _load_schema("projects.schema.json")
+    with pytest.raises(_jsonschema.ValidationError):
+        _jsonschema.validate(
+            instance={
+                "governance_repo": "alice/p",
+                "decision_inbox": {"lifecycle": lifecycle},
             },
             schema=schema,
         )

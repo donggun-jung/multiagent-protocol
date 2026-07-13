@@ -60,6 +60,14 @@ def test_check_runs_paginates_over_100():
     assert runs[-1]["name"] == "c149"
 
 
+def test_update_issue_comment_uses_comment_endpoint():
+    api = _FakeRequestAPI([{}])
+    api.update_issue_comment("example", "repo", 42, "updated body")
+    assert api.calls == [
+        ("PATCH", "/repos/example/repo/issues/comments/42", {})
+    ]
+
+
 # -- label_events: list paginator + labeled/unlabeled filter --
 
 def test_label_events_filters_to_labeled_and_unlabeled():
