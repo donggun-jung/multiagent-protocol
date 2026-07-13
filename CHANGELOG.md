@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-13
+
 ### Added
 
 - **Decision Inbox lifecycle (default-off opt-in).** Installations may enable
