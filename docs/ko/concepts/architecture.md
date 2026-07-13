@@ -98,8 +98,15 @@ L4는 advisory에서 hard-block으로 승격되기 전 60일 **burn-in** 창을 
 
 1. 병합된 commit의 SHA에 대해 L1 필수 check 집합을 다시 실행한다.
 2. 전부 통과하면: watermark를 전진시키고, 조치 없음.
-3. 일부 실패하고 **그 실패가 진짜라면**(아래 "infra-failure differentiation" 참고): revert PR을 연다. `decision:auto-revert` 라벨을 붙인다.
-4. 실패가 **전부 infra-failure**라면: tick 메트릭에 `infra-failure` 상태를 기록하고, revert하지 **않으며**, 다음 tick에 재시도한다.
+3. 일부 실패하고 **그 실패가 진짜라면**(아래 "infra-failure
+   differentiation" 참고): parent를 고려한 수동 복구 안내와 함께
+   `decision:post-merge-revalidation` 인시던트를 연다.
+4. 기본이 off인 `auto_revert_pr` 옵션이 활성화되어 있다면: shallow
+   clone에서 대상의 parent가 하나 이하임이 입증된 뒤에만 revert PR을
+   시도한다. parent가 둘 이상이거나 parent 구조를 입증할 수 없으면
+   `git revert`를 실행하지 않고 fail-closed 사유를 인시던트에 추가한다.
+5. 실패가 **전부 infra-failure**라면: tick 메트릭에 `infra-failure` 상태를
+   기록하고, revert하지 **않으며**, 다음 tick에 재시도한다.
 
 #### Infra-failure differentiation
 
@@ -110,7 +117,15 @@ L4는 advisory에서 hard-block으로 승격되기 전 60일 **burn-in** 창을 
 
 `conclusion == "skipped"`는 infra-failure가 **아니다**: 이는 workflow 자체의 `if:` 조건이 false로 평가되었음을 의미한다(의도된 프로토콜 skip). skipped를 infra로 취급하는 것은 이전 설계의 알려진 false-negative였다.
 
-**Shipping status:** L2는 **탐지 + 인시던트**로 출시된다. 실제 사후 머지 실패 시 봇은 `git revert <sha>` 명령을 담은 `decision:post-merge-revalidation` 이슈를 열지만, revert PR을 아직 *작성하지는* 않는다. 봇이 감독 저장소에 commit하는 것 자체가, 미러 auto-cascade를 수동으로 유지하는 것과 동일한 근거로, 별도의 ADR이 필요한 Quadrant-D 행위다. `classifier_auto_revert` 규칙 + `decision:auto-revert` 라벨은 revert PR이 열릴 때(지금 당신이 열든, 미래의 auto-revert 기능이 열든)를 대비해 이미 마련되어 있다. [`STATUS.md`](../../../STATUS.md) 참고.
+**Shipping status:** 탐지 + 인시던트는 항상 활성화되어 있다. 자동 revert-PR
+생성은 기본 off opt-in(`env.yml` `auto_revert_pr: true`; [`ADR 0002`](../../decisions/0002_auto_revert_pr.md)
+참고)으로 출시된다. `git revert`를
+실행하기 전에 봇은 raw commit object를 검사하여 shallow-clone 경계의 merge가
+root commit처럼 보이지 않게 한다. 모든 multi-parent 대상을 fail-closed로
+거부하고 `-m`을 추측하지 않는다. 인시던트는 operator에게
+`git show --format=%P <sha>`로 parent를 확인하고 mainline parent를 검증한 뒤에만
+`git revert -m N <sha>`를 수동 실행하라고 안내한다. 자동 revert PR도 일반
+gate를 통과하며 `ready-to-merge`로 자동 라벨링되지 않는다.
 
 ### L5 — Break-glass auditor
 
@@ -124,7 +139,8 @@ L5는 봇 자신의 저장소를 포함한 **등록된 모든 저장소**에 걸
 
 ### Outputs
 
-- Revert PR (`decision:auto-revert` 라벨 부착).
+- non-merge임이 입증된 대상의 optional 자동 revert PR(operator가 검증된
+  `decision:auto-revert` 라벨을 부여할 수 있음).
 - Break-glass 감사 Issue.
 - 저장소 상태에 기록된 watermark(봇 자신의 저장소 내 단일 파일).
 

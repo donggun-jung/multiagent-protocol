@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. The format adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Fail-closed multi-parent revert guard.** The opt-in L2 automatic revert
+  path now proves the target commit's parent structure from the raw commit
+  object before running `git revert`. Merge commits (including octopus merges)
+  and uninspectable targets fall back to incident-only with explicit mainline
+  parent guidance; L2 incident bodies likewise require parent inspection before
+  presenting the non-merge or `git revert -m N` procedure.
+
 ## [1.3.0] - 2026-07-07
 
 **The operational-trust release.** Ideas benchmarked against the wider

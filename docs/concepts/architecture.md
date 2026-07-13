@@ -96,8 +96,15 @@ For each commit on `main` newer than the last `branch_supervisor` watermark:
 
 1. Re-run the L1 required-checks set against the merged commit's SHA.
 2. If all pass: advance watermark, no action.
-3. If some fail **and the failure is real** (see "infra-failure differentiation" below): open a revert PR. Label it `decision:auto-revert`.
-4. If failures are **all infra-failure**: record `infra-failure` state in the tick metrics, do **not** revert, retry on next tick.
+3. If some fail **and the failure is real** (see "infra-failure differentiation"
+   below): open a `decision:post-merge-revalidation` incident with parent-aware
+   manual recovery guidance.
+4. If the default-off `auto_revert_pr` option is enabled: attempt a revert PR
+   only after the shallow clone proves the target has at most one parent. If the
+   target has multiple parents, or its parent structure cannot be proved, do
+   not run `git revert`; append the fail-closed reason to the incident instead.
+5. If failures are **all infra-failure**: record `infra-failure` state in the
+   tick metrics, do **not** revert, retry on next tick.
 
 #### Infra-failure differentiation
 
@@ -108,7 +115,15 @@ A failed check is considered infra-failure (not a real failure) when:
 
 `conclusion == "skipped"` is **not** infra-failure: it means the workflow's own `if:` condition evaluated false (intentional protocol skip). Treating skipped as infra was a known false-negative in earlier designs.
 
-**Shipping status:** L2 ships as **detection + incident**. On a real post-merge failure the bot opens a `decision:post-merge-revalidation` issue carrying the `git revert <sha>` command; it does not yet *author* the revert PR. Having the bot commit to a supervised repo is itself a Quadrant-D action that needs its own ADR — the same rationale that keeps mirror auto-cascade manual. The `classifier_auto_revert` rule + `decision:auto-revert` label are already in place for when a revert PR is opened (by you now, or by a future auto-revert feature). See [`STATUS.md`](../../STATUS.md).
+**Shipping status:** Detection + incident is always enabled. Automatic revert-PR
+creation ships as a default-off opt-in (`env.yml` `auto_revert_pr: true`; see
+[`ADR 0002`](../decisions/0002_auto_revert_pr.md)). Before running `git revert`,
+the bot inspects the raw commit object so a merge at the shallow-clone boundary
+cannot masquerade as a root commit. It refuses every multi-parent target
+fail-closed and does not guess `-m`: the incident tells the operator to inspect
+the parents with `git show --format=%P <sha>`, validate the mainline parent, and
+only then perform a manual `git revert -m N <sha>`. Automatic revert PRs still
+go through the normal gate and are never auto-labelled `ready-to-merge`.
 
 ### L5 — Break-glass auditor
 
@@ -122,7 +137,8 @@ L5 runs across **all registered repos** including the bot's own repo. The bot do
 
 ### Outputs
 
-- Revert PRs (with `decision:auto-revert` label).
+- Optional automatic revert PRs for proven non-merge targets (the operator may
+  apply the verified `decision:auto-revert` label).
 - Break-glass audit Issues.
 - Watermarks recorded in repo state (a single file in the bot's own repo).
 

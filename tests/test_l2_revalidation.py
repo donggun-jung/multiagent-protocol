@@ -5,11 +5,18 @@ Verifies the infra-vs-real failure differentiation from architecture.md § L2:
 - infra failure (``cancelled`` / zero-duration) → no incident, watermark does
   NOT advance (the commit is re-checked next tick).
 - ``skipped`` and ``success`` → pass.
+- incident recovery instructions are safe for both merge and non-merge targets.
 """
 
 from __future__ import annotations
 
-from multiagent_protocol.branch_supervisor import revalidate_main
+import pytest
+
+from multiagent_protocol.branch_supervisor import (
+    _l2_incident_body,
+    _l2_stalled_body,
+    revalidate_main,
+)
 from tests.conftest import make_check, raw_commit
 
 # A valid L2 watermark anchor. revalidate_main now refuses a since=None
@@ -17,6 +24,21 @@ from tests.conftest import make_check, raw_commit
 # guard), so these classification tests seed a real anchor commit and start the
 # watermark there: the target commit is the bounded delta scanned this tick.
 ANCHOR = "0" * 40
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        _l2_incident_body("o", "r", "a" * 40, ["test"]),
+        _l2_stalled_body("o", "r", "a" * 40, "2026-07-01T00:00:00Z", 24),
+    ],
+    ids=["real-failure", "stalled"],
+)
+def test_l2_incident_manual_revert_guidance_is_merge_safe(body):
+    sha = "a" * 40
+    assert f"```\ngit revert {sha}\n```" not in body
+    assert f"git show --format=%P {sha}" in body
+    assert f"git revert -m N {sha}" in body
 
 
 def _seed(fake_api, sha, checks):
