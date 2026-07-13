@@ -19,6 +19,66 @@
 
 모든 결재함 Issue는 `decision:pending-owner` 라벨(열림) 또는 해결 라벨 중 하나(닫힘; 아래 "Resolution states" 참고)를 지닌다.
 
+## Optional lifecycle (기본 OFF)
+
+프레임워크 기본값은 완전한 비동기 방식 그대로다. lifecycle 블록이 없거나
+`enabled: false`이면 봇은 **타이머·availability API 호출을 전혀 하지 않고**
+reminder, escalation, return-digest 코멘트도 게시하지 않는다. 설치본이
+알림 전용 lifecycle을 의도적으로 쓰려면 `config/projects.yml`에 다음처럼
+설정한다:
+
+```yaml
+decision_inbox:
+  repository: example-org/decision-inbox
+  lifecycle:
+    enabled: true
+    reminder_hours: 72
+    escalate_hours: 168
+    availability:                   # 선택 사항
+      repository: example-org/operations
+      path: status/availability.md
+      ref: main
+      line_prefix: "[OWNER_AVAILABILITY]"
+```
+
+`escalate_hours`는 `reminder_hours`보다 커야 한다. 기본 임계값에서는 유효
+경과시간 72시간에 `[REMINDER_72H]`, 168시간에 `[ESCALATION_7D]` 코멘트를
+각각 한 번 게시한다. 안정적인 숨은 마커가 stateless cron 재시작과 임계값
+재설정 뒤에도 멱등성을 보장한다. 첫 관측 tick에 두 임계값을 모두 넘겼다면
+아직 없는 마커를 각각 한 번 게시한다. 이 lifecycle은 승인, 거부,
+abandoned 라벨 부여, 이슈·PR 닫기를 절대 수행하지 않는다.
+
+선택적 availability 파일은 설정된 literal `line_prefix`를 사용하며,
+프레임워크에는 특정 저장소나 경로가 내장되어 있지 않다. 유효한 라인 계약은
+다음과 같다:
+
+```text
+[OWNER_AVAILABILITY] available
+[OWNER_AVAILABILITY] quiet
+[OWNER_AVAILABILITY] 2026-08-01T00:00Z - 2026-08-01T12:00Z outing
+```
+
+창 구분자는 hyphen, en-dash, em-dash를 허용한다. 마지막 유효 라인이 현재
+상태를 정하고, 파일 안의 모든 유효한 `outing` 창이 시계 정지 계산에
+포함된다. `quiet`는 lifecycle 코멘트를 억제하지만 무기한 정지를 만들어내지
+않는다. 명시적 outing 창만 경과시간 자체를 멈춘다. 예를 들어 60시간째인
+이슈에 12시간 outing이 이어지면 복귀 시점에도 60시간이고, 그 뒤 12시간이
+지나야 72시간 reminder에 도달한다.
+
+outing 창이 끝나면 아직 열린 각 이슈에 `[OWNER_RETURN_DIGEST]` 코멘트를
+한 번만 게시한다. 이 마커에는 해당 tick이 관측한 끝난 창이 모두 기록되므로
+재시작 뒤에도 시계 정지 계산과 exactly-once가 유지된다. 같은 이슈가 이후
+outing까지 계속 열려 있으면 봇은 두 번째 digest를 게시하지 않고 기존 digest
+코멘트에 그 창의 숨은 메타데이터를 덧붙인다. 그 뒤 원본 라인을 지워도 되지만,
+봇이 각 창을 관측할 수 있도록 끝난 outing 라인을 최소 한 번의 복귀 후 tick까지
+남기거나 히스토리로 보존해야 한다. 설정된 availability
+소스가 없거나 읽을 수 없거나 형식이 잘못되면, 봇은 가용 상태를 추측하지
+않고 그 tick의 lifecycle 동작을 억제한다.
+
+구형 `decision_inbox.thresholds` 키는 기존 설치본 호환을 위해 스키마가 계속
+허용하지만 deprecated이며 로더가 무시한다. 새 lifecycle을 활성화하지 않고,
+abandon·auto-close 의미도 없다.
+
 ## Issue body schema
 
 봇이 결재함 이슈를 열 때, 본문은 정확히 이 스키마를 따른다:
@@ -75,7 +135,7 @@ HTML-comment nonce와 head-SHA는 **사람에게는 보이지 않지만** 봇의
 | `decision:approved-B`  | 오너가 옵션 B(대안) 승인.                      |
 | `decision:rejected`    | 오너가 거부; PR 닫힘.                          |
 
-열린 이슈는 대신 `decision:deferred`(오너가 `/approve C`를 선택함 — 연기; 아무것도 머지되지 않고 오너가 뒤집을 때까지 이슈가 열려 있음)나 `decision:stale-approval`(판정 후 PR head가 움직임 — 이전 승인이 한 번 무효화되고 이슈는 새 결정을 기다림)을 지닐 수 있다. 자동 abandon / auto-close 라이프사이클은 **없다**: 이슈는 오너가 조치할 때까지 열려 있다.
+열린 이슈는 대신 `decision:deferred`(오너가 `/approve C`를 선택함 — 연기; 아무것도 머지되지 않고 오너가 뒤집을 때까지 이슈가 열려 있음)나 `decision:stale-approval`(판정 후 PR head가 움직임 — 이전 승인이 한 번 무효화되고 이슈는 새 결정을 기다림)을 지닐 수 있다. 자동 abandon / auto-close 라이프사이클은 **없다**: 선택적 reminder lifecycle을 켠 설치본에서도 이슈는 오너가 조치할 때까지 열려 있다.
 
 ## Allowlist enforcement
 
@@ -89,7 +149,7 @@ allowlist는 `config/owner.yml` `allowlisted_actors`다 — solo 운영자에게
 
 ## Asynchronous by design
 
-Inbox 이슈는 실시간이 아니라 **비동기** 응답을 위해 설계되었다 — 봇은 오너를 호출(page)하지 않으며, 자동 nudge / abandon / auto-close 타이머가 **없다**. 이슈는 오너가 해결할 때까지(approve / reject / defer) 열려 있다. 이슈가 열려 있는 동안 PR head가 움직이면, 봇은 이전 승인을 한 번 무효화하고 이슈에 `decision:stale-approval`을 라벨링하므로, stale한 판정이 리뷰되지 않은 코드에 적용되는 일은 결코 없다.
+Inbox 이슈는 실시간이 아니라 **비동기** 응답을 위해 설계되었다 — 봇은 오너를 호출(page)하지 않는다. 기본값에는 타이머가 **전혀 없고**, 명시적으로 켠 선택적 lifecycle도 one-time reminder/escalation 코멘트만 추가할 뿐 abandon이나 auto-close를 하지 않는다. 이슈는 오너가 해결할 때까지(approve / reject / defer) 열려 있다. 이슈가 열려 있는 동안 PR head가 움직이면, 봇은 이전 승인을 한 번 무효화하고 이슈에 `decision:stale-approval`을 라벨링하므로, stale한 판정이 리뷰되지 않은 코드에 적용되는 일은 결코 없다.
 
 ## Failure modes
 
@@ -133,4 +193,5 @@ Inbox 이슈는 실시간이 아니라 **비동기** 응답을 위해 설계되�
 때문이다(위 "Asynchronous by design" 참조). 건강한 결재함은 열린 이슈
 ~10개 미만, 일주일 넘게 기다리는 항목 없음 수준이다. 지속적으로 더 높은
 수치는 과부하된 오너이거나 사분면-D를 남발하는 classifier를 가리킨다 —
-타이머를 달지 말고 경로 규칙을 감사하라.
+먼저 경로 규칙을 감사하라. 설치본이 이 알림 코멘트를 의도적으로 원할 때만
+선택적 lifecycle을 켠다.

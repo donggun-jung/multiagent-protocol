@@ -433,6 +433,23 @@ class GitHubAPI:
         )
         r.raise_for_status()
 
+    def update_issue_comment(
+        self, owner: str, repo: str, comment_id: int, body: str
+    ) -> None:
+        """Replace one issue comment body.
+
+        The Decision Inbox lifecycle uses this to append newly observed outing
+        windows to its single return-digest marker comment. Updating that one
+        durable comment preserves both the exactly-once digest and the paused
+        clock across later outings.
+        """
+        r = self._request(
+            "PATCH",
+            f"/repos/{owner}/{repo}/issues/comments/{comment_id}",
+            json={"body": body},
+        )
+        r.raise_for_status()
+
     # -- Issues --
 
     def list_issues(

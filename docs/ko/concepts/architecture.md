@@ -159,13 +159,15 @@ L5는 봇 자신의 저장소를 포함한 **등록된 모든 저장소**에 걸
 
 ### Stale handling
 
-자동 nudge / abandon / auto-close 타이머는 **없다**
-([`decision-inbox.md`](decision-inbox.md)가 이 주제의 정본). 결재함은
-설계상 비동기다: 이슈는 오너가 필요로 하는 만큼 기다린다. 실제로 존재하는
-stale 관련 장치는 라벨 기반 둘뿐이다: `/approve C`는 PR을
-`decision:deferred`(추가 정보 필요)로 표시하고, 승인 후 PR head SHA가
-바뀌면 그 승인은 `decision:stale-approval`로 무효화된다. 오래됨은 tick
-메트릭으로 *보이게* 만들 뿐, 자동으로 조치하지 않는다.
+프레임워크 기본값에는 타이머가 **없다**
+([`decision-inbox.md`](decision-inbox.md)가 이 주제의 정본). 설치본은
+알림 전용 optional lifecycle을 명시적으로 켤 수 있다: 이슈당 reminder 한 번,
+escalation 한 번, outing 창 시계 정지, return digest 한 번이며, 모두 봇 마커
+코멘트로 재시작 멱등성을 유지한다. 이 기능은 승인·abandon·close를 하지 않으므로
+결재함은 계속 비동기다. `/approve C`는 PR을 `decision:deferred`(추가 정보
+필요)로 표시하고, 승인 후 PR head SHA가 바뀌면 그 승인은
+`decision:stale-approval`로 무효화된다. deprecated
+`decision_inbox.thresholds` 키는 계속 허용되지만 무시되며 lifecycle을 켤 수 없다.
 
 ### Outputs
 
@@ -197,6 +199,8 @@ Drift는 **탐지**되며 자동 수정되지 않는다. Auto-fix는 각 adopter
 
 - PR 상태: GitHub PR 객체.
 - Decision Inbox: `<governance_repo>`의 Issue.
+- Optional inbox lifecycle 상태: 해당 Issue의 인증된 marker comment
+  (reminder, escalation, return-digest 창 메타데이터). 로컬 timer DB는 없다.
 - Watermark: App token을 통해 governance 저장소의 전용 **`bot-state` 브랜치**에 저장되는 단일 파일 `bot-state/branch_supervisor_watermarks.json`(봇이 자기 저장소에 하는 유일한 commit). 의도적으로 `main`이 **아니다**: 봇 자신의 L2/L5/unauthorized-push 스캐너는 `main`만 읽으므로, 상태 commit이 절대 자기 자신을 트리거해 인시던트를 만들 수 없다. tick은 시작 시 이 파일을 로드하고(첫 실행 시 브랜치를 생성), 각 저장소 후에 증분 저장하며, `finally` 가드에서 한 번 더 저장한다 — 그래서 타임아웃된 tick도 진행 상황을 은행에 넣어둔다(bank한다). 처음 보는 저장소는 watermark를 현재 `main` HEAD로 부트스트랩하고 그보다 오래된 것은 스캔하지 않는다 — 활성화 이전 히스토리는 범위 밖이며, 이것이 cold-start 인시던트 홍수를 막는다. 손상된 저장 상태는 조용히 히스토리를 다시 걷는 대신 tick을 closed(non-zero)로 실패시킨다.
 - Audit log: GitHub Actions workflow 아티팩트(90일 보존) + commit 히스토리.
 
