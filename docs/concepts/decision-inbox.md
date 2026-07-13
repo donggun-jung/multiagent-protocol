@@ -17,6 +17,69 @@ By default, the inbox lives in the **governance repository** (the one that holds
 
 All Decision Inbox Issues carry the label `decision:pending-owner` (open) or one of the resolution labels (closed; see "Resolution states" below).
 
+## Optional lifecycle (default OFF)
+
+The framework default remains fully asynchronous: with no lifecycle block, or
+with `enabled: false`, the bot performs **no timer or availability API calls**
+and posts no reminder, escalation, or return-digest comments. An installation
+may deliberately opt into a notification-only lifecycle in
+`config/projects.yml`:
+
+```yaml
+decision_inbox:
+  repository: example-org/decision-inbox
+  lifecycle:
+    enabled: true
+    reminder_hours: 72
+    escalate_hours: 168
+    availability:                   # optional
+      repository: example-org/operations
+      path: status/availability.md
+      ref: main
+      line_prefix: "[OWNER_AVAILABILITY]"
+```
+
+`escalate_hours` must be greater than `reminder_hours`. At the default
+thresholds, the bot posts one `[REMINDER_72H]` comment at 72 effective hours
+and one `[ESCALATION_7D]` comment at 168 effective hours. Stable hidden markers
+make both comments idempotent across stateless cron restarts, even if thresholds
+are later reconfigured. If a tick first sees an issue after both thresholds,
+it posts each missing marker once. The lifecycle never approves, rejects,
+labels an issue abandoned, or closes an issue or PR.
+
+The optional availability file uses the configured literal `line_prefix`; no
+repository or path is built into the framework. Valid contract lines are:
+
+```text
+[OWNER_AVAILABILITY] available
+[OWNER_AVAILABILITY] quiet
+[OWNER_AVAILABILITY] 2026-08-01T00:00Z - 2026-08-01T12:00Z outing
+```
+
+Hyphen, en-dash, and em-dash window separators are accepted. The last valid
+line supplies the current state, while every valid `outing` window in the file
+contributes to clock suspension. `quiet` suppresses lifecycle comments but does
+not invent an unbounded pause; only an explicit outing window stops elapsed
+time. For example, an issue at 60 effective hours followed by a 12-hour outing
+is still at 60 effective hours at return and reaches the 72-hour reminder 12
+hours later.
+
+After an outing window ends, each still-open issue receives one
+`[OWNER_RETURN_DIGEST]` comment. That marker records every completed window the
+tick observed, so the paused-clock calculation and exactly-once behavior
+survive a restart. If the same issue survives a later outing, the bot appends
+that window's hidden metadata to the same digest comment instead of posting a
+second digest. The source line may then be removed, but each completed outing
+line must remain in the source through at least one post-return bot tick (or be
+retained as history) so the bot can observe it. A missing,
+unreadable, or malformed configured availability source suppresses lifecycle
+actions for that tick; the bot does not guess that the decision owner is
+available.
+
+The old `decision_inbox.thresholds` keys remain schema-tolerated for existing
+installations but are deprecated and ignored. They do not activate this
+lifecycle and retain no abandon or auto-close semantics.
+
 ## Issue body schema
 
 When the bot opens a Decision Inbox issue, the body follows this exact schema:
@@ -77,7 +140,8 @@ An open issue may instead carry `decision:deferred` (the owner chose `/approve C
 — defer; nothing merges and the issue stays open until they flip it) or
 `decision:stale-approval` (the PR head moved after a verdict — the prior approval
 is voided once and the issue waits for a fresh decision). There is **no**
-automated abandon / auto-close lifecycle: an issue stays open until the owner acts.
+automated abandon / auto-close lifecycle: even an installation that enables
+the optional reminder lifecycle leaves the issue open until the owner acts.
 
 ## Allowlist enforcement
 
@@ -92,11 +156,13 @@ The allowlist is `config/owner.yml` `allowlisted_actors` — typically `[<owner-
 ## Asynchronous by design
 
 Inbox issues are designed for **asynchronous** response, not real-time — the bot
-does not page the owner, and there is **no** automated nudge / abandon /
-auto-close timer. An issue stays open until the owner resolves it (approve /
-reject / defer). If the PR head moves while an issue is open, the bot voids the
-prior approval once and labels the issue `decision:stale-approval`, so a stale
-verdict is never applied to unreviewed code.
+does not page the owner. By default there is **no** timer at all; an explicitly
+enabled optional lifecycle may add one-time reminder/escalation comments, but
+never abandon or auto-close. An issue stays open until the owner resolves it
+(approve / reject / defer). If the PR head moves while an issue is open, the
+bot voids the prior approval once and labels the issue
+`decision:stale-approval`, so a stale verdict is never applied to unreviewed
+code.
 
 ## Failure modes
 
@@ -140,4 +206,5 @@ There is no `abandoned` counter — no automated abandon lifecycle exists (see
 "Asynchronous by design" above). A healthy inbox stays under ~10 open issues
 with nothing waiting longer than about a week; sustained higher numbers
 indicate either an over-loaded owner or a classifier that is
-over-quadrant-D'ing — audit the path rules, don't add a timer.
+over-quadrant-D'ing — audit the path rules first. Leave the optional lifecycle
+off unless an installation deliberately wants those notification comments.

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- **Decision Inbox lifecycle (default-off opt-in).** Installations may enable
+  one-time reminder/escalation comments with configurable hour thresholds,
+  read a generic repository-file availability contract, suspend the effective
+  clock across explicit outing windows, and emit an exactly-once return digest.
+  GitHub marker comments preserve idempotency across stateless restarts. The
+  default remains timer-free, and the lifecycle never approves, abandons, or
+  closes an issue. Legacy `decision_inbox.thresholds` keys remain tolerated but
+  are now documented as deprecated and ignored.
+
 ### Fixed
 
 - **Fail-closed multi-parent revert guard.** The opt-in L2 automatic revert

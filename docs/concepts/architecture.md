@@ -157,14 +157,16 @@ Runs once per cron tick across all supervised repos. Owns the **Quadrant D → o
 
 ### Stale handling
 
-There is **no automated nudge / abandon / auto-close timer** (see
-[`decision-inbox.md`](decision-inbox.md), which is authoritative here). The
-inbox is asynchronous by design: an issue waits as long as the owner needs.
-The two stale-related mechanisms that DO exist are label-based: `/approve C`
-marks the PR `decision:deferred` (needs more info), and an approval whose PR
-head SHA has since changed is superseded with `decision:stale-approval`.
-Aging is made *visible* (open count and ages in the tick metrics), never
-acted on automatically.
+The framework default has **no timer** (see
+[`decision-inbox.md`](decision-inbox.md), which is authoritative here). An
+installation may explicitly enable the optional, notification-only lifecycle:
+one reminder, one escalation, outing-window clock suspension, and one return
+digest per issue, all restart-idempotent through bot marker comments. It never
+approves, abandons, or closes an issue; the inbox therefore remains
+asynchronous. `/approve C` marks the PR `decision:deferred` (needs more info),
+and an approval whose PR head SHA has since changed is superseded with
+`decision:stale-approval`. The deprecated `decision_inbox.thresholds` keys are
+still accepted but ignored and cannot activate the lifecycle.
 
 ### Outputs
 
@@ -196,6 +198,9 @@ The bot is **stateless across cron ticks**. All state lives in GitHub:
 
 - PR state: GitHub PR object.
 - Decision Inbox: Issues in `<governance_repo>`.
+- Optional inbox lifecycle state: authenticated marker comments on those
+  Issues (reminder, escalation, and return-digest window metadata); no local
+  timer database.
 - Watermarks: a single file `bot-state/branch_supervisor_watermarks.json` persisted to a dedicated **`bot-state` branch** of the governance repo via the App token (the only commits the bot makes to its own repo). Deliberately **not** `main`: the bot's own L2/L5/unauthorized-push scanners read only `main`, so state commits can never self-trigger an incident. The tick loads this file at start (creating the branch on first run), persists incrementally after each repo and again in a `finally` guard, so a timed-out tick still banks its progress. A repo seen for the first time bootstraps its watermark to the current `main` HEAD and scans nothing older — pre-activation history is out of scope, which is what prevents a cold-start incident flood. A corrupt persisted state fails the tick closed (non-zero) instead of silently re-walking history.
 - Audit log: GitHub Actions workflow artifacts (90-day retention) + commit history.
 
