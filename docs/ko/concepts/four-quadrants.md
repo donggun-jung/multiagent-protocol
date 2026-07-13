@@ -105,7 +105,15 @@ IR과 CR이 깔끔하게 결정되지 않을 때:
 1. **Empty PR (파일 변경 없음)** → 사분면 D. `ready-to-merge`가 붙은 empty PR은 오너를 깨울 만큼 수상하다.
 2. **Multi-quadrant PR** (예: 한 파일은 A에 맞고 다른 파일은 D에 맞음) → **최고 사분면**을 취한다(D > B > C > A). 하나의 critical 파일이 PR 전체를 오염시킨다.
 3. **봇 자신의 저장소 PR** → 내용과 무관하게 사분면 D(봇은 자기 자신을 머지하지 않는다; [`break-glass.md`](break-glass.md) 참고).
-4. *검증된* `decision:auto-revert` 라벨을 지닌 **Auto-revert PR**(head에서 또는 그 이후에 오너 또는 봇이 부여함 — `classifier_auto_revert` 참고) → 사분면 C, 그래서 복구가 빠르게 착지한다. 엔진은 **최대** 사분면을 취하므로, 이것이 진짜 사분면-D revert를 낮출 수는 없다; 그리고 검증되지 않은(self-applied / stale) 라벨은 무시된다. 봇이 자동으로 작성하는 revert PR은 post-1.0이다([`STATUS.md`](../../../STATUS.md) 참고); 그때까지는 오너가 자신이 연 revert에 이 라벨을 부여한다.
+4. *검증된* `decision:auto-revert` 라벨을 지닌 **Auto-revert PR**(head에서
+   또는 그 이후에 오너 또는 봇이 부여함 — `classifier_auto_revert` 참고) → 사분면
+   C, 그래서 복구가 빠르게 착지한다. 엔진은 **최대** 사분면을 취하므로,
+   이것이 진짜 사분면-D revert를 낮출 수는 없다; 그리고 검증되지 않은
+   (self-applied / stale) 라벨은 무시된다. 봇이 작성하는 revert PR은 기본 off인
+   `auto_revert_pr` 옵션으로 출시된다. 이 경로는 parent가 하나 이하임이 입증된
+   대상만 처리한다. multi-parent commit은 incident-only로 후퇴한다.
+   `git revert -m N`의 mainline parent 선택은 operator가 parent를 조사하고 검증해야 하는 일이기
+   때문이다.
 
 ## L4 burn-in: 60-day advisory window
 

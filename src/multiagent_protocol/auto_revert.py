@@ -10,21 +10,24 @@ GitHub has **no revert REST endpoint**, and the engine is otherwise API-only
 
 1. ``git clone --depth <N> https://x-access-token:<token>@github.com/<repo>``
    into a tempdir (the App installation token authorises the push).
-2. ``git revert --no-edit <bad-sha>`` on ``main``.
-3. Amend the revert commit message to carry the five ``Agent-*`` trailers +
+2. Inspect the raw ``<bad-sha>`` commit object with ``git cat-file commit``. If
+   its parent structure cannot be proved, or it has multiple parents, stop
+   fail-closed. (Raw-object inspection remains accurate at a shallow boundary.)
+3. ``git revert --no-edit <bad-sha>`` on ``main`` for a non-merge commit.
+4. Amend the revert commit message to carry the five ``Agent-*`` trailers +
    ``Task-Ref`` (so the merge gate's own C5/L4 can evaluate the revert PR).
-4. Push ``HEAD`` to ``revert/<bad-sha7>``.
-5. Open the PR via the existing API client (:meth:`GitHubAPI.create_pull_request`).
+5. Push ``HEAD`` to ``revert/<bad-sha7>``.
+6. Open the PR via the existing API client (:meth:`GitHubAPI.create_pull_request`).
 
 **The revert PR goes through the normal gate** — it is deliberately NOT
 auto-labelled ``ready-to-merge``. That is the whole point: a bot-authored
 commit into a supervised repo is a Quadrant-D action, so it is owner/classifier
 gated exactly like any other PR.
 
-**Graceful degradation.** EVERY failure (clone, revert conflict, push, PR open)
-degrades to today's behaviour: the incident issue is still opened; the failure
-reason is appended to its body; the tick is never crashed. The bot commits
-nothing on failure.
+**Graceful degradation.** EVERY failure (clone, parent inspection, multi-parent
+target, revert conflict, push, PR open) degrades to today's behaviour: the
+incident issue is still opened; the failure reason is appended to its body; the
+tick is never crashed. The bot commits nothing on failure.
 
 **Idempotency.** If the ``revert/<bad-sha7>`` branch — or an open PR from it —
 already exists, the existing one is linked and no duplicate is created.
@@ -226,6 +229,37 @@ def ensure_revert_pr(
                 "clone", bad_sha, _redact(clone.stderr or clone.stdout, token)
             )
 
+        # Read the raw commit object instead of using ``rev-list --parents``:
+        # Git deliberately hides parents when the target is at a shallow-clone
+        # boundary, which could make a merge commit look like a root commit.
+        parent_check = runner(["git", "cat-file", "commit", bad_sha], cwd=tmpdir)
+        if not parent_check.ok:
+            return _fail(
+                "parent-inspection", bad_sha,
+                _redact(parent_check.stderr or parent_check.stdout, token),
+                hint=_manual_merge_revert_hint(bad_sha),
+            )
+        header, separator, _message = parent_check.stdout.partition("\n\n")
+        header_lines = header.splitlines()
+        parent_lines = [line.split() for line in header_lines if line.startswith("parent ")]
+        if (
+            not separator
+            or sum(line.startswith("tree ") for line in header_lines) != 1
+            or any(len(line) != 2 for line in parent_lines)
+        ):
+            return _fail(
+                "parent-inspection", bad_sha,
+                _redact(parent_check.stdout or "unexpected empty output", token),
+                hint=_manual_merge_revert_hint(bad_sha),
+            )
+        parent_count = len(parent_lines)
+        if parent_count > 1:
+            return _fail(
+                "multi-parent-merge", bad_sha,
+                f"target has {parent_count} parents",
+                hint=_manual_merge_revert_hint(bad_sha),
+            )
+
         rev = runner(["git", "revert", "--no-edit", bad_sha], cwd=tmpdir)
         if not rev.ok:
             # A revert CONFLICT is the common, expected failure. Abort the
@@ -324,7 +358,7 @@ def _fail(stage: str, bad_sha: str, detail: str, *, hint: str = "") -> RevertRes
         detail = detail[:800] + " …(truncated)"
     parts = [
         f"Auto-revert PR **not** created (stage: `{stage}`). Falling back to "
-        f"incident-only; revert `{bad_sha[:7]}` manually."
+        f"incident-only; handle recovery for `{bad_sha[:7]}` manually."
     ]
     if hint:
         parts.append(hint)
@@ -335,3 +369,13 @@ def _fail(stage: str, bad_sha: str, detail: str, *, hint: str = "") -> RevertRes
         "auto-revert: stage %s failed for %s: %s", stage, bad_sha[:7], detail[:200]
     )
     return RevertResult(pr_url=None, created=False, note=note)
+
+
+def _manual_merge_revert_hint(bad_sha: str) -> str:
+    """Safe manual guidance when the target may be a merge commit."""
+    return (
+        "Inspect the target's parents first with "
+        f"`git show --format=%P {bad_sha}`. For a merge commit, identify and "
+        "validate the mainline parent, then manually run "
+        f"`git revert -m N {bad_sha}`."
+    )

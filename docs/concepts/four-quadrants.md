@@ -103,7 +103,15 @@ When IR and CR are not cleanly determined:
 1. **Empty PR (no file changes)** → Quadrant D. An empty PR with `ready-to-merge` is suspicious enough to wake the owner.
 2. **Multi-quadrant PR** (e.g., one file fits A, another fits D) → take the **highest-quadrant** (D > B > C > A). One critical file taints the whole PR.
 3. **Bot's own repo PRs** → Quadrant D regardless of contents (bot does not self-merge; see [`break-glass.md`](break-glass.md)).
-4. **Auto-revert PRs** carrying a *verified* `decision:auto-revert` label (owner- or bot-applied at/after head — see `classifier_auto_revert`) → Quadrant C, so recovery lands fast. Because the engine takes the **maximum** quadrant, this cannot lower a genuinely Quadrant-D revert; and an unverified (self-applied / stale) label is ignored. Automatic, bot-authored revert PRs are post-1.0 (see [`STATUS.md`](../../STATUS.md)); until then the owner applies this label to a revert they opened.
+4. **Auto-revert PRs** carrying a *verified* `decision:auto-revert` label
+   (owner- or bot-applied at/after head — see `classifier_auto_revert`) →
+   Quadrant C, so recovery lands fast. Because the engine takes the **maximum**
+   quadrant, this cannot lower a genuinely Quadrant-D revert; and an unverified
+   (self-applied / stale) label is ignored. Bot-authored revert PRs ship as the
+   default-off `auto_revert_pr` option. That path handles only targets proved to
+   have at most one parent: multi-parent commits fall back to incident-only,
+   because choosing `git revert -m N` requires an operator to inspect and
+   validate the mainline parent first.
 
 ## L4 burn-in: 60-day advisory window
 

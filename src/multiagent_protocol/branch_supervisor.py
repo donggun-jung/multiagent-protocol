@@ -12,8 +12,8 @@ Re-processing the same commit on every tick would be O(N) on commit count;
 the watermark makes it O(delta).
 
 Both run here: L5 break-glass detection and L2 post-merge re-validation
-(``revalidate_main`` below — detection + incident; automatic revert-PR
-creation is post-1.0, see ``STATUS.md``).
+(``revalidate_main`` below — detection + incident; the caller may additionally
+open an opt-in automatic revert PR for a proven non-merge target).
 """
 
 from __future__ import annotations
@@ -347,11 +347,10 @@ def _to_commit_context(raw: dict) -> CommitContext:
 # *infra* failure (cancelled / zero-duration) is left unsettled so the next
 # tick retries it; ``skipped`` is an intentional protocol skip and passes.
 #
-# This implementation is **detection + incident**. Opening a revert PR
-# automatically (the architecture's eventual goal) is deferred for the same
-# reason auto-cascade is: it has the bot author commits in a supervised repo,
-# which is itself a Quadrant-D action that needs its own ADR + integration
-# tests. Until then the incident issue carries the exact revert command.
+# This module emits detection + incident. The caller can additionally request
+# the default-off automatic revert-PR path; that path independently verifies
+# the target's parent structure and refuses multi-parent commits fail-closed.
+# Manual incident guidance stays safe for both merge and non-merge targets.
 # ---------------------------------------------------------------------------
 
 # Conclusions that mean "the check did not really run" (not a code failure).
@@ -642,8 +641,8 @@ def _l2_stalled_body(
         f"failure: the watermark has been force-advanced past it so L2 resumes "
         f"for newer commits, and this incident records why.\n\n"
         f"Investigate the stuck check (re-run CI on `{sha[:7]}`; if the code is "
-        f"actually bad, revert it):\n\n"
-        f"```\ngit revert {sha}\n```\n"
+        f"actually bad, follow the parent-aware revert procedure below).\n\n"
+        f"{_manual_revert_guidance(sha)}"
     )
 
 
@@ -656,11 +655,23 @@ def _l2_incident_body(owner: str, repo: str, sha: str, failing: list[str]) -> st
         f"These checks passed (or were absent) at merge time but fail on the "
         f"merged commit — a real regression on `main`, not an infrastructure "
         f"blip (cancelled / never-run checks are ignored).\n\n"
-        f"To restore a known-good `main`, revert the commit:\n\n"
-        f"```\ngit revert {sha}\n```\n\n"
+        f"To restore a known-good `main`, follow the parent-aware revert "
+        f"procedure below.\n\n"
+        f"{_manual_revert_guidance(sha)}\n\n"
         f"then open a PR — label it `decision:auto-revert` so the classifier "
-        f"fast-tracks it (Quadrant C). Automatic revert-PR creation is a "
-        f"planned enhancement (see `docs/concepts/architecture.md` § L2)."
+        f"fast-tracks it (Quadrant C)."
+    )
+
+
+def _manual_revert_guidance(sha: str) -> str:
+    """Parent-aware manual revert guidance safe for merge and non-merge SHAs."""
+    return (
+        "Inspect the target's parents before choosing a revert command:\n\n"
+        f"`git show --format=%P {sha}`\n\n"
+        f"- Zero or one parent: after validation, run `git revert {sha}`.\n"
+        "- Two or more parents: identify and validate the mainline parent, then "
+        f"run `git revert -m N {sha}` manually (replace `N` with the validated "
+        "parent number)."
     )
 
 
