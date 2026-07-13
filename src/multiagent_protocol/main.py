@@ -37,7 +37,7 @@ from multiagent_protocol.branch_supervisor import (
     scan_repo,
 )
 from multiagent_protocol.config.loader import load_config
-from multiagent_protocol.decision_inbox import resolve_open_issues
+from multiagent_protocol.decision_inbox import process_lifecycle, resolve_open_issues
 from multiagent_protocol.drift_check import (
     DriftIncident,
     check_repo_against_canonical,
@@ -660,7 +660,8 @@ def main(argv: list[str] | None = None, *, now: datetime | None = None) -> int:
             if account == gov_owner:
                 _run_governance_work(
                     api, config, gov_owner, gov_repo, inbox_owner, inbox_repo,
-                    supervised, allowlisted, metrics, _open_capped,
+                    supervised, allowlisted, metrics, _open_capped, now,
+                    runtime.bot_user,
                 )
 
         metrics["l2_unsettled"] = count_l2_unsettled(watermarks)
@@ -677,7 +678,7 @@ def main(argv: list[str] | None = None, *, now: datetime | None = None) -> int:
 
 def _run_governance_work(
     api, config, gov_owner, gov_repo, inbox_owner, inbox_repo,
-    supervised, allowlisted, metrics, open_capped,
+    supervised, allowlisted, metrics, open_capped, now, bot_user,
 ) -> None:
     """Drift check + Decision-Inbox poll (governance installation only)."""
     if MIRROR_PATHS.exists():
@@ -727,6 +728,30 @@ def _run_governance_work(
                         r.pr_full_name, r.pr_number, r.verdict, r.action)
     except Exception as e:
         logger.error("inbox poll failed: %s", e)
+
+    # Expand-then-contract: the optional lifecycle is not even called unless
+    # the installation explicitly enables it. Default-off therefore adds no
+    # availability read, issue listing, comment listing, or write to a tick.
+    lifecycle = config.projects.decision_inbox.lifecycle
+    if lifecycle.enabled:
+        try:
+            lifecycle_actions = process_lifecycle(
+                api,
+                inbox_owner,
+                inbox_repo,
+                lifecycle,
+                now=now,
+                bot_login=bot_user,
+            )
+            for action in lifecycle_actions:
+                logger.info(
+                    "inbox lifecycle: issue #%s → %s (effective_age=%.1fh)",
+                    action.issue_number,
+                    action.action,
+                    action.effective_age_hours,
+                )
+        except Exception as e:
+            logger.error("inbox lifecycle failed: %s", e)
 
 
 if __name__ == "__main__":

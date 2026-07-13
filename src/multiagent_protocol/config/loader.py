@@ -38,8 +38,36 @@ class OwnerConfig:
 
 
 @dataclass(frozen=True)
+class AvailabilitySourceConfig:
+    """Repository file that declares decision-owner availability.
+
+    ``line_prefix`` identifies the configured line contract; the lifecycle
+    parser supplies the state/window grammar and never assumes a repository or
+    path.  The governance installation must be able to read ``repository``.
+    """
+
+    repository: str
+    path: str
+    ref: str = "main"
+    line_prefix: str = "[OWNER_AVAILABILITY]"
+
+
+@dataclass(frozen=True)
+class DecisionInboxLifecycleConfig:
+    """Optional reminder lifecycle. Default-off means no timer API activity."""
+
+    enabled: bool = False
+    reminder_hours: int = 72
+    escalate_hours: int = 168
+    availability: AvailabilitySourceConfig | None = None
+
+
+@dataclass(frozen=True)
 class DecisionInboxConfig:
     repository: str | None = None  # falls back to projects.governance_repo
+    lifecycle: DecisionInboxLifecycleConfig = field(
+        default_factory=DecisionInboxLifecycleConfig
+    )
 
 
 @dataclass(frozen=True)
@@ -203,12 +231,53 @@ def _validate(data: dict, schema_path: Path) -> None:
 
 
 def _build_decision_inbox(raw: dict) -> DecisionInboxConfig:
-    """Parse ``projects.decision_inbox``. Only ``repository`` is read; the
-    legacy ``thresholds`` keys (nudge/abandon/auto_close days) configured an
-    inbox lifecycle that was never implemented and are ignored if present."""
+    """Parse ``projects.decision_inbox`` and its optional lifecycle.
+
+    The legacy ``thresholds`` keys (nudge/abandon/auto_close days) are still
+    accepted for compatibility but deliberately ignored.  They never activate
+    the new lifecycle and never close an issue.
+    """
     if not raw:
         return DecisionInboxConfig()
-    return DecisionInboxConfig(repository=raw.get("repository"))
+    lifecycle_raw = raw.get("lifecycle") or {}
+    enabled = lifecycle_raw.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ValueError("decision_inbox.lifecycle.enabled must be a boolean")
+
+    def _hours(name: str, default: int) -> int:
+        value = lifecycle_raw.get(name, default)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"decision_inbox.lifecycle.{name} must be an integer")
+        if value < 1:
+            raise ValueError(f"decision_inbox.lifecycle.{name} must be positive")
+        return value
+
+    availability_raw = lifecycle_raw.get("availability") or None
+    availability = None
+    if availability_raw is not None:
+        availability = AvailabilitySourceConfig(
+            repository=availability_raw["repository"],
+            path=availability_raw["path"],
+            ref=availability_raw.get("ref", "main"),
+            line_prefix=availability_raw.get(
+                "line_prefix", "[OWNER_AVAILABILITY]"
+            ),
+        )
+    lifecycle = DecisionInboxLifecycleConfig(
+        enabled=enabled,
+        reminder_hours=_hours("reminder_hours", 72),
+        escalate_hours=_hours("escalate_hours", 168),
+        availability=availability,
+    )
+    if lifecycle.escalate_hours <= lifecycle.reminder_hours:
+        raise ValueError(
+            "decision_inbox.lifecycle.escalate_hours must be greater than "
+            "reminder_hours"
+        )
+    return DecisionInboxConfig(
+        repository=raw.get("repository"),
+        lifecycle=lifecycle,
+    )
 
 
 def _build_break_glass(raw: dict) -> BreakGlassConfig:

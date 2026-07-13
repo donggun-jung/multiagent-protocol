@@ -17,7 +17,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from multiagent_protocol.github_api import GitHubAPI
 from multiagent_protocol.label_provenance import approval_receipt_comment
@@ -30,9 +30,19 @@ from multiagent_protocol.receipt_mac import (
     warn_unsigned_once,
 )
 
+if TYPE_CHECKING:
+    from multiagent_protocol.config.loader import DecisionInboxLifecycleConfig
+
 logger = logging.getLogger(__name__)
 
 PENDING_LABEL = "decision:pending-owner"
+
+# Optional lifecycle marker comments.  The hidden stable markers survive
+# threshold reconfiguration; the visible tags preserve the established
+# [REMINDER_72H] / [ESCALATION_7D] / [OWNER_RETURN_DIGEST] operator contract.
+REMINDER_COMMENT_MARKER = "<!-- decision-inbox-lifecycle:reminder -->"
+ESCALATION_COMMENT_MARKER = "<!-- decision-inbox-lifecycle:escalation -->"
+RETURN_DIGEST_COMMENT_MARKER = "<!-- decision-inbox-lifecycle:return-digest"
 
 # One-time tamper marker (resolve_open_issues): the "head changed → prior
 # approval is void" comment is posted ONCE, then this label on the inbox
@@ -75,6 +85,103 @@ class OpenedIssue:
     issue_number: int
     nonce: str
     head_sha: str
+
+
+@dataclass(frozen=True)
+class AvailabilitySnapshot:
+    """Parsed availability source at one tick clock."""
+
+    state: Literal["available", "quiet", "outing"]
+    outing_windows: tuple[tuple[datetime, datetime], ...]
+    in_outing: bool
+
+
+@dataclass(frozen=True)
+class LifecycleAction:
+    """One marker comment posted by the optional lifecycle."""
+
+    issue_number: int
+    action: Literal["reminder", "escalation", "return-digest"]
+    effective_age_hours: float
+
+
+_ISO_MINUTE_OR_SECOND = (
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}"
+    r"(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})"
+)
+_RETURN_WINDOW_RE = re.compile(
+    re.escape(RETURN_DIGEST_COMMENT_MARKER)
+    + rf"\s+start=(?P<start>{_ISO_MINUTE_OR_SECOND})"
+    + rf"\s+end=(?P<end>{_ISO_MINUTE_OR_SECOND})\s+-->"
+)
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _iso_z(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def parse_availability(
+    text: str,
+    *,
+    line_prefix: str,
+    now: datetime,
+) -> AvailabilitySnapshot:
+    """Parse configured availability contract lines.
+
+    A line is either ``<prefix> available``, ``<prefix> quiet``, or
+    ``<prefix> <start> - <end> outing``. Hyphen, en-dash, and em-dash window
+    separators are accepted. Multiple lines are allowed: the last valid line
+    supplies the current state, while every valid outing window contributes to
+    the paused-clock calculation. This lets an append-only status file retain
+    past windows until all affected issues have been processed.
+
+    Raises ``ValueError`` when no valid configured line exists. The caller then
+    suppresses optional lifecycle actions for that tick rather than guessing.
+    """
+    now = now.astimezone(timezone.utc)
+    pattern = re.compile(
+        rf"^{re.escape(line_prefix)}\s+"
+        rf"(?:(?P<start>{_ISO_MINUTE_OR_SECOND})\s*[-–—]\s*"
+        rf"(?P<end>{_ISO_MINUTE_OR_SECOND})\s+)?"
+        r"(?P<state>available|quiet|outing)\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    state: Literal["available", "quiet", "outing"] | None = None
+    windows: list[tuple[datetime, datetime]] = []
+    for match in pattern.finditer(text):
+        candidate = match.group("state").lower()
+        start = _parse_datetime(match.group("start"))
+        end = _parse_datetime(match.group("end"))
+        if candidate == "outing":
+            if start is None or end is None or start >= end:
+                continue
+            windows.append((start, end))
+        elif start is not None or end is not None:
+            # Windows have meaning only for ``outing``; reject ambiguous lines.
+            continue
+        state = candidate  # type: ignore[assignment]
+    if state is None:
+        raise ValueError("availability source has no valid configured line")
+    return AvailabilitySnapshot(
+        state=state,
+        outing_windows=tuple(windows),
+        in_outing=(
+            state == "outing"
+            and any(start <= now < end for start, end in windows)
+        ),
+    )
 
 
 def _inbox_mac_parts(pr_full_name: str, pr_number: int, head_sha: str, nonce: str):
@@ -507,3 +614,315 @@ def resolve_open_issues(
         # here, so the count is surfaced via the log).
         logger.warning("inbox: inbox_errors=%d issue(s) failed this tick", inbox_errors)
     return resolutions
+
+
+# -- Optional lifecycle: reminder / escalation / availability clock ---------
+
+
+def _is_bot_comment(comment: dict, bot_login: str | None = None) -> bool:
+    """Return True for a GitHub bot-authored marker comment.
+
+    Checking the actor type prevents an ordinary user from suppressing a
+    reminder merely by copying its marker. No installation-specific login is
+    hardcoded; the write path is the configured GitHub App client.
+    """
+    user = comment.get("user") or {}
+    return user.get("type") == "Bot" and (
+        bot_login is None or user.get("login") == bot_login
+    )
+
+
+def _has_marker_comment(
+    comments: list[dict], marker: str, visible_prefix: str, bot_login: str | None
+) -> bool:
+    for comment in comments:
+        if not _is_bot_comment(comment, bot_login):
+            continue
+        body = comment.get("body") or ""
+        if marker in body or body.startswith(visible_prefix):
+            return True
+    return False
+
+
+def _marker_comment(
+    comments: list[dict], marker: str, visible_prefix: str, bot_login: str | None
+) -> dict | None:
+    for comment in comments:
+        if not _is_bot_comment(comment, bot_login):
+            continue
+        body = comment.get("body") or ""
+        if marker in body or body.startswith(visible_prefix):
+            return comment
+    return None
+
+
+def _comment_outing_windows(
+    comments: list[dict], bot_login: str | None
+) -> list[tuple[datetime, datetime]]:
+    """Recover completed outing windows persisted in return-digest markers."""
+    windows: list[tuple[datetime, datetime]] = []
+    for comment in comments:
+        if not _is_bot_comment(comment, bot_login):
+            continue
+        for match in _RETURN_WINDOW_RE.finditer(comment.get("body") or ""):
+            start = _parse_datetime(match.group("start"))
+            end = _parse_datetime(match.group("end"))
+            if start is not None and end is not None and start < end:
+                windows.append((start, end))
+    return windows
+
+
+def _merge_windows(
+    windows: list[tuple[datetime, datetime]],
+) -> list[tuple[datetime, datetime]]:
+    """Union overlapping windows so source + marker copies are subtracted once."""
+    if not windows:
+        return []
+    merged: list[tuple[datetime, datetime]] = []
+    for start, end in sorted(set(windows)):
+        if not merged or start > merged[-1][1]:
+            merged.append((start, end))
+            continue
+        prev_start, prev_end = merged[-1]
+        merged[-1] = (prev_start, max(prev_end, end))
+    return merged
+
+
+def _effective_age_hours(
+    created_at: datetime,
+    now: datetime,
+    outing_windows: list[tuple[datetime, datetime]],
+) -> float:
+    """Wall-clock issue age minus every outing overlap with its open lifetime."""
+    if now <= created_at:
+        return 0.0
+    paused_seconds = 0.0
+    for start, end in _merge_windows(outing_windows):
+        overlap_start = max(created_at, start)
+        overlap_end = min(now, end)
+        if overlap_start < overlap_end:
+            paused_seconds += (overlap_end - overlap_start).total_seconds()
+    effective = (now - created_at).total_seconds() - paused_seconds
+    return max(0.0, effective / 3600)
+
+
+def _threshold_tag(kind: str, hours: int) -> str:
+    if kind == "ESCALATION" and hours % 24 == 0:
+        return f"[{kind}_{hours // 24}D]"
+    return f"[{kind}_{hours}H]"
+
+
+def _load_availability(
+    api: GitHubAPI,
+    lifecycle: DecisionInboxLifecycleConfig,
+    *,
+    now: datetime,
+) -> AvailabilitySnapshot | None:
+    source = lifecycle.availability
+    if source is None:
+        return AvailabilitySnapshot("available", (), False)
+    owner, separator, repo = source.repository.partition("/")
+    if not separator or not owner or not repo:
+        logger.error(
+            "inbox lifecycle: invalid availability repository %r; "
+            "suppressing lifecycle actions this tick",
+            source.repository,
+        )
+        return None
+    try:
+        text = api.get_file_text(owner, repo, source.path, source.ref)
+    except Exception as error:
+        logger.warning(
+            "inbox lifecycle: availability read failed for %s:%s@%s: %s; "
+            "suppressing lifecycle actions this tick",
+            source.repository,
+            source.path,
+            source.ref,
+            error,
+        )
+        return None
+    if text is None:
+        logger.warning(
+            "inbox lifecycle: availability source missing at %s:%s@%s; "
+            "suppressing lifecycle actions this tick",
+            source.repository,
+            source.path,
+            source.ref,
+        )
+        return None
+    try:
+        return parse_availability(text, line_prefix=source.line_prefix, now=now)
+    except ValueError as error:
+        logger.warning(
+            "inbox lifecycle: %s at %s:%s@%s; suppressing lifecycle actions "
+            "this tick",
+            error,
+            source.repository,
+            source.path,
+            source.ref,
+        )
+        return None
+
+
+def process_lifecycle(
+    api: GitHubAPI,
+    inbox_owner: str,
+    inbox_repo: str,
+    lifecycle: DecisionInboxLifecycleConfig,
+    *,
+    now: datetime | None = None,
+    bot_login: str | None = None,
+) -> list[LifecycleAction]:
+    """Apply the optional Decision Inbox lifecycle to open pending issues.
+
+    The first line is the expand-then-contract safety boundary: when disabled,
+    this function performs no API read or write. When enabled, it may post one
+    reminder, one escalation, and one return digest per issue. It never applies
+    a verdict, closes an issue/PR, or changes labels.
+
+    Outing windows stop the clock itself: their overlap with an issue's open
+    lifetime is subtracted from age. Return-digest marker metadata persists the
+    completed window in GitHub, so a restart does not lose that pause. Marker
+    comments also make every emitted action idempotent across stateless ticks.
+    """
+    if not lifecycle.enabled:
+        return []
+
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    availability = _load_availability(api, lifecycle, now=now)
+    if availability is None:
+        return []
+
+    issues = api.list_issues(
+        inbox_owner, inbox_repo, labels=PENDING_LABEL, state="open"
+    )
+    actions: list[LifecycleAction] = []
+    reminder_tag = _threshold_tag("REMINDER", lifecycle.reminder_hours)
+    escalation_tag = _threshold_tag("ESCALATION", lifecycle.escalate_hours)
+
+    for issue in issues:
+        if "pull_request" in issue:
+            continue
+        issue_number = issue.get("number")
+        created_at = _parse_datetime(issue.get("created_at"))
+        if issue_number is None or created_at is None:
+            logger.warning(
+                "inbox lifecycle: issue %r has no valid created_at; skipped",
+                issue_number,
+            )
+            continue
+        try:
+            comments = api.list_issue_comments(
+                inbox_owner, inbox_repo, issue_number
+            )
+        except Exception as error:
+            logger.warning(
+                "inbox lifecycle: comments read failed for %s/%s#%s: %s; "
+                "issue skipped",
+                inbox_owner,
+                inbox_repo,
+                issue_number,
+                error,
+            )
+            continue
+
+        # ``quiet`` suppresses output but does not invent an unbounded pause;
+        # only explicit outing windows stop elapsed time. During an active
+        # outing even the return digest waits until the configured end.
+        if availability.state == "quiet" or availability.in_outing:
+            continue
+
+        windows = list(availability.outing_windows)
+        windows.extend(_comment_outing_windows(comments, bot_login))
+        effective_age = _effective_age_hours(created_at, now, windows)
+
+        ended_windows = [
+            (start, end)
+            for start, end in _merge_windows(windows)
+            if end <= now and start < now and end > created_at
+        ]
+        digest_comment = _marker_comment(
+            comments,
+            RETURN_DIGEST_COMMENT_MARKER,
+            "[OWNER_RETURN_DIGEST]",
+            bot_login,
+        )
+        persisted_windows = set(_comment_outing_windows(comments, bot_login))
+        unpersisted_windows = [
+            window for window in ended_windows if window not in persisted_windows
+        ]
+        if ended_windows and digest_comment is None:
+            window_markers = "\n".join(
+                f"{RETURN_DIGEST_COMMENT_MARKER} start={_iso_z(start)} "
+                f"end={_iso_z(end)} -->"
+                for start, end in ended_windows
+            )
+            api.post_comment(
+                inbox_owner,
+                inbox_repo,
+                issue_number,
+                "[OWNER_RETURN_DIGEST] An availability outing window ended. "
+                "This decision remains open and is ready for review. Its "
+                "reminder clock excluded the observed outing window(s).\n\n"
+                f"{window_markers}",
+            )
+            actions.append(
+                LifecycleAction(issue_number, "return-digest", effective_age)
+            )
+        elif (
+            unpersisted_windows
+            and digest_comment is not None
+            and digest_comment.get("id") is not None
+        ):
+            # The visible return digest remains exactly-once. If the same issue
+            # survives a later outing, append only the new window metadata to
+            # that original comment so the source file may advance safely.
+            window_markers = "\n".join(
+                f"{RETURN_DIGEST_COMMENT_MARKER} start={_iso_z(start)} "
+                f"end={_iso_z(end)} -->"
+                for start, end in unpersisted_windows
+            )
+            updated_body = (
+                (digest_comment.get("body") or "").rstrip()
+                + "\n"
+                + window_markers
+            )
+            api.update_issue_comment(
+                inbox_owner,
+                inbox_repo,
+                digest_comment["id"],
+                updated_body,
+            )
+
+        if effective_age >= lifecycle.reminder_hours and not _has_marker_comment(
+            comments, REMINDER_COMMENT_MARKER, reminder_tag, bot_login
+        ):
+            api.post_comment(
+                inbox_owner,
+                inbox_repo,
+                issue_number,
+                f"{reminder_tag} This decision has been pending for "
+                f"{lifecycle.reminder_hours} effective hours. It remains open; "
+                "respond when ready.\n\n"
+                f"{REMINDER_COMMENT_MARKER}",
+            )
+            actions.append(LifecycleAction(issue_number, "reminder", effective_age))
+
+        if effective_age >= lifecycle.escalate_hours and not _has_marker_comment(
+            comments, ESCALATION_COMMENT_MARKER, escalation_tag, bot_login
+        ):
+            api.post_comment(
+                inbox_owner,
+                inbox_repo,
+                issue_number,
+                f"{escalation_tag} This decision has been pending for "
+                f"{lifecycle.escalate_hours} effective hours. It remains open "
+                "and requires an explicit decision; no automatic approval or "
+                "closure will occur.\n\n"
+                f"{ESCALATION_COMMENT_MARKER}",
+            )
+            actions.append(
+                LifecycleAction(issue_number, "escalation", effective_age)
+            )
+
+    return actions
