@@ -49,7 +49,7 @@ merge-mode) run, and the GitHub checks skip cleanly instead of erroring.
 |---|---|---|
 | `config-loads` | CRITICAL | `config/*.yml` failed to load / validate |
 | `preferences-schema` | FAIL / SKIP | `preferences.yml` present but fails its schema (SKIP if absent) |
-| `config-placeholders` | CRITICAL | an unfilled placeholder (`your-…`, `{{TOKEN}}`, `<…-here>`) is still in your config |
+| `config-placeholders` | CRITICAL | an unfilled placeholder (`your-…`, {% raw %}`{{TOKEN}}`{% endraw %}, `<…-here>`) is still in your config |
 | `allowlist-actors` | INFO / PASS-FAIL | with `--login`, asserts your login is allowlisted (the #1 C1 failure: the label-applier MUST be allowlisted); without it, echoes the list to eyeball |
 | `agent-tools-declared` | INFO | vendor-neutral echo of the agent CLIs YOU declared in `agent_registry.yml` — install those CLIs where your agents run |
 | `merge-mode` | INFO | OBSERVE (evaluates, does not merge) vs LIVE (`MERGE_GATE_MERGE_ENABLED=true`) — surfaced so you never think you are protected while silently in observe mode |
@@ -62,7 +62,7 @@ merge-mode) run, and the GitHub checks skip cleanly instead of erroring.
 | `ready-to-merge-label` | CRITICAL | the `ready-to-merge` label is missing on a supervised repo |
 | `squash-allowed` | CRITICAL | squash merging is disabled on a supervised repo (the gate merges via squash) |
 | `bot-state-branch` | WARN | the `bot-state` branch does not exist yet — expected before the first successful tick (which creates it) |
-| `adopter-kit-markers` | CRITICAL / WARN | the installed `AGENTS.md`/`CLAUDE.md` kit still has unfilled `{{ }}` markers (FAIL), or no kit was found (WARN) |
+| `adopter-kit-markers` | CRITICAL / WARN | the installed `AGENTS.md`/`CLAUDE.md` kit still has unfilled {% raw %}`{{ }}`{% endraw %} markers (FAIL), or no kit was found (WARN) |
 | `decision-labels` | INFO | echoes any `decision:*` labels — these are created by the bot at runtime, so their absence is **never** a failure |
 
 ## Honest scope (what a PASS does and does not prove)
