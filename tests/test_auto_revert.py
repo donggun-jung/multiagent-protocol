@@ -2,6 +2,8 @@
 
 All git work goes through an injected ``runner`` so no real git runs. Covers:
 - happy path: clone → revert → amend trailers → push → PR opened;
+- parent inspection: one parent proceeds; two/three parents fail closed before
+  ``git revert``; an inspection failure also fails closed;
 - the amended commit carries the five Agent-* trailers (gate-evaluable);
 - revert-conflict → graceful fallback (no PR, incident-only note, abort called);
 - duplicate branch + open PR → idempotent link (no clone, no new PR);
@@ -12,6 +14,8 @@ All git work goes through an injected ``runner`` so no real git runs. Covers:
 """
 
 from __future__ import annotations
+
+import pytest
 
 from multiagent_protocol.auto_revert import (
     REVERT_AGENT_MODEL,
@@ -36,10 +40,15 @@ class _Runner:
     default is success. A ``log`` command returns a canned revert message so the
     amend step has something to append to."""
 
-    def __init__(self, script: dict[str, RunResult] | None = None,
-                 log_msg: str = "Revert \"bad thing\"\n\nThis reverts commit deadbbb.") -> None:
+    def __init__(
+        self,
+        script: dict[str, RunResult] | None = None,
+        log_msg: str = "Revert \"bad thing\"\n\nThis reverts commit deadbbb.",
+        parents: tuple[str, ...] = ("1" * 40,),
+    ) -> None:
         self.script = script or {}
         self.log_msg = log_msg
+        self.parents = parents
         self.calls: list[list[str]] = []
 
     def __call__(self, argv, *, cwd=None):
@@ -48,6 +57,17 @@ class _Runner:
         for needle, result in self.script.items():
             if needle in joined:
                 return result
+        if argv[:3] == ["git", "cat-file", "commit"]:
+            parent_headers = "".join(f"parent {sha}\n" for sha in self.parents)
+            return RunResult(
+                0,
+                stdout=(
+                    f"tree {'f' * 40}\n{parent_headers}"
+                    "author Example Contributor <you@example.com> 0 +0000\n"
+                    "committer Example Contributor <you@example.com> 0 +0000\n\n"
+                    "bad commit\n"
+                ),
+            )
         if argv[:3] == ["git", "log", "-1"]:
             return RunResult(0, stdout=self.log_msg)
         return RunResult(0)
@@ -80,6 +100,47 @@ def test_happy_path_opens_pr_and_pushes_branch():
     assert runner.ran(f"git revert --no-edit {BAD}")
     assert runner.ran("git commit --amend")
     assert runner.ran("push origin HEAD:refs/heads/revert/deadbbb")
+
+
+def test_single_parent_target_keeps_normal_revert_path():
+    api = _api()
+    runner = _Runner(parents=("1" * 40,))
+    res = ensure_revert_pr(
+        api, "acme", "app", BAD, token=TOKEN, incident_ref="Issue#42", runner=runner,
+    )
+    assert res.pr_url is not None and res.created is True
+    assert runner.ran("git cat-file commit")
+    assert runner.ran(f"git revert --no-edit {BAD}")
+
+
+@pytest.mark.parametrize("parent_count", [2, 3], ids=["two-parent", "three-parent"])
+def test_multi_parent_target_fails_closed_before_git_revert(parent_count):
+    api = _api()
+    parents = tuple(str(i) * 40 for i in range(1, parent_count + 1))
+    runner = _Runner(parents=parents)
+    res = ensure_revert_pr(
+        api, "acme", "app", BAD, token=TOKEN, incident_ref="Issue#42", runner=runner,
+    )
+    assert res.pr_url is None and res.created is False
+    assert "multi-parent-merge" in res.note
+    assert "git show --format=%P" in res.note
+    assert "git revert -m N" in res.note
+    assert not any(call[:2] == ["git", "revert"] for call in runner.calls)
+    assert api.prs_created == []
+
+
+def test_parent_inspection_failure_fails_closed_before_git_revert():
+    api = _api()
+    runner = _Runner(script={
+        "git cat-file": RunResult(128, stderr="fatal: bad object"),
+    })
+    res = ensure_revert_pr(
+        api, "acme", "app", BAD, token=TOKEN, incident_ref="Issue#42", runner=runner,
+    )
+    assert res.pr_url is None and res.created is False
+    assert "parent-inspection" in res.note
+    assert not any(call[:2] == ["git", "revert"] for call in runner.calls)
+    assert api.prs_created == []
 
 
 def test_amended_commit_carries_all_identity_trailers():
