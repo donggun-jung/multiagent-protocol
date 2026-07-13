@@ -99,11 +99,13 @@ A self-hosted runner is a machine that executes arbitrary code from your GitHub 
 - **No host network.** Don't run with `--network host`. The default bridge is fine and limits the runner's access to other services on the host.
 - **PAT scope.** The `RUNNER_TOKEN` is short-lived (used only at registration). The long-lived credential the bot uses is the GitHub App's private key (in Actions secrets, not on the runner host). The runner itself does not need any GitHub credentials.
 - **Image source.** `myoung34/github-runner` is a maintained third-party image. Pin to a digest (`@sha256:...`) rather than `:latest` once you're sure your setup works:
+  {% raw %}
   ```
   docker pull myoung34/github-runner:latest
   IMG_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' myoung34/github-runner:latest)
   # Then update the docker run command to use $IMG_DIGEST instead of :latest.
   ```
+  {% endraw %}
 - **Updates.** The runner image is updated regularly (security fixes for the runner agent itself). Set a monthly calendar reminder to `docker pull` + restart the container.
 
 ## Multiple runners (for 6+ supervised repos)

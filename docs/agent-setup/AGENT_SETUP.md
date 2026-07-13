@@ -301,6 +301,7 @@ exists in the supervised repo or `env.yml` carries `allow_no_ci: true`
 
 ## Step 6 — Install the agent kit into each supervised repo
 
+{% raw %}
 Copy [`templates/adopter/AGENTS.md`](../../templates/adopter/AGENTS.md) and
 [`templates/adopter/CLAUDE.md`](../../templates/adopter/CLAUDE.md) to the
 supervised repo root, filling every `{{PLACEHOLDER}}`
@@ -322,6 +323,7 @@ block is a copy, and stale copies teach agents last month's preferences.
 
 **Verify:** both files exist at the supervised repo root on `main` with zero
 remaining `{{` markers.
+{% endraw %}
 
 ## Step 7 — First tick (observe mode)
 
