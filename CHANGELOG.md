@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-13
+
+### Fixed
+
+- Release-meta parity for the 1.4 line: README (EN/KO) status badges and
+  banner prose, `STATUS.md` matrix header, and the `action.yml` usage pin now
+  match the packaged version (enforced by `test_version_parity.py`). v1.4.0
+  was tagged before these surfaces were aligned; v1.4.1 is the consumable tag.
+
 ## [1.4.0] - 2026-07-13
 
 ### Added
