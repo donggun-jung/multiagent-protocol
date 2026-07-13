@@ -15,7 +15,7 @@ is intentionally left for a later release.
 
 ## Implementation matrix
 
-| Feature                                            | Doctrine        | v0.0.2 | v1.3.0 (current) |
+| Feature                                            | Doctrine        | v0.0.2 | v1.4.1 (current) |
 |----------------------------------------------------|-----------------|--------|----------------------|
 | 4-quadrant classifier (path heuristic, max-vote)   | implemented     | ✅      | ✅                |
 | 4-module bot package layout                        | implemented     | ✅      | ✅                |
