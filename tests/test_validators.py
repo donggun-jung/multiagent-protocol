@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from multiagent_protocol.skills.builtin.validator_base_up_to_date import (
     BaseUpToDateValidator,
 )
@@ -17,6 +19,7 @@ from multiagent_protocol.types import CheckRunStatus, LabelEvent, TrailerSet
 
 # -- Trailers --
 
+
 def test_trailers_validator_ok(commit_factory, pr_factory):
     trailers = TrailerSet(
         agent_tool="claude-code",
@@ -24,6 +27,21 @@ def test_trailers_validator_ok(commit_factory, pr_factory):
         agent_session="s_test123",
         agent_machine="ci",
         task_ref="PR#1",
+    )
+    pr = pr_factory(commits=(commit_factory(trailers=trailers),))
+    assert TrailersValidator().check(pr).passed
+
+
+@pytest.mark.parametrize("task_ref", ("Issue#42", "issue#42"))
+def test_trailers_validator_accepts_issue_ref_compatibility(
+    task_ref, commit_factory, pr_factory
+):
+    trailers = TrailerSet(
+        agent_tool="codex",
+        agent_model="model",
+        agent_session="s_test123",
+        agent_machine="ci",
+        task_ref=task_ref,
     )
     pr = pr_factory(commits=(commit_factory(trailers=trailers),))
     assert TrailersValidator().check(pr).passed

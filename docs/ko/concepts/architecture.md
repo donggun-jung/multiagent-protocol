@@ -76,9 +76,11 @@ L1 통과 후 머지 API 호출 직전에 `main` HEAD를 다시 fetch한다. C4�
 
 - `Agent-Tool: <agent_registry.tools 중 하나>`
 - `Agent-Model: <agent_registry.models[Agent-Tool] 중 하나>` (또는 `manual`/`github-actions`의 경우 `n/a`)
-- `Agent-Session: s_[a-z0-9-]{2,14}[a-z0-9]` (영숫자로 끝남)
+- `Agent-Session: s_[a-z0-9][a-z0-9-]{2,14}[a-z0-9]` (`s_` 뒤 4-16자;
+  영숫자로 시작하고 끝남)
 - `Agent-Machine: <agent_registry.machines 중 하나>` (자유 형식; 등록된 값은 추가 신뢰 신호를 얻음)
-- `Task-Ref: (Issue#N|PR#N|none|round-X/<topic>|bot/<topic>)`
+- `Task-Ref: (Issue#N|issue#N|PR#N|none|round-X/<topic>|bot/<topic>)`
+  (새 commit은 `Issue#N`을 쓰고, 기존 이력의 `issue#N`도 계속 허용함)
 
 L4는 advisory에서 hard-block으로 승격되기 전 60일 **burn-in** 창을 가진다(`docs/concepts/four-quadrants.md` § "L4 burn-in" 참고).
 

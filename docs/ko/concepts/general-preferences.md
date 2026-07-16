@@ -47,9 +47,13 @@ PR의 모든 commit은 이 트레일러들을 well-formed하게 가져야 한다
 
 - `Agent-Tool: <one of agent_registry.tools>`
 - `Agent-Model: <model id or n/a>`
-- `Agent-Session: s_[a-z0-9-]{2,14}[a-z0-9]`
+- `Agent-Session: s_[a-z0-9][a-z0-9-]{2,14}[a-z0-9]` (`s_` 뒤 4-16자)
 - `Agent-Machine: <handle>`
-- `Task-Ref: <Issue#N|PR#N|none|round-X/topic|bot/topic>`
+- `Task-Ref: <Issue#N|issue#N|PR#N|none|round-X/topic|bot/topic>` (새
+  commit은 `Issue#N`을 쓰고, 기존 이력의 `issue#N`도 계속 허용함)
+
+실행 가능한 값 패턴은 `src/multiagent_protocol/trailer_contract.py`에
+있으며, validator는 로컬 정규식 사본 대신 이를 import한다.
 
 **Why**: 이것들 없이는 어느 에이전트 / 모델 / 세션 / 머신이 commit을 작성했는지 알 수 없다. 두 에이전트가 서로를 밟을 때, git log를 읽고 누가 무엇을 했는지 재구성할 수 있어야 한다. 이것은 **가장 기본적인 포렌식 능력**이며; 프로토콜은 그것을 non-negotiable로 취급한다.
 

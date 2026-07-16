@@ -74,9 +74,12 @@ Every commit must have:
 
 - `Agent-Tool: <one of agent_registry.tools>`
 - `Agent-Model: <one of agent_registry.models[Agent-Tool]>` (or `n/a` for `manual`/`github-actions`)
-- `Agent-Session: s_[a-z0-9-]{2,14}[a-z0-9]` (ends in alphanumeric)
+- `Agent-Session: s_[a-z0-9][a-z0-9-]{2,14}[a-z0-9]` (4-16 characters after
+  `s_`; begins and ends in alphanumeric)
 - `Agent-Machine: <one of agent_registry.machines>` (free-form; registered values get extra trust signals)
-- `Task-Ref: (Issue#N|PR#N|none|round-X/<topic>|bot/<topic>)`
+- `Task-Ref: (Issue#N|issue#N|PR#N|none|round-X/<topic>|bot/<topic>)`
+  (`Issue#N` is canonical for new commits; lowercase `issue#N` remains valid
+  for historical compatibility.)
 
 L4 has a 60-day **burn-in** window before promotion from advisory to hard-block (see `docs/concepts/four-quadrants.md` § "L4 burn-in").
 

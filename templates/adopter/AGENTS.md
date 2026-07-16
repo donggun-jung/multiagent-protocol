@@ -27,9 +27,9 @@ changes as Quadrant D (they wait for the operator).
    ```
    Agent-Tool: {{AGENT_TOOLS}}          # one registered tool, e.g. claude-code
    Agent-Model: <your model id>         # e.g. claude-opus-4-8; "n/a" if unknown
-   Agent-Session: s_<id>                # matches ^s_[a-z0-9-]{2,14}[a-z0-9]$
+   Agent-Session: s_<id>                # matches ^s_[a-z0-9][a-z0-9-]{2,14}[a-z0-9]$
    Agent-Machine: {{MACHINE_HANDLE}}    # the registered handle, never a real hostname
-   Task-Ref: Issue#N | PR#N | none      # what this work traces to
+   Task-Ref: Issue#N | issue#N | PR#N | none  # use Issue#N for new work
    ```
 
 3. **The `ready-to-merge` label means "done and verified" — nothing less.**
