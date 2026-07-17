@@ -68,8 +68,9 @@ tracked). Two rules:
 
 - **This public repo:** never commit anything under `config/`. The CI job
   `no-config-in-public` (in `.github/workflows/tests.yml`) fails the build if a
-  public repo tracks any `config/` file other than the README. It is skipped
-  automatically when the repository is private.
+  public repo tracks any `config/` file other than the README. The job always
+  reports a result; private repositories record an explicit successful
+  exemption instead of running the public-config scan.
 - **Your deployment:** the bot reads `config/` at runtime from the repo its
   workflow checks out, so your **governance repo must contain your config**.
   Make that repo **private**, then commit config with `git add -f config/`

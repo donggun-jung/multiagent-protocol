@@ -47,7 +47,10 @@
 
 `config/`는 이 프레임워크 저장소에서 git-ignore된다(`config/README.md`만 추적됨). 두 규칙:
 
-- **이 public 저장소:** `config/` 아래의 어떤 것도 절대 commit하지 마라. CI job `no-config-in-public`(`.github/workflows/tests.yml`에 있음)은 public 저장소가 README 외의 `config/` 파일을 추적하면 빌드를 실패시킨다. 저장소가 private일 때는 자동으로 skip된다.
+- **이 public 저장소:** `config/` 아래의 어떤 것도 절대 commit하지 마라. CI job
+  `no-config-in-public`(`.github/workflows/tests.yml`에 있음)은 public 저장소가 README
+  외의 `config/` 파일을 추적하면 빌드를 실패시킨다. 이 job은 항상 결과를 보고하며,
+  private 저장소에서는 public-config 검사 대신 명시적인 성공 면제를 기록한다.
 - **당신의 배포:** 봇은 자신의 workflow가 checkout하는 저장소에서 runtime에 `config/`를 읽으므로, 당신의 **거버넌스 저장소는 당신의 config를 담아야 한다.** 그 저장소를 **private**하게 만든 다음, `git add -f config/`로 config를 commit하라(`-f`가 ignore 규칙을 override). private 저장소 → private config.
 
 ### Deployment shapes

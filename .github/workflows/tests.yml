@@ -66,13 +66,19 @@ jobs:
     # Personal config (config/) must never be committed to a PUBLIC repo. In
     # this framework's public upstream, config/ is git-ignored and only
     # config/README.md is tracked. A PRIVATE deployment fork commits its own
-    # config/ and is exempt — this job is skipped when the repo is private.
+    # config/ and is exempt — the job still reports success so it can remain a
+    # required check, while the scan step runs only for public repositories.
     # See docs/concepts/configuration-model.md.
-    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - name: Record private-repository exemption
+        if: ${{ github.event.repository.private == true }}
+        run: |
+          echo "OK: private repositories may track their private config layer."
+      - if: ${{ github.event.repository.private == false }}
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - name: Refuse tracked personal config in a public repo
+        if: ${{ github.event.repository.private == false }}
         run: |
           tracked="$(git ls-files config/ | grep -vx 'config/README.md' || true)"
           if [ -n "$tracked" ]; then
