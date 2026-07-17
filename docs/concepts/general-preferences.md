@@ -45,9 +45,15 @@ Every commit in a PR must have these trailers, well-formed:
 
 - `Agent-Tool: <one of agent_registry.tools>`
 - `Agent-Model: <model id or n/a>`
-- `Agent-Session: s_[a-z0-9-]{2,14}[a-z0-9]`
+- `Agent-Session: s_[a-z0-9][a-z0-9-]{2,14}[a-z0-9]` (4-16 characters after
+  `s_`)
 - `Agent-Machine: <handle>`
-- `Task-Ref: <Issue#N|PR#N|none|round-X/topic|bot/topic>`
+- `Task-Ref: <Issue#N|issue#N|PR#N|none|round-X/topic|bot/topic>` (`Issue#N`
+  is canonical for new commits; lowercase `issue#N` remains valid for history.)
+
+The executable value patterns live in
+`src/multiagent_protocol/trailer_contract.py`; validators import them instead
+of maintaining local regex copies.
 
 **Why**: Without these, you cannot tell which agent / model / session / machine authored a commit. When two agents step on each other, you need to be able to read git log and reconstruct who did what. This is the **most basic forensic capability**; the protocol treats it as non-negotiable.
 

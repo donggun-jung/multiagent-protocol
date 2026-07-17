@@ -7,17 +7,18 @@ only severity can be overridden. See ``docs/concepts/general-preferences.md``
 
 from __future__ import annotations
 
-import re
-
 from multiagent_protocol.skills.base import (
     PRContext,
     ValidationResult,
 )
-
-SESSION_PATTERN = re.compile(r"^s_[a-z0-9-]{2,14}[a-z0-9]$")
-TASK_REF_PATTERN = re.compile(
-    r"^(Issue#\d+|PR#\d+|none|round-\d+/[A-Za-z0-9\-/_.]+|bot/[A-Za-z0-9\-/_.]+)$"
+from multiagent_protocol.trailer_contract import (
+    AGENT_SESSION_PATTERN,
+    TASK_REF_PATTERN,
 )
+
+# Compatibility alias for callers that imported the former module-local
+# constant.  The executable definition now lives in ``trailer_contract``.
+SESSION_PATTERN = AGENT_SESSION_PATTERN
 
 
 class TrailersValidator:
@@ -37,17 +38,18 @@ class TrailersValidator:
                         f"C5: commit {commit.short_sha} missing trailer "
                         f"'{key.replace('_', '-').title()}'"
                     )
-            if not SESSION_PATTERN.match(t.agent_session or ""):
+            if not SESSION_PATTERN.fullmatch(t.agent_session or ""):
                 return ValidationResult.fail(
                     f"C5: commit {commit.short_sha} has malformed "
                     f"Agent-Session '{t.agent_session}' "
-                    f"(expected pattern s_<2-14 alphanumeric/hyphen>"
-                    f"<alphanumeric>)"
+                    f"(expected s_ plus 4-16 lowercase "
+                    f"alphanumeric/hyphen characters, bounded by "
+                    f"alphanumeric characters)"
                 )
-            if not TASK_REF_PATTERN.match(t.task_ref or ""):
+            if not TASK_REF_PATTERN.fullmatch(t.task_ref or ""):
                 return ValidationResult.fail(
                     f"C5: commit {commit.short_sha} has malformed "
-                    f"Task-Ref '{t.task_ref}' (expected Issue#N | PR#N "
-                    f"| none | round-N/topic | bot/topic)"
+                    f"Task-Ref '{t.task_ref}' (expected Issue#N | issue#N "
+                    f"| PR#N | none | round-N/topic | bot/topic)"
                 )
         return ValidationResult.ok()

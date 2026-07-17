@@ -56,9 +56,9 @@ The following rules apply to every change, every session, every agent:
    ```
    Agent-Tool: <claude-code|codex|cursor|gemini-cli|aider|manual|github-actions>
    Agent-Model: <model identifier or "n/a">
-   Agent-Session: s_<2-14 lowercase alphanumeric/hyphen><alphanumeric>
+   Agent-Session: s_<4-16 lowercase alphanumeric/hyphen; alphanumeric bounds>
    Agent-Machine: <your-machine-handle>
-   Task-Ref: <Issue#N|PR#N|none|round-N/topic>
+   Task-Ref: <Issue#N|issue#N|PR#N|none|round-N/topic>
    ```
 
 6. **No telemetry, analytics, or callbacks home.** The protocol must run entirely from the operator's GitHub + (optionally) their own VPS. No third-party services. No "let us know how you use it" pings.

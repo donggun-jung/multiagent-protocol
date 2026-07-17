@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Trailer-contract parity.** `Agent-Session` now follows the documented
+  4-16-character contract at both boundaries, while `Task-Ref` accepts both
+  canonical `Issue#N` and historical `issue#N`. The validator imports one
+  shared engine contract instead of maintaining local regex copies.
+
 ## [1.4.1] - 2026-07-13
 
 ### Fixed
