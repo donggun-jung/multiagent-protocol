@@ -18,7 +18,7 @@ jobs:
     steps:
       # actions/checkout@v4.2.2 — pinned to immutable commit SHA (supply chain).
       # Dependabot keeps these up-to-date via .github/dependabot.yml.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5.4.0
         with:
           python-version: ${{ matrix.python }}
@@ -32,7 +32,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5.4.0
         with:
           python-version: "3.11"
@@ -54,7 +54,7 @@ jobs:
     # here. Forks should keep this job as-is.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5.4.0
         with:
           python-version: "3.11"
@@ -76,7 +76,7 @@ jobs:
         run: |
           echo "OK: private repositories may track their private config layer."
       - if: ${{ github.event.repository.private == false }}
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Refuse tracked personal config in a public repo
         if: ${{ github.event.repository.private == false }}
         run: |
