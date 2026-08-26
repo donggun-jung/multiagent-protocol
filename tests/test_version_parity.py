@@ -14,6 +14,7 @@ Surfaces asserted (one test = one surface, so the failing list is unambiguous):
       == README.ko.md status badge           `status-vX.Y`         (minor only)
       == STATUS.md matrix header             `vX.Y.Z (current)`
       == action.yml usage pin                `...@vX.Y.Z`
+      == package ``__version__``             `X.Y.Z`
 
 Deliberately NOT covered here (per the C3 lens):
 
@@ -137,11 +138,22 @@ def test_status_matrix_header_matches_pyproject():
 def test_action_yml_pin_matches_pyproject():
     version, _ = _pyproject_version()
     text = _read("action.yml")
-    m, line = _search_line(
-        text, re.compile(r"multiagent-protocol@v(\d+\.\d+\.\d+)")
-    )
+    m, line = _search_line(text, re.compile(r"multiagent-protocol@v(\d+\.\d+\.\d+)"))
     found = m.group(1) if m else None
     assert found == version, (
-        f"action.yml:{line}: usage pin is `@v{found}` "
-        f"but pyproject version is {version}"
+        f"action.yml:{line}: usage pin is `@v{found}` but pyproject version is {version}"
+    )
+
+
+def test_package_dunder_version_matches_pyproject():
+    version, _ = _pyproject_version()
+    text = _read("src/multiagent_protocol/__init__.py")
+    match, line = _search_line(
+        text,
+        re.compile(r'(?m)^__version__\s*=\s*["\'](\d+\.\d+\.\d+)["\']'),
+    )
+    found = match.group(1) if match else None
+    assert found == version, (
+        "src/multiagent_protocol/__init__.py:"
+        f"{line}: __version__ is {found!r} but pyproject version is {version}"
     )

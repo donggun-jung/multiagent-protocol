@@ -1,0 +1,342 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/multiagent-protocol/schemas/project_completion_receipt.schema.json",
+  "title": "ProjectCompletionReceipt v1",
+  "description": "A fail-closed receipt for exact Git registry and product declared-state bindings. It is deliberately not a live-deployment authorization.",
+  "type": "object",
+  "required": [
+    "kind",
+    "schema_version",
+    "profile",
+    "status",
+    "ok",
+    "completion_authorized",
+    "project_id",
+    "deployment_task_id",
+    "generated_at_utc",
+    "argv",
+    "process",
+    "reasons",
+    "verified_dimensions",
+    "unverified_dimensions",
+    "unverified_dimensions_non_exhaustive",
+    "scope_notes",
+    "git_security",
+    "registry_binding",
+    "product_binding",
+    "declared_state",
+    "project_check",
+    "receipt_sha256_method",
+    "receipt_sha256"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "ProjectCompletionReceipt" },
+    "schema_version": { "const": 1 },
+    "profile": { "const": "declared-state-git-binding-v1" },
+    "status": {
+      "enum": [
+        "DECLARED_STATE_COMPLETION_SUBRECEIPT_OK",
+        "DECLARED_STATE_COMPLETION_SUBRECEIPT_BLOCKED",
+        "DEPENDENCY_BLOCKED"
+      ]
+    },
+    "ok": { "type": "boolean" },
+    "completion_authorized": { "const": false },
+    "project_id": { "type": "string" },
+    "deployment_task_id": { "type": "string" },
+    "generated_at_utc": { "$ref": "#/definitions/utcTimestamp" },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "process": {
+      "type": "object",
+      "required": ["exit_code", "observation"],
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": { "enum": [0, 1, 2, 4] },
+        "observation": { "const": "self-reported intended return code" }
+      }
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "verified_dimensions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "unverified_dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "unverified_dimensions_non_exhaustive": { "const": true },
+    "scope_notes": {
+      "type": "object",
+      "required": ["success_meaning", "trusted_nonce", "monotonic_deployment_sequence"],
+      "additionalProperties": false,
+      "properties": {
+        "success_meaning": { "type": "string", "minLength": 1 },
+        "trusted_nonce": { "type": "string", "minLength": 1 },
+        "monotonic_deployment_sequence": { "type": "string", "minLength": 1 }
+      }
+    },
+    "git_security": {
+      "type": "object",
+      "required": [
+        "required_environment",
+        "system_and_global_git_config_disabled",
+        "isolated_temporary_bare_repositories"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "required_environment": {
+          "type": "object",
+          "required": ["GIT_NO_REPLACE_OBJECTS"],
+          "additionalProperties": false,
+          "properties": { "GIT_NO_REPLACE_OBJECTS": { "const": "1" } }
+        },
+        "system_and_global_git_config_disabled": { "const": true },
+        "isolated_temporary_bare_repositories": { "const": true }
+      }
+    },
+    "registry_binding": {
+      "type": ["object", "null"]
+    },
+    "product_binding": {
+      "type": ["object", "null"]
+    },
+    "declared_state": {
+      "type": ["object", "null"]
+    },
+    "project_check": { "$ref": "#/definitions/projectCheck" },
+    "receipt_sha256_method": {
+      "type": "object",
+      "required": ["algorithm", "canonicalization", "excluded_json_pointer"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "const": "SHA-256" },
+        "canonicalization": {
+          "const": "UTF-8 JSON; sort_keys=true; separators=(',', ':'); ensure_ascii=false"
+        },
+        "excluded_json_pointer": { "const": "/receipt_sha256" }
+      }
+    },
+    "receipt_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } } },
+      "then": {
+        "properties": {
+          "status": { "const": "DECLARED_STATE_COMPLETION_SUBRECEIPT_OK" },
+          "project_id": { "type": "string", "minLength": 1 },
+          "deployment_task_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+          },
+          "process": {
+            "properties": { "exit_code": { "const": 0 } }
+          },
+          "reasons": { "maxItems": 0 },
+          "verified_dimensions": { "minItems": 1 },
+          "registry_binding": { "$ref": "#/definitions/remoteBinding" },
+          "product_binding": { "$ref": "#/definitions/remoteBinding" },
+          "declared_state": { "$ref": "#/definitions/declaredState" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "DECLARED_STATE_COMPLETION_SUBRECEIPT_OK" }
+        }
+      },
+      "then": { "properties": { "ok": { "const": true } } }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } } },
+      "then": {
+        "properties": {
+          "reasons": { "minItems": 1 },
+          "verified_dimensions": { "maxItems": 0 }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "utcTimestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "oid": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "commandExecution": {
+      "type": "object",
+      "required": ["argv", "started_at_utc", "completed_at_utc", "exit_code"],
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "started_at_utc": { "$ref": "#/definitions/utcTimestamp" },
+        "completed_at_utc": { "$ref": "#/definitions/utcTimestamp" },
+        "exit_code": { "const": 0 }
+      }
+    },
+    "remoteBinding": {
+      "type": "object",
+      "required": [
+        "remote_url",
+        "origin_slug",
+        "refspec",
+        "remote_tip_oid",
+        "remote_tip_oid_before",
+        "remote_tip_oid_after",
+        "fetched_oid",
+        "tip_stable",
+        "tip_probe_before",
+        "tip_probe_after",
+        "fetch",
+        "git_object_format",
+        "object_spec",
+        "object_path",
+        "blob_oid",
+        "bytes_sha256",
+        "byte_read_count",
+        "same_bytes_used_for_parse_and_hash",
+        "replacement_refs_before",
+        "replacement_refs_after",
+        "replacement_refs_empty"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "remote_url": { "type": "string", "minLength": 1 },
+        "origin_slug": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "refspec": { "const": "refs/heads/main" },
+        "remote_tip_oid": { "$ref": "#/definitions/oid" },
+        "remote_tip_oid_before": { "$ref": "#/definitions/oid" },
+        "remote_tip_oid_after": { "$ref": "#/definitions/oid" },
+        "fetched_oid": { "$ref": "#/definitions/oid" },
+        "tip_stable": { "const": true },
+        "tip_probe_before": { "$ref": "#/definitions/commandExecution" },
+        "tip_probe_after": { "$ref": "#/definitions/commandExecution" },
+        "fetch": { "$ref": "#/definitions/commandExecution" },
+        "git_object_format": { "enum": ["sha1", "sha256"] },
+        "object_spec": { "type": "string", "minLength": 1 },
+        "object_path": { "type": "string", "minLength": 1 },
+        "blob_oid": { "$ref": "#/definitions/oid" },
+        "bytes_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "byte_read_count": { "const": 1 },
+        "same_bytes_used_for_parse_and_hash": { "const": true },
+        "replacement_refs_before": { "type": "array", "maxItems": 0 },
+        "replacement_refs_after": { "type": "array", "maxItems": 0 },
+        "replacement_refs_empty": { "const": true }
+      }
+    },
+    "declaredState": {
+      "type": "object",
+      "required": [
+        "version_contract",
+        "release_id_pattern",
+        "deployed_baseline",
+        "deployed_version",
+        "pending_version",
+        "pattern_method",
+        "pattern_fullmatch",
+        "declared_parity_equal"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version_contract": { "const": "legacy-declared-parity" },
+        "release_id_pattern": { "type": "string", "minLength": 1 },
+        "deployed_baseline": { "type": "string", "minLength": 1 },
+        "deployed_version": { "type": "string", "minLength": 1 },
+        "pending_version": { "type": "string", "minLength": 1 },
+        "pattern_method": { "const": "Python re.fullmatch" },
+        "pattern_fullmatch": {
+          "type": "object",
+          "required": ["deployed_baseline", "deployed_version", "pending_version"],
+          "additionalProperties": false,
+          "properties": {
+            "deployed_baseline": { "const": true },
+            "deployed_version": { "const": true },
+            "pending_version": { "const": true }
+          }
+        },
+        "declared_parity_equal": { "const": true }
+      }
+    },
+    "projectCheck": {
+      "type": "object",
+      "required": [
+        "kind",
+        "schema_version",
+        "status",
+        "project_id",
+        "project_path",
+        "repo",
+        "tier",
+        "active_version",
+        "active_version_type",
+        "deployed_baseline",
+        "start_command",
+        "finish_command",
+        "claim_required",
+        "claim_command",
+        "cross_project_role",
+        "secrets_mode",
+        "input_binding",
+        "runtime",
+        "ok",
+        "reasons",
+        "pending_reasons"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "ProjectCheck" },
+        "schema_version": { "const": 1 },
+        "status": {
+          "enum": ["DECLARED_STATE_GUARD_OK", "PROJECT_CHECK_BLOCKED", "DEPENDENCY_BLOCKED"]
+        },
+        "project_id": { "type": "string" },
+        "project_path": { "type": ["string", "null"] },
+        "repo": { "type": ["string", "null"] },
+        "tier": { "type": ["string", "null"] },
+        "active_version": { "type": ["string", "null"] },
+        "active_version_type": { "type": ["string", "null"] },
+        "deployed_baseline": { "type": ["string", "null"] },
+        "start_command": { "type": ["string", "null"] },
+        "finish_command": { "type": ["string", "null"] },
+        "claim_required": { "type": "boolean" },
+        "claim_command": { "type": ["string", "null"] },
+        "cross_project_role": { "type": ["string", "null"] },
+        "secrets_mode": { "type": ["string", "null"] },
+        "input_binding": { "type": "object" },
+        "runtime": { "type": "object" },
+        "ok": { "type": "boolean" },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "pending_reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

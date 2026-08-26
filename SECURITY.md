@@ -14,6 +14,10 @@ Specifically, the following are in-scope security issues:
 6. **Secret leakage** — accidental logging or commit of PEM private keys, GitHub App tokens, or owner credentials.
 7. **Mirror cascade trust violation** — anything that allows an adopter repository to forge a successful sync against `canonical_paths` without actually matching content.
 8. **Web wizard XSS / code execution** — the wizard is a static page that processes user input; any path that lets attacker-controlled input run as JavaScript in another user's wizard session is in scope.
+9. **Version-truth false green** — anything that lets a completion subreceipt
+   pass against a mutable or substituted Git object, stale product `main`, an
+   alternate state path, an invalid release identifier, or an active Git
+   replacement ref.
 
 The following are **out of scope**:
 
@@ -21,6 +25,10 @@ The following are **out of scope**:
 - Compromised VPS / self-hosted runner host (this is your own infrastructure).
 - Brute-force or social engineering of GitHub itself.
 - Loss of bot maintenance funding / availability (this project is best-effort; see `MAINTAINERS.md`).
+- Live deployment-instance causality, endpoint readback, and build-artifact
+  provenance. The declared-state completion profile lists these as unverified
+  and never authorizes completion; product-specific deployment attestations
+  must supply them.
 
 ## Reporting a vulnerability
 
@@ -62,12 +70,16 @@ Even with a perfect bot, the operator must hold up their end:
   `^s_[a-z0-9][a-z0-9-]{2,14}[a-z0-9]$` is suspicious; the L4 identity gate
   should already reject it, but watch the audit log.
 - **Read your own Decision Inbox.** The bot routes irreversible-and-critical actions to you for a reason. Do not blanket-approve.
+- **Protect the registry-origin trust anchor.** Supply the expected canonical
+  slug from protected automation configuration. A checker cannot discover the
+  intended governance remote if an attacker controls both that input and the
+  command invocation.
 
 ## Supported versions
 
 | Version | Supported     |
 |---------|---------------|
-| 1.0.x   | Yes — current |
+| 1.x     | Yes — current |
 | < 1.0   | No            |
 
 `1.0.0` is the first stable release: the cron orchestrator and the L1–L5 enforcers ship working, after multiple rounds of independent external review. We aim to keep API/schema/CLI compatibility within the `1.x` line.

@@ -5,11 +5,11 @@
 > 사람 1명, 에이전트 여럿. 서로 다른 세션, 서로 다른 머신, 서로 다른 모델 — 같은 `main`. 이 프로토콜은 그들이 서로를 밟지 않도록 막고, merge를 self-built check로 게이트하며, **돌이킬 수 없는 결정은 에이전트가 아니라 사람에게 라우팅합니다.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: v1.4](https://img.shields.io/badge/status-v1.4-brightgreen.svg)](STATUS.md)
+[![Status: v1.5](https://img.shields.io/badge/status-v1.5-brightgreen.svg)](STATUS.md)
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 
-> **v1.4.0.** Cron 오케스트레이터가 **가동 중**입니다: 당신의 비공개 설치본이 열린 PR을 평가하고, auto-approve 가능한 quadrant(A/B/C)를 머지하며, 비가역+critical 변경(D)은 Decision Inbox로 라우팅하고, `main`을 감사(L2+L5)합니다. 설치는 **위임식**입니다 — [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)를 당신의 AI 에이전트에게 건네면(위저드 프롬프트 또는 완전 대화형 인터뷰 모드) 전 과정을 설치하고, **취향 레이어**(`config/preferences.yml`)로 에이전트들이 당신의 방식을 따릅니다. **1.4의 새 기능**: mainline parent가 입증되지 않으면 L2 자동 revert를 거부하는 **fail-closed multi-parent 가드**, 그리고 가용성 인지 시계로 도는 **옵트인 결재함 lifecycle**(1회 리마인더·에스컬레이션 — 기본 꺼짐, 켜지 않으면 결재함은 타이머 없음 그대로). 아직 이후 과제: PyPI 배포, 다중 계정 설치 — [`STATUS.md`](STATUS.md) 참고.
+> **v1.5.0.** Cron 오케스트레이터가 **가동 중**입니다. 설치는 [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md)를 에이전트에게 건네는 위임식입니다. 1.5에는 exact Git object에 결박된 선언 상태 completion 하위 영수증과 fail-closed version-contract downgrade 가드가 추가됐습니다. 이 영수증은 Git 선언값을 검증하며 live 배포 인과를 주장하지 않습니다. [version-truth 가이드](docs/guide/version-truth-completion.md)와 [`STATUS.md`](STATUS.md)를 참고하세요.
 
 ---
 
@@ -70,7 +70,8 @@ them, walk me through the clicks step by step.
 
 ## 상태
 
-- **v1.4.0** (현재): 운영 신뢰 릴리스 — `verify-setup` 배포 상태 점검 리포트, 게이트 생존 확인(죽은 크론이 더는 안 보이지 않음), 킷 6번째 규칙(외부 콘텐츠=데이터), 고라이브의 결재함 정지 리허설, Step 10 오프보딩, 재개 가능 설치, 버전-진실 패리티 테스트.
+- **v1.5.0** (현재): exact-object 선언 상태 completion 하위 영수증, strict version YAML, accepted ADR이 있어야만 허용되는 downgrade 가드. 성공 영수증도 live 배포 승인과는 명시적으로 구분됩니다.
+- **v1.4.0**: 운영 신뢰 릴리스 — `verify-setup`, 게이트 생존 확인, 외부 콘텐츠 trust boundary, Decision Inbox lifecycle, fail-closed multi-parent revert 가드.
 - **v1.2.0**: L2 자동 revert-PR + L4 60일 자동 승격(둘 다 기본 off 옵트인, `docs/decisions/0002`–`0003`), 개념 문서 9종 한국어 미러, 독트린 자기모순 수정.
 - **v1.1.0**: 위임 설치(AGENT_SETUP 런북 + 인터뷰 모드 + deploy 예시), 운영자 취향 레이어, 위저드 v2, Free tier 케이던스 정직화. 태그마다 GHCR Docker 이미지.
 - **이후**: PyPI 배포(트러스티드 퍼블리셔 설정 대기 — 그동안은 미러 설치), 다중 계정 설치, GitLab/Bitbucket 어댑터 — [`STATUS.md`](STATUS.md).
@@ -81,6 +82,7 @@ them, walk me through the clicks step by step.
 - [에이전트 대행 설치 안내 (한국어)](docs/ko/agent-setup/README.md) — 설치를 에이전트에게 맡기는 법
 - [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) — 에이전트가 실행하는 런북 (영문)
 - [빠른 시작 (한국어)](docs/ko/guide/quick-start.md) — 위임 + 수동 경로
+- [`docs/guide/version-truth-completion.md`](docs/guide/version-truth-completion.md) — exact-object completion 영수증과 registry downgrade 검사 (영문)
 - [`templates/adopter/`](templates/adopter/) — 감독 repo용 에이전트 규율 킷(트레일러·라벨·취향 반영)
 - [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — 4모듈 설계 (영문)
 - [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — 자율성 분류기 (영문)

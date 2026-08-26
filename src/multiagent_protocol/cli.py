@@ -10,6 +10,8 @@ Subcommands:
   setup verification report — App coverage, workflow, labels, squash, and cron
   liveness. Degrades to SKIP per-check when App creds are absent; exits non-zero
   on any FAIL.
+- ``check-project --completion``: emit one exact-object declared-state receipt.
+- ``check-registry``: validate version-contract downgrade protections.
 
 Most users will invoke the CLI via the bot-cron workflow, not by hand.
 """
@@ -25,6 +27,7 @@ from pathlib import Path
 
 def _cmd_tick(_args) -> int:
     from multiagent_protocol.main import main as tick_main
+
     return tick_main([])
 
 
@@ -81,12 +84,24 @@ def _cmd_init(_args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == "check-project":
+        from multiagent_protocol.check_project import main as check_project_main
+
+        return check_project_main(raw_argv[1:], exact_argv=[sys.argv[0], *raw_argv])
+    if raw_argv and raw_argv[0] == "check-registry":
+        from multiagent_protocol.check_registry import main as check_registry_main
+
+        return check_registry_main(raw_argv[1:])
+
     parser = argparse.ArgumentParser(prog="multiagent-protocol")
     parser.add_argument("--log-level", default="INFO")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("tick", help="run one cron tick")
     sub.add_parser("init", help="bootstrap a new installation")
+    sub.add_parser("check-project", help="emit a version-truth completion receipt")
+    sub.add_parser("check-registry", help="validate version-contract downgrade protections")
 
     p_check = sub.add_parser("check-config", help="validate config files")
     p_check.add_argument("--config-dir", default="config")
@@ -98,9 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_verify.add_argument("--config-dir", default="config")
     p_verify.add_argument("--schemas-dir", default="schemas")
-    p_verify.add_argument(
-        "--json", action="store_true", help="emit the structured JSON report"
-    )
+    p_verify.add_argument("--json", action="store_true", help="emit the structured JSON report")
     p_verify.add_argument(
         "--login",
         default=None,
@@ -113,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         "dispatching one, e.g. AGENT_SETUP Step 9)",
     )
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
     logging.basicConfig(level=args.log_level)
 
     if args.cmd == "tick":

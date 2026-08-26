@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-26
+
+### Added
+
+- **Exact-object declared-state completion receipts.** `check-project
+  --completion` fetches a caller-trusted canonical registry origin into an
+  isolated bare repository, reads the exact `OID:governance/projects.yml`
+  bytes once for both parsing and hashing, repeats that binding for the
+  product's remote `main` tip and root `VERSION_STATE.yml`, and emits one
+  schema-backed, self-hashed JSON receipt. Pre/post remote-tip probes,
+  replacement-ref checks, fetch timing/exit evidence, fixed-path enforcement,
+  ambient Git-config/transport scrubbing, neutral-directory remote probes, and
+  `re.fullmatch` results for all three release identifiers are included.
+- **Version-registry downgrade guard.** `check-registry` compares the current
+  registry with an exact full commit OID, rejects unapproved removal or
+  transition of `legacy-declared-parity`, validates every registered release
+  regex, and fixes parity state to root `VERSION_STATE.yml`. A transition is
+  allowed only when the row and an accepted in-repository ADR contain matching
+  supersession evidence; the canonical registry file itself cannot be rebound
+  through an alternate path or symlink.
+- Strict version-critical YAML parsing rejects duplicate keys, aliases,
+  anchors, merge keys, custom tags, multiple documents, and invalid UTF-8.
+
+### Security
+
+- Every Git object read in the new version-truth path sets
+  `GIT_NO_REPLACE_OBJECTS=1`, disables global/system Git configuration, scrubs
+  topology-injection environment variables, and records empty
+  `refs/replace` probes. The success status is deliberately named
+  `DECLARED_STATE_COMPLETION_SUBRECEIPT_OK` and always carries
+  `completion_authorized: false`; deployment causality, live readback, trusted
+  nonce issuance, and an authoritative monotonic deployment sequence remain
+  explicitly unverified.
+
 ### Fixed
 
 - **Trailer-contract parity.** `Agent-Session` now follows the documented
@@ -432,6 +466,7 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
+[1.5.0]: ../../compare/v1.4.1...v1.5.0
 [1.3.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0
