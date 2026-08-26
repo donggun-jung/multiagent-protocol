@@ -168,6 +168,7 @@ def run_check(
             "status": status,
             "ok": exit_code == 0,
             "reasons": reasons,
+            "unverified_dimensions": ["superseding_adr_substantive_review_and_merge_authorization"],
             "input_binding": binding,
         },
         exit_code,

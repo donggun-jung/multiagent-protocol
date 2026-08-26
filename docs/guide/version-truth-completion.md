@@ -42,6 +42,28 @@ multiagent-protocol check-project service-a \
   --registry-origin-url https://github.com/example-org/company-operations.git
 ```
 
+Private registries and products use one explicit credential channel while the
+ambient Git configuration remains disabled. Supply a helper command that does
+not contain a literal secret, and, when the registry's `repo` transport is not
+usable on the runner, bind a canonical product transport URL with the same
+owner/repository slug:
+
+```sh
+multiagent-protocol check-project service-a \
+  --completion \
+  --deployment-task-id deploy-532 \
+  --registry-origin-slug example-org/company-operations \
+  --git-credential-helper '!gh auth git-credential' \
+  --product-origin-url https://github.com/example-org/service-a.git
+```
+
+The helper is injected as a per-process `git -c credential.helper=<command>`
+argument; no credential helper is recovered from global or system config. The
+exact injected `-c` arguments and resolved registry/product transport URLs are
+recorded in `registry_binding` and `product_binding`. Because the command also
+appears in the receipt and exact argv, reference a credential source such as a
+helper or environment variable—never put a token value in this option.
+
 The completion mode rejects mutable legacy inputs, including `--registry`,
 `--registry-repo`, `--path`, `--base-dir`, `--allow-working-tree`,
 `--skip-fetch`, and a `--ref` other than `origin/main`. Argument failures are
@@ -72,11 +94,14 @@ deployed_version: rel-7
 pending_version: none
 ```
 
-`release_id_pattern` is compiled before use and applied with full-string
+`release_id_pattern` must be non-blank and no longer than 1024 characters. It is
+compiled before use and applied with full-string
 matching to `deployed_baseline`, `deployed_version`, and every non-`none`
 `pending_version`. The deployed values must be equal; a non-`none` pending value
 must differ from the deployed value. Missing or empty pending state fails
-closed.
+closed. Python's regular-expression engine has no execution timeout; residual
+pattern-complexity exposure is intentionally low because the registry is the
+caller-protected trust anchor, not product-controlled input.
 
 ## What is bound
 
@@ -100,10 +125,14 @@ Each run uses separate temporary bare repositories and performs these steps:
 
 Every Git subprocess sets `GIT_NO_REPLACE_OBJECTS=1`, disables global and
 system Git configuration, removes Git topology-injection environment variables,
-and disables terminal prompting. The receipt records the remote URL, canonical
+and disables terminal prompting. The receipt records the actually applied
+required environment, transport URL, injected Git config arguments, canonical
 slug, refspec, before/fetched/after OIDs, fetch argv/exit/timestamps, tip-probe
 argv/exit/timestamps, Git object format, blob OID, exact-byte SHA-256, read
-count, and replacement-ref results.
+count, and replacement-ref results. `project_check.input_binding.freshness`
+reports `fetched` only after an observed successful fetch and otherwise reports
+`null`; `remote_tip_stability` is derived from successful probes as
+`before-and-after-checked`, `before-only`, or `not-probed`.
 
 The nested `project_check` retains the established `ProjectCheck` field names
 and adds binding evidence under `input_binding`. Existing consumers can keep
@@ -163,7 +192,8 @@ current file. The current path must be that exact repo-root regular file;
 symlinks and alternate paths are rejected. It checks:
 
 - every registered `release_id_pattern` is a non-empty, compilable regex;
-- every `legacy-declared-parity` row uses exactly `VERSION_STATE.yml`;
+- an omitted parity `version_state` uses the canonical `VERSION_STATE.yml`
+  default, while every explicit non-canonical value is rejected;
 - a previous parity row cannot be deleted; and
 - a parity contract cannot be removed or changed without exact supersession
   evidence.
@@ -197,6 +227,11 @@ All fields must agree exactly. `supersedes` must be a non-empty array of
 non-empty in-repository path strings; YAML `null` and a scalar string are not
 approval evidence. Missing evidence, extra evidence keys, unsafe ADR paths,
 unreadable frontmatter, or non-accepted status fails closed.
+
+Every `RegistryCheck` receipt lists substantive ADR review and merge
+authorization as unverified. The command verifies documentary structure and
+cross-file agreement; the merge gate and human review provide the actual
+authorization strength.
 
 ## Deliberately unverified dimensions
 

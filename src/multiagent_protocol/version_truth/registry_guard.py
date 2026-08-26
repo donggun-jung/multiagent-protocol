@@ -11,9 +11,25 @@ from multiagent_protocol.version_truth import strict_yaml
 
 PARITY_CONTRACT = "legacy-declared-parity"
 CANONICAL_VERSION_STATE = "VERSION_STATE.yml"
+RELEASE_ID_PATTERN_MAX_LENGTH = 1024
 _TRANSITION_REASON = (
     "{project_id}: legacy-declared-parity transition requires accepted superseding ADR evidence"
 )
+
+
+def compile_release_id_pattern_or_reason(
+    value: Any,
+) -> tuple[re.Pattern[str] | None, str | None]:
+    """Compile one bounded, non-blank release pattern or return a stable reason."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None, "release_id_pattern must be a non-empty string"
+    if len(value) > RELEASE_ID_PATTERN_MAX_LENGTH:
+        return None, (f"release_id_pattern exceeds {RELEASE_ID_PATTERN_MAX_LENGTH} characters")
+    try:
+        return re.compile(value), None
+    except (re.error, OverflowError, RecursionError):
+        return None, "release_id_pattern must be a valid regular expression"
 
 
 def validate_registry_rows(projects: Mapping[str, Mapping[str, Any]]) -> list[str]:
@@ -22,20 +38,12 @@ def validate_registry_rows(projects: Mapping[str, Mapping[str, Any]]) -> list[st
     reasons: list[str] = []
     for project_id, row in projects.items():
         if "release_id_pattern" in row:
-            pattern = row.get("release_id_pattern")
-            if not isinstance(pattern, str) or not pattern.strip():
-                reasons.append(f"{project_id}: release_id_pattern must be a non-empty string")
-            elif len(pattern) > 1024:
-                reasons.append(f"{project_id}: release_id_pattern exceeds 1024 characters")
-            else:
-                try:
-                    re.compile(pattern)
-                except (re.error, OverflowError):
-                    reasons.append(
-                        f"{project_id}: release_id_pattern must be a valid regular expression"
-                    )
+            _compiled, reason = compile_release_id_pattern_or_reason(row.get("release_id_pattern"))
+            if reason is not None:
+                reasons.append(f"{project_id}: {reason}")
         if (
             row.get("version_contract") == PARITY_CONTRACT
+            and "version_state" in row
             and row.get("version_state") != CANONICAL_VERSION_STATE
         ):
             reasons.append(

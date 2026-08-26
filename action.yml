@@ -19,7 +19,7 @@ inputs:
 #   - uses: actions/checkout@v4          # REQUIRED — the tick reads config/
 #                                        # (and optionally schemas/) from the
 #                                        # caller's checkout
-#   - uses: <your-github-login>/multiagent-protocol@v1.5.0
+#   - uses: donggun-jung/multiagent-protocol@v1.5.0
 #     env:
 #       MERGE_GATE_APP_ID: ${{ secrets.MERGE_GATE_APP_ID }}
 #       MERGE_GATE_PRIVATE_KEY: ${{ secrets.MERGE_GATE_PRIVATE_KEY }}

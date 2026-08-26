@@ -466,7 +466,7 @@ the behaviour the v0.0.x docs described as the target.
 - The bot's per-repo processing loop in `main.py` is intentionally skeleton-only for v0.1; the integration-test scaffolding (VCR cassettes for GitHub API) lands in v0.2.
 - Korean mirror covers the README landing + quick-start guide. Concept docs (architecture / four-quadrants / etc.) are English-only in v0.1; Korean mirror of concept docs is on the v1.1 roadmap.
 
-[1.5.0]: ../../compare/v1.4.1...v1.5.0
+[1.5.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.4.1...v1.5.0
 [1.3.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/donggun-jung/multiagent-protocol/compare/v0.9.9...v1.1.0

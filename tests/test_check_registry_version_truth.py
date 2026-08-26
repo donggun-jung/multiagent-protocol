@@ -7,6 +7,13 @@ from pathlib import Path
 
 from multiagent_protocol.check_registry import run_check
 
+REGISTRY_PROJECTION = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "version_truth"
+    / "current_registry_projection.yml"
+)
+
 
 def _git(cwd: Path, *args: str) -> str:
     result = subprocess.run(
@@ -22,16 +29,17 @@ def _git(cwd: Path, *args: str) -> str:
 def _registry(
     *,
     contract: str = "legacy-declared-parity",
-    version_state: str = "VERSION_STATE.yml",
+    version_state: str | None = "VERSION_STATE.yml",
     pattern: str = "^rel-[0-9]+$",
     supersession: str = "",
 ) -> str:
+    state_line = f"    version_state: {version_state}\n" if version_state is not None else ""
     return (
         "schema_version: 1\n"
         "projects:\n"
         "  - id: project-alpha\n"
         f"    version_contract: {contract}\n"
-        f"    version_state: {version_state}\n"
+        f"{state_line}"
         f'    release_id_pattern: "{pattern}"\n'
         f"{supersession}"
     )
@@ -65,6 +73,55 @@ def test_registry_guard_accepts_unchanged_exact_baseline(tmp_path: Path):
     assert receipt["reasons"] == []
     assert receipt["input_binding"]["baseline_commit_oid"] == baseline
     assert receipt["input_binding"]["same_baseline_bytes_used_for_parse_and_hash"] is True
+    assert receipt["unverified_dimensions"] == [
+        "superseding_adr_substantive_review_and_merge_authorization"
+    ]
+
+
+def test_registry_guard_accepts_an_omitted_parity_state_path_as_canonical_default(
+    tmp_path: Path,
+):
+    root, registry, baseline = _repo(tmp_path)
+    registry.write_text(_registry(version_state=None), encoding="utf-8")
+
+    receipt, exit_code = run_check(
+        repo_root=root,
+        registry_path=registry,
+        baseline_ref=baseline,
+    )
+
+    assert exit_code == 0
+    assert receipt["status"] == "REGISTRY_CHECK_OK"
+    assert receipt["reasons"] == []
+
+
+def test_registry_guard_accepts_the_redacted_current_registry_projection_unchanged(
+    tmp_path: Path,
+):
+    root = tmp_path / "repo"
+    registry = root / "governance" / "projects.yml"
+    registry.parent.mkdir(parents=True)
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.name", "Test User")
+    _git(root, "config", "user.email", "test@example.com")
+    registry.write_bytes(REGISTRY_PROJECTION.read_bytes())
+    _git(root, "add", "governance/projects.yml")
+    _git(root, "commit", "-q", "-m", "projected registry")
+    baseline = _git(root, "rev-parse", "HEAD")
+
+    receipt, exit_code = run_check(
+        repo_root=root,
+        registry_path=registry,
+        baseline_ref=baseline,
+    )
+
+    assert exit_code == 0
+    assert receipt["status"] == "REGISTRY_CHECK_OK"
+    assert receipt["reasons"] == []
+    assert (
+        receipt["input_binding"]["baseline_registry_sha256"]
+        == receipt["input_binding"]["current_registry_sha256"]
+    )
 
 
 def test_registry_guard_requires_a_full_exact_commit_oid(tmp_path: Path):

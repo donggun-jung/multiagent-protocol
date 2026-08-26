@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from multiagent_protocol.version_truth import strict_yaml
+from multiagent_protocol.version_truth.registry_guard import (
+    compile_release_id_pattern_or_reason,
+)
 
 REGISTRY_BLOB_PATH = "governance/projects.yml"
 VERSION_STATE_PATH = "VERSION_STATE.yml"
@@ -52,7 +55,7 @@ _PROJECT_STRING_FIELDS = (
 )
 
 VERIFIED_DIMENSIONS = [
-    "registry_origin_main_tip_and_exact_blob_bytes",
+    "registry_origin_main_tip_stability_and_exact_blob_bytes",
     "product_origin_main_tip_stability",
     "product_version_state_exact_blob_bytes",
     "declared_release_identifier_fullmatch",
@@ -82,6 +85,14 @@ RECEIPT_SHA256_METHOD = {
     "algorithm": "SHA-256",
     "canonicalization": "UTF-8 JSON; sort_keys=true; separators=(',', ':'); ensure_ascii=false",
     "excluded_json_pointer": "/receipt_sha256",
+}
+
+GIT_REQUIRED_ENVIRONMENT = {
+    "GIT_NO_REPLACE_OBJECTS": "1",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_CONFIG_SYSTEM": os.devnull,
+    "GIT_TERMINAL_PROMPT": "0",
 }
 
 
@@ -163,8 +174,20 @@ class GitCommandResult:
 class GitRunner:
     """Run Git with replacement objects disabled and config injection scrubbed."""
 
-    def __init__(self, *, clock: Callable[[], datetime] = utc_now) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], datetime] = utc_now,
+        credential_helper: str | None = None,
+    ) -> None:
         self._clock = clock
+        self._credential_helper = credential_helper
+
+    @property
+    def injected_git_config_args(self) -> list[str]:
+        if self._credential_helper is None:
+            return []
+        return ["-c", f"credential.helper={self._credential_helper}"]
 
     @staticmethod
     def environment() -> dict[str, str]:
@@ -195,15 +218,11 @@ class GitRunner:
         for key in tuple(env):
             if key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")):
                 env.pop(key, None)
-        env["GIT_NO_REPLACE_OBJECTS"] = "1"
-        env["GIT_CONFIG_NOSYSTEM"] = "1"
-        env["GIT_CONFIG_GLOBAL"] = os.devnull
-        env["GIT_CONFIG_SYSTEM"] = os.devnull
-        env["GIT_TERMINAL_PROMPT"] = "0"
+        env.update(GIT_REQUIRED_ENVIRONMENT)
         return env
 
     def run(self, args: list[str], *, cwd: Path | None = None) -> GitCommandResult:
-        argv = ["git", *args]
+        argv = ["git", *self.injected_git_config_args, *args]
         started = format_utc(self._clock())
         process = subprocess.run(
             argv,
@@ -224,11 +243,19 @@ class GitRunner:
 
 
 class BindingFailure(RuntimeError):
-    def __init__(self, *, label: str, reason: str, partial: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        *,
+        label: str,
+        reason: str,
+        partial: dict[str, Any],
+        command_result: GitCommandResult | None = None,
+    ) -> None:
         super().__init__(reason)
         self.label = label
         self.reason = reason
         self.partial = partial
+        self.command_result = command_result
 
 
 def _require_success(
@@ -243,6 +270,7 @@ def _require_success(
             label=label,
             reason=f"{label}_{operation}_failed_exit={result.exit_code}",
             partial=partial,
+            command_result=result,
         )
     return result.stdout
 
@@ -270,6 +298,7 @@ class RemoteBinding:
     raw_bytes: bytes = field(repr=False)
     fetch: GitCommandResult
     replacement_refs_before: list[str]
+    injected_git_config_args: list[str] = field(default_factory=list)
     repository_path: Path | None = field(default=None, repr=False)
     tip_probe_before: GitCommandResult | None = field(default=None, repr=False)
     tip_probe_after: GitCommandResult | None = field(default=None, repr=False)
@@ -287,6 +316,8 @@ class RemoteBinding:
     def receipt_fields(self) -> dict[str, Any]:
         return {
             "remote_url": self.remote_url,
+            "transport_url": self.remote_url,
+            "injected_git_config_args": list(self.injected_git_config_args),
             "origin_slug": self.origin_slug,
             "refspec": self.refspec,
             "remote_tip_oid": self.tip_oid_before,
@@ -364,6 +395,8 @@ class GitBindingProvider:
             ["ls-remote", "--exit-code", "--refs", remote_url, refspec],
             cwd=self.root,
         )
+        probe_key = "tip_probe_before" if operation == "ls_remote_before" else "tip_probe_after"
+        partial[probe_key] = result.receipt_fields()
         output = _require_success(
             result,
             label=label,
@@ -377,6 +410,7 @@ class GitBindingProvider:
                 label=label,
                 reason=f"{label}_{operation}_malformed",
                 partial=partial,
+                command_result=result,
             ) from exc
         matches: list[str] = []
         for line in lines:
@@ -388,6 +422,7 @@ class GitBindingProvider:
                 label=label,
                 reason=f"{label}_{operation}_expected_one_tip_found={len(matches)}",
                 partial=partial,
+                command_result=result,
             )
         return matches[0], result
 
@@ -402,6 +437,8 @@ class GitBindingProvider:
     ) -> RemoteBinding:
         partial: dict[str, Any] = {
             "remote_url": remote_url,
+            "transport_url": remote_url,
+            "injected_git_config_args": list(self.runner.injected_git_config_args),
             "expected_origin_slug": expected_slug,
             "refspec": refspec,
             "object_path": object_path,
@@ -506,6 +543,7 @@ class GitBindingProvider:
             raw_bytes=raw_bytes,
             fetch=fetch,
             replacement_refs_before=replacement_refs_before,
+            injected_git_config_args=list(self.runner.injected_git_config_args),
             repository_path=repo,
             tip_probe_before=tip_probe_before,
         )
@@ -514,13 +552,20 @@ class GitBindingProvider:
         if binding.repository_path is None:
             raise ValueError("real Git binding has no repository path")
         partial = binding.receipt_fields()
-        binding.tip_oid_after, binding.tip_probe_after = self._remote_tip(
-            binding.remote_url,
-            binding.refspec,
-            label=binding.label,
-            partial=partial,
-            operation="ls_remote_after",
-        )
+        try:
+            binding.tip_oid_after, binding.tip_probe_after = self._remote_tip(
+                binding.remote_url,
+                binding.refspec,
+                label=binding.label,
+                partial=partial,
+                operation="ls_remote_after",
+            )
+        except BindingFailure as exc:
+            # Preserve the failed final probe in the emitted binding evidence;
+            # the absence of a post-probe OID must not erase the command result.
+            if exc.command_result is not None:
+                binding.tip_probe_after = exc.command_result
+            raise
         binding.replacement_refs_after = self._replacement_refs(
             binding.repository_path,
             label=binding.label,
@@ -535,6 +580,8 @@ class CompletionRequest:
     registry_origin_slug: str
     registry_origin_url: str
     exact_argv: list[str]
+    product_origin_url: str | None = None
+    git_credential_helper: str | None = None
 
 
 def request_reasons(request: CompletionRequest) -> list[str]:
@@ -553,6 +600,18 @@ def request_reasons(request: CompletionRequest) -> list[str]:
             "registry_origin_slug_mismatch="
             f"actual={actual_slug} expected={request.registry_origin_slug}"
         )
+    if request.product_origin_url is not None:
+        if (
+            not isinstance(request.product_origin_url, str)
+            or canonical_slug(request.product_origin_url) is None
+        ):
+            reasons.append("product_origin_url_not_canonical_github")
+    if request.git_credential_helper is not None and (
+        not isinstance(request.git_credential_helper, str)
+        or not request.git_credential_helper.strip()
+        or any(ord(char) < 32 for char in request.git_credential_helper)
+    ):
+        reasons.append("git_credential_helper_invalid")
     return reasons
 
 
@@ -562,12 +621,11 @@ def _release_pattern_reasons(
 ) -> list[str]:
     reasons: list[str] = []
     pattern_value = project.get("release_id_pattern")
-    if not isinstance(pattern_value, str) or not pattern_value:
-        return ["release_id_pattern_missing_for_completion"]
-    try:
-        pattern = re.compile(pattern_value)
-    except (re.error, OverflowError) as exc:
-        return [f"release_id_pattern_invalid={exc}"]
+    pattern, pattern_reason = compile_release_id_pattern_or_reason(pattern_value)
+    if pattern is None:
+        if pattern_reason == "release_id_pattern must be a non-empty string":
+            return ["release_id_pattern_missing_for_completion"]
+        return [f"release_id_pattern_invalid={pattern_reason}"]
 
     baseline_value = project.get("deployed_baseline")
     deployed_value = state.get("deployed_version")
@@ -649,20 +707,14 @@ def _declared_state_payload(
         "deployed_version": None,
         "pending_version": None,
     }
-    if isinstance(pattern_value, str) and pattern_value:
-        try:
-            pattern = re.compile(pattern_value)
-        except (re.error, OverflowError):
-            pass
-        else:
-            if isinstance(baseline, str) and baseline:
-                matches["deployed_baseline"] = pattern.fullmatch(baseline) is not None
-            if isinstance(deployed, str) and deployed:
-                matches["deployed_version"] = pattern.fullmatch(deployed) is not None
-            if pending == "none":
-                matches["pending_version"] = True
-            elif isinstance(pending, str) and pending:
-                matches["pending_version"] = pattern.fullmatch(pending) is not None
+    pattern, _pattern_reason = compile_release_id_pattern_or_reason(pattern_value)
+    if pattern is not None:
+        if isinstance(baseline, str) and baseline:
+            matches["deployed_baseline"] = pattern.fullmatch(baseline) is not None
+        if isinstance(deployed, str) and deployed:
+            matches["deployed_version"] = pattern.fullmatch(deployed) is not None
+        if isinstance(pending, str) and pending and pending != "none":
+            matches["pending_version"] = pattern.fullmatch(pending) is not None
     return {
         "version_contract": project.get("version_contract"),
         "release_id_pattern": pattern_value,
@@ -688,12 +740,12 @@ def _binding_reasons(binding: RemoteBinding) -> list[str]:
             f"{binding.label}_fetched_oid_stale="
             f"fetched={binding.fetched_oid} remote={binding.tip_oid_before}"
         )
-    if binding.tip_oid_after != binding.tip_oid_before:
+    if binding.tip_oid_after is not None and binding.tip_oid_after != binding.tip_oid_before:
         reasons.append(
             f"{binding.label}_remote_tip_changed="
             f"before={binding.tip_oid_before} after={binding.tip_oid_after}"
         )
-    if not binding.replacement_refs_empty:
+    if binding.replacement_refs_after is not None and not binding.replacement_refs_empty:
         reasons.append(f"{binding.label}_replacement_refs_not_empty")
     return reasons
 
@@ -704,6 +756,7 @@ def _project_check_payload(
     project: dict[str, Any] | None,
     registry: RemoteBinding | None,
     product: RemoteBinding | None,
+    product_partial: dict[str, Any] | None,
     reasons: list[str],
     dependency_blocked: bool,
 ) -> dict[str, Any]:
@@ -715,13 +768,39 @@ def _project_check_payload(
         if ok
         else "PROJECT_CHECK_BLOCKED"
     )
+    product_observation = product.receipt_fields() if product is not None else product_partial or {}
+
+    def command_succeeded(field_name: str) -> bool:
+        value = product_observation.get(field_name)
+        return isinstance(value, dict) and value.get("exit_code") == 0
+
+    def valid_observed_oid(field_name: str) -> bool:
+        value = product_observation.get(field_name)
+        return isinstance(value, str) and _OID_RE.fullmatch(value) is not None
+
+    freshness = "fetched" if command_succeeded("fetch") else None
+    before_probed = command_succeeded("tip_probe_before") and valid_observed_oid(
+        "remote_tip_oid_before"
+    )
+    after_probed = (
+        before_probed
+        and command_succeeded("tip_probe_after")
+        and valid_observed_oid("remote_tip_oid_after")
+    )
+    remote_tip_stability = (
+        "before-and-after-checked"
+        if after_probed
+        else "before-only"
+        if before_probed
+        else "not-probed"
+    )
     binding: dict[str, Any] = {
         "git_object_format": product.object_format if product else None,
         "working_tree_mode": False,
         "ref": "origin/main",
         "product_ref": "origin/main",
-        "freshness": "fetched",
-        "remote_tip_stability": "before-and-after-checked",
+        "freshness": freshness,
+        "remote_tip_stability": remote_tip_stability,
         "version_contract": project.get("version_contract") if project else None,
     }
     if registry is not None:
@@ -813,7 +892,7 @@ def _base_receipt(request: CompletionRequest) -> dict[str, Any]:
             ),
         },
         "git_security": {
-            "required_environment": {"GIT_NO_REPLACE_OBJECTS": "1"},
+            "required_environment": dict(GIT_REQUIRED_ENVIRONMENT),
             "system_and_global_git_config_disabled": True,
             "isolated_temporary_bare_repositories": True,
         },
@@ -838,11 +917,18 @@ def run_completion(
     state: dict[str, Any] | None = None
     registry: RemoteBinding | None = None
     product: RemoteBinding | None = None
+    binding_partials: dict[str, dict[str, Any]] = {}
     dependency_blocked = False
     owned_temp: tempfile.TemporaryDirectory[str] | None = None
     if provider is None:
         owned_temp = tempfile.TemporaryDirectory(prefix="multiagent-completion-")
-        provider = GitBindingProvider(Path(owned_temp.name), runner=GitRunner(clock=clock))
+        provider = GitBindingProvider(
+            Path(owned_temp.name),
+            runner=GitRunner(
+                clock=clock,
+                credential_helper=request.git_credential_helper,
+            ),
+        )
 
     try:
         if not reasons:
@@ -881,42 +967,51 @@ def run_completion(
                         expected_product_slug = canonical_slug(remote_url)
                         if expected_product_slug is None:
                             reasons.append("registry_repo_url_not_canonical_github")
-                        elif isinstance(project.get("repo_slug"), str) and (
-                            project["repo_slug"] != expected_product_slug
-                        ):
-                            reasons.append(
-                                "registry_repo_slug_mismatch="
-                                f"url={expected_product_slug} field={project['repo_slug']}"
-                            )
-                        elif not reasons:
-                            product = provider.open(
-                                label="product",
-                                remote_url=remote_url,
-                                expected_slug=expected_product_slug,
-                                refspec=MAIN_REFSPEC,
-                                object_path=VERSION_STATE_PATH,
-                            )
-                            if product.replacement_refs_before:
-                                reasons.append("product_replacement_refs_not_empty")
-                            state = strict_yaml.load_strict_bytes(
-                                product.raw_bytes,
-                                source=f"{product.tip_oid_before}:{VERSION_STATE_PATH}",
-                                schema=lambda data: strict_yaml.parse_flat_state(
-                                    data,
-                                    source=(f"{product.tip_oid_before}:{VERSION_STATE_PATH}"),
-                                ),
-                            )
-                            if str(state.get("schema_version") or "") != "1":
-                                reasons.append("version_state_schema_version_must_equal=1")
-                            state_slug = state.get("expected_remote_slug")
-                            if state_slug and state_slug != expected_product_slug:
+                        else:
+                            if isinstance(project.get("repo_slug"), str) and (
+                                project["repo_slug"] != expected_product_slug
+                            ):
                                 reasons.append(
-                                    "state_remote_slug_mismatch="
-                                    f"actual={expected_product_slug} expected={state_slug}"
+                                    "registry_repo_slug_mismatch="
+                                    f"url={expected_product_slug} field={project['repo_slug']}"
                                 )
-                            reasons.extend(_release_pattern_reasons(project, state))
+                            product_transport_url = request.product_origin_url or remote_url
+                            transport_slug = canonical_slug(product_transport_url)
+                            if transport_slug != expected_product_slug:
+                                reasons.append(
+                                    "product_origin_slug_mismatch="
+                                    f"actual={transport_slug} expected={expected_product_slug}"
+                                )
+                            elif not reasons:
+                                product = provider.open(
+                                    label="product",
+                                    remote_url=product_transport_url,
+                                    expected_slug=expected_product_slug,
+                                    refspec=MAIN_REFSPEC,
+                                    object_path=VERSION_STATE_PATH,
+                                )
+                                if product.replacement_refs_before:
+                                    reasons.append("product_replacement_refs_not_empty")
+                                state = strict_yaml.load_strict_bytes(
+                                    product.raw_bytes,
+                                    source=f"{product.tip_oid_before}:{VERSION_STATE_PATH}",
+                                    schema=lambda data: strict_yaml.parse_flat_state(
+                                        data,
+                                        source=(f"{product.tip_oid_before}:{VERSION_STATE_PATH}"),
+                                    ),
+                                )
+                                if str(state.get("schema_version") or "") != "1":
+                                    reasons.append("version_state_schema_version_must_equal=1")
+                                state_slug = state.get("expected_remote_slug")
+                                if state_slug and state_slug != expected_product_slug:
+                                    reasons.append(
+                                        "state_remote_slug_mismatch="
+                                        f"actual={expected_product_slug} expected={state_slug}"
+                                    )
+                                reasons.extend(_release_pattern_reasons(project, state))
             except BindingFailure as exc:
                 reasons.append(exc.reason)
+                binding_partials[exc.label] = exc.partial
                 receipt[f"{exc.label}_binding"] = exc.partial
             except strict_yaml.DependencyBlocked as exc:
                 dependency_blocked = True
@@ -932,6 +1027,8 @@ def run_completion(
             try:
                 provider.finalize(binding)
             except BindingFailure as exc:
+                if f"{binding.label}_ls_remote_after_" in exc.reason:
+                    reasons.append(f"{binding.label}_finalize_probe_failed")
                 reasons.append(exc.reason)
             except (OSError, ValueError) as exc:
                 reasons.append(f"{binding.label}_finalization_failed={exc}")
@@ -970,6 +1067,7 @@ def run_completion(
         project=project,
         registry=registry,
         product=product,
+        product_partial=binding_partials.get("product"),
         reasons=reasons,
         dependency_blocked=dependency_blocked,
     )
@@ -1003,6 +1101,7 @@ def usage_failure_receipt(
         project=None,
         registry=None,
         product=None,
+        product_partial=None,
         reasons=[reason],
         dependency_blocked=False,
     )

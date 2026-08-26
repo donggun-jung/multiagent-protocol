@@ -49,6 +49,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--registry-origin-url",
         help="Canonical GitHub URL. Defaults to HTTPS for --registry-origin-slug.",
     )
+    parser.add_argument(
+        "--product-origin-url",
+        help="Canonical product transport URL; its slug must match the registry row.",
+    )
+    parser.add_argument(
+        "--git-credential-helper",
+        help="Auditable Git credential-helper command injected with per-call git -c.",
+    )
 
     # Legacy check_project options are recognized so completion mode can reject
     # them with one structured receipt instead of argparse text on stderr.
@@ -137,6 +145,8 @@ def main(
         registry_origin_slug=args.registry_origin_slug,
         registry_origin_url=registry_origin_url,
         exact_argv=observed_argv,
+        product_origin_url=args.product_origin_url,
+        git_credential_helper=args.git_credential_helper,
     )
     try:
         receipt, exit_code = run_completion(request)

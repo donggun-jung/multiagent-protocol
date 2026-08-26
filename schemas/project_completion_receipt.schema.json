@@ -98,9 +98,21 @@
       "properties": {
         "required_environment": {
           "type": "object",
-          "required": ["GIT_NO_REPLACE_OBJECTS"],
+          "required": [
+            "GIT_NO_REPLACE_OBJECTS",
+            "GIT_CONFIG_NOSYSTEM",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_SYSTEM",
+            "GIT_TERMINAL_PROMPT"
+          ],
           "additionalProperties": false,
-          "properties": { "GIT_NO_REPLACE_OBJECTS": { "const": "1" } }
+          "properties": {
+            "GIT_NO_REPLACE_OBJECTS": { "const": "1" },
+            "GIT_CONFIG_NOSYSTEM": { "const": "1" },
+            "GIT_CONFIG_GLOBAL": { "type": "string", "minLength": 1 },
+            "GIT_CONFIG_SYSTEM": { "type": "string", "minLength": 1 },
+            "GIT_TERMINAL_PROMPT": { "const": "0" }
+          }
         },
         "system_and_global_git_config_disabled": { "const": true },
         "isolated_temporary_bare_repositories": { "const": true }
@@ -201,6 +213,8 @@
       "type": "object",
       "required": [
         "remote_url",
+        "transport_url",
+        "injected_git_config_args",
         "origin_slug",
         "refspec",
         "remote_tip_oid",
@@ -225,6 +239,11 @@
       "additionalProperties": false,
       "properties": {
         "remote_url": { "type": "string", "minLength": 1 },
+        "transport_url": { "type": "string", "minLength": 1 },
+        "injected_git_config_args": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "origin_slug": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
@@ -280,11 +299,33 @@
           "properties": {
             "deployed_baseline": { "const": true },
             "deployed_version": { "const": true },
-            "pending_version": { "const": true }
+            "pending_version": { "enum": [true, null] }
           }
         },
         "declared_parity_equal": { "const": true }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "pending_version": { "const": "none" } },
+            "required": ["pending_version"]
+          },
+          "then": {
+            "properties": {
+              "pattern_fullmatch": {
+                "properties": { "pending_version": { "type": "null" } }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "pattern_fullmatch": {
+                "properties": { "pending_version": { "const": true } }
+              }
+            }
+          }
+        }
+      ]
     },
     "projectCheck": {
       "type": "object",

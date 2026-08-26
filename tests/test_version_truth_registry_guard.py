@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from multiagent_protocol.version_truth import registry_guard as registry_guard_module
 from multiagent_protocol.version_truth import strict_yaml
 from multiagent_protocol.version_truth.registry_guard import (
     validate_registry_guard,
@@ -100,15 +101,44 @@ def test_release_id_pattern_must_compile_without_exposing_parser_details(pattern
     ]
 
 
+def test_parity_omitted_version_state_uses_the_canonical_default():
+    assert validate_registry_rows({"project-alpha": {"version_contract": PARITY}}) == []
+
+
 @pytest.mark.parametrize("version_state", [None, "", "ALT_VERSION_STATE.yml"])
-def test_parity_requires_explicit_canonical_version_state(version_state: Any):
-    row = {"version_contract": PARITY}
-    if version_state is not None:
-        row["version_state"] = version_state
+def test_parity_rejects_explicit_noncanonical_version_state(version_state: Any):
+    row = {"version_contract": PARITY, "version_state": version_state}
 
     assert validate_registry_rows({"project-alpha": row}) == [
         "project-alpha: legacy-declared-parity requires version_state='VERSION_STATE.yml'"
     ]
+
+
+def test_release_id_pattern_length_is_bounded():
+    projects = {"project-alpha": {"release_id_pattern": "a" * 1025}}
+
+    assert validate_registry_rows(projects) == [
+        "project-alpha: release_id_pattern exceeds 1024 characters"
+    ]
+
+
+def test_release_id_pattern_at_the_length_boundary_is_accepted():
+    assert validate_registry_rows(
+        {"project-alpha": {"release_id_pattern": "a" * 1024}}
+    ) == []
+
+
+def test_release_id_pattern_recursion_failure_has_the_stable_invalid_reason(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def recursion_failure(_value: str):
+        raise RecursionError
+
+    monkeypatch.setattr(registry_guard_module.re, "compile", recursion_failure)
+
+    assert validate_registry_rows(
+        {"project-alpha": {"release_id_pattern": "nested"}}
+    ) == ["project-alpha: release_id_pattern must be a valid regular expression"]
 
 
 def test_unchanged_parity_contract_needs_no_supersession_evidence():

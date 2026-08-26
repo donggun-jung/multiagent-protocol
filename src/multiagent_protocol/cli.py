@@ -83,16 +83,43 @@ def _cmd_init(_args) -> int:
     return 0
 
 
+def _subcommand_index(raw_argv: list[str]) -> int | None:
+    """Locate the first non-global-option token without consuming its value."""
+
+    index = 0
+    while index < len(raw_argv):
+        token = raw_argv[index]
+        if token == "--log-level":
+            if index + 1 >= len(raw_argv) or raw_argv[index + 1].startswith("-"):
+                return None
+            index += 2
+            continue
+        if token.startswith("--log-level="):
+            index += 1
+            continue
+        if token.startswith("-"):
+            return None
+        return index
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
-    if raw_argv and raw_argv[0] == "check-project":
+    subcommand_index = _subcommand_index(raw_argv)
+    subcommand = raw_argv[subcommand_index] if subcommand_index is not None else None
+    if subcommand == "check-project":
+        assert subcommand_index is not None
         from multiagent_protocol.check_project import main as check_project_main
 
-        return check_project_main(raw_argv[1:], exact_argv=[sys.argv[0], *raw_argv])
-    if raw_argv and raw_argv[0] == "check-registry":
+        return check_project_main(
+            raw_argv[subcommand_index + 1 :],
+            exact_argv=[sys.argv[0], *raw_argv],
+        )
+    if subcommand == "check-registry":
+        assert subcommand_index is not None
         from multiagent_protocol.check_registry import main as check_registry_main
 
-        return check_registry_main(raw_argv[1:])
+        return check_registry_main(raw_argv[subcommand_index + 1 :])
 
     parser = argparse.ArgumentParser(prog="multiagent-protocol")
     parser.add_argument("--log-level", default="INFO")
