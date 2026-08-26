@@ -1,0 +1,16 @@
+schema_version: 1
+projects:
+  - id: governance-service
+    repo: https://github.com/example-org/governance-service.git
+    version_contract: legacy-declared-parity
+    release_id_pattern: "^governance-[0-9]+$"
+  - id: product-service
+    repo: https://github.com/example-org/product-service.git
+    version_contract: legacy-declared-parity
+    version_state: VERSION_STATE.yml
+    release_id_pattern: "^product-[0-9]+$"
+  - id: manifest-service
+    repo: https://github.com/example-org/manifest-service.git
+    version_contract: release-manifest
+    version_state: state/manifest.yml
+    release_id_pattern: "^manifest-[0-9]+$"

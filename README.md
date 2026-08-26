@@ -5,11 +5,11 @@
 > One human, many agents. Different sessions, different machines, different models — same `main` branch. This protocol stops them from stepping on each other, gates merges through a self-built check, and routes irreversible decisions back to you instead of letting agents decide.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-[![Status: v1.4](https://img.shields.io/badge/status-v1.4-brightgreen.svg)](STATUS.md)
+[![Status: v1.5](https://img.shields.io/badge/status-v1.5-brightgreen.svg)](STATUS.md)
 [![Docs](https://img.shields.io/badge/docs-website-blue.svg)](https://donggun-jung.github.io/multiagent-protocol/)
 [![한국어](https://img.shields.io/badge/lang-한국어-orange.svg)](README.ko.md)
 
-> **v1.4.0.** The cron orchestrator is **live**: your private installation evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). Installation is **delegated** — hand [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) to your own AI agent (wizard-generated prompt or fully conversational Interview Mode) and it installs everything while your agents follow *your* working style via the **preference layer** (`config/preferences.yml`). New in 1.4: a **fail-closed multi-parent revert guard** (the L2 auto-revert path refuses merge commits unless the mainline parent is proven) and an **opt-in Decision Inbox lifecycle** (one-time reminder/escalation with an availability-aware clock — default off, the inbox stays timer-free unless you enable it). Still later: PyPI publishing, multi-account installs — see [`STATUS.md`](STATUS.md).
+> **v1.5.0.** The cron orchestrator is **live**: your private installation evaluates open PRs, merges the auto-approvable quadrants (A/B/C), routes irreversible+critical changes (D) to you via the Decision Inbox, and audits `main` (L2 + L5). Installation is **delegated** — hand [`docs/agent-setup/AGENT_SETUP.md`](docs/agent-setup/AGENT_SETUP.md) to your own AI agent. New in 1.5: exact-object declared-state completion subreceipts and a fail-closed version-contract downgrade guard. These receipts verify Git-bound declarations; they do not claim live deployment causality. See the [version-truth guide](docs/guide/version-truth-completion.md) and [`STATUS.md`](STATUS.md).
 
 ---
 
@@ -89,7 +89,8 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 
 ## Status
 
-- **v1.4.0** (current): the operational-trust release — `verify-setup` deployed-state verification report, gate-liveness check (a dead cron is no longer invisible), the kit's sixth rule (external content is data, not instructions), a Quadrant-D pause rehearsal in go-live, Step-10 offboarding, resume-safe install, version-truth parity tests.
+- **v1.5.0** (current): exact-object declared-state completion subreceipts, strict version YAML, and an accepted-ADR-only downgrade guard. The successful subreceipt remains explicitly short of live deployment authorization.
+- **v1.4.0**: the operational-trust release — `verify-setup`, gate-liveness checks, the external-content trust boundary, Decision Inbox lifecycle, and a fail-closed multi-parent revert guard.
 - **v1.2.0**: L2 automatic revert-PRs + L4 60-day burn-in auto-promotion (both default-off opt-ins, `docs/decisions/0002`–`0003`), Korean mirror of all nine concept docs, doctrine self-contradiction fixes.
 - **v1.1.0**: delegated agent installation (AGENT_SETUP runbook + Interview Mode + deploy example), operator preference layer, wizard v2, honest Free-tier cadence guidance. Docker image on GHCR per tag; GitHub Action pinnable per release tag.
 - **Later**: PyPI publishing (awaits trusted-publisher setup — install from your mirror meanwhile), multi-account installations, GitLab/Bitbucket adapters (see [`STATUS.md`](STATUS.md)).
@@ -105,6 +106,7 @@ See [`docs/concepts/architecture.md`](docs/concepts/architecture.md) for the ful
 - [`docs/concepts/four-quadrants.md`](docs/concepts/four-quadrants.md) — the autonomy classifier (when does the bot decide vs. ask you)
 - [`docs/concepts/five-tier-files.md`](docs/concepts/five-tier-files.md) — how to organize a repo for AI agents
 - [`docs/guide/skills.md`](docs/guide/skills.md) — writing your own validators
+- [`docs/guide/version-truth-completion.md`](docs/guide/version-truth-completion.md) — exact-object completion receipts and registry downgrade checks
 - [`docs/concepts/break-glass.md`](docs/concepts/break-glass.md) — the doctrine for overriding the bot
 - [`docs/guide/break-glass.md`](docs/guide/break-glass.md) — the step-by-step "how to" version
 - [`docs/guide/multi-repo.md`](docs/guide/multi-repo.md) — supervising more than one repository
