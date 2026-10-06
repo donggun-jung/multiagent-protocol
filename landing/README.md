@@ -5,8 +5,10 @@ build-output convention.)
 
 `index.html` is a fully self-contained, bilingual (ko default / en toggle)
 explainer for non-developer operators. Since 2026-10-06 it describes the
-operating discipline as the author actually runs it, with this engine as the
-option for GitHub Free users:
+operating discipline as the author actually runs it — presented as a worked
+example with no personal data (no names, contacts or hosts); adopters keep their
+own values in their own private config — with this engine as the option for
+private repositories on GitHub Free:
 
 - why an AI team needs discipline;
 - the team shape — a command seat (the manager: plans, assigns, designs the
@@ -22,9 +24,9 @@ option for GitHub Free users:
 - the ten-article quality constitution and the working habits;
 - the preference layer, a delegated setup prompt for the current setup, and an
   honest machine-enforced vs discipline-kept status;
-- a collapsed appendix for GitHub Free users: this engine's delegated install
-  path (wizard / bootstrap prompt / runbook), its status, and how it relates
-  to similar tools.
+- a collapsed appendix for private repositories on GitHub Free: this engine's
+  delegated install path (wizard / bootstrap prompt / runbook), its status, and
+  how it relates to similar tools.
 
 Model names on the page are the current seat occupants. When a generation
 changes, update the team cards and the date stamps (hero kicker, footer).

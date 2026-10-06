@@ -273,7 +273,7 @@ footer a{color:var(--ink-soft)}
       </div>
       <div class="step">
         <h3 data-i18n="flow.s5t">GitHub가 조건을 확인하고 합친다</h3>
-        <p data-i18n="flow.s5">필수 검사가 모두 초록이고 리뷰 대화가 정리되면 자동으로 병합됩니다. 사람이 버튼을 누를 일이 없습니다.</p>
+        <p data-i18n="flow.s5">에이전트가 PR마다 자동 병합을 켜 두면, 필수 검사가 모두 초록이고 리뷰 대화가 정리되는 순간 GitHub가 합칩니다. 사람이 버튼을 누를 일이 없습니다.</p>
       </div>
       <div class="step">
         <h3 data-i18n="flow.s6t">지휘석이 영수증과 함께 보고한다</h3>
@@ -304,7 +304,7 @@ footer a{color:var(--ink-soft)}
         <div class="emoji">🚦</div>
         <h3 data-i18n="how.c1t">신호등 — 초록불 없이는 합쳐지지 않는다</h3>
         <div class="tag" data-i18n="how.c1tag">GitHub 서버 규칙(ruleset) · 필수 검사 · 자동 병합</div>
-        <p data-i18n="how.c1">본선(main)에 직접 올리는 길은 막혀 있습니다. 모든 변경은 PR로 들어오고, 필수 검사가 모두 초록이고 리뷰 대화가 정리돼야 합쳐집니다. 강제 덮어쓰기와 본선 삭제는 금지, 예외 계정은 없음 — 모든 AI에게 똑같이. 조건이 갖춰지면 GitHub가 알아서 합칩니다. 판정을 GitHub 서버가 하므로, 감시 봇이 멈춰도 규칙은 그대로 서 있습니다.</p>
+        <p data-i18n="how.c1">본선(main)에 직접 올리는 길은 막혀 있습니다. 모든 변경은 PR로 들어오고, 필수 검사가 모두 초록이고 리뷰 대화가 정리돼야 합쳐집니다. 강제 덮어쓰기와 본선 삭제는 금지, 예외 계정은 없음 — 모든 AI에게 똑같이. 에이전트가 PR마다 자동 병합을 켜 두면, 조건이 갖춰지는 순간 GitHub가 합칩니다. 판정을 GitHub 서버가 하므로, 감시 봇이 멈춰도 규칙은 그대로 서 있습니다.</p>
         <div class="analogy" data-i18n="how.c1a">회사로 치면: 품질검수 없이 출고 불가</div>
       </div>
       <div class="card">
@@ -318,7 +318,7 @@ footer a{color:var(--ink-soft)}
         <div class="emoji">🏷️</div>
         <h3 data-i18n="how.c3t">이름표 — 모든 변경에 서명이 남는다</h3>
         <div class="tag" data-i18n="how.c3tag">신원 서명 6종</div>
-        <p data-i18n="how.c3">어떤 도구가, 어떤 모델로, 어떤 작업 세션에서, 어느 기기에서, 어떤 작업 건으로 바꿨는지 — 그리고 공동 작성자까지, 여섯 줄 서명이 에이전트의 모든 변경에 붙습니다. 서명 검사를 필수 검사로 걸어 두면 서명 없는 에이전트 변경은 합쳐지지 않습니다 — 신원이 확인된 의존성 업데이트 봇의 원본 커밋만 예외입니다. "밤새 무슨 일이 있었나"가 아침에 다 읽힙니다.</p>
+        <p data-i18n="how.c3">어떤 도구가, 어떤 모델로, 어떤 작업 세션에서, 어느 기기에서, 어떤 작업 건으로 바꿨는지 — 다섯 줄 신원 서명에 공동 작성자 한 줄을 더해, 여섯 줄이 에이전트의 모든 변경에 붙습니다. 서명 검사를 필수 검사로 걸어 두면 서명 없는 에이전트 변경은 합쳐지지 않습니다 — 신원이 확인된 의존성 업데이트 봇의 원본 커밋만 예외이고, 아래 엔진의 기본 검사는 앞의 다섯 줄을 봅니다. "밤새 무슨 일이 있었나"가 아침에 다 읽힙니다.</p>
         <div class="analogy" data-i18n="how.c3a">회사로 치면: 기안자 없는 문서는 접수 불가</div>
       </div>
       <div class="card">
@@ -425,7 +425,7 @@ footer a{color:var(--ink-soft)}
         <div class="row"><span class="d">04-07</span><span data-i18n="pref.ex4">확신 없는 결론엔 반드시 "확실하지 않음"을 붙일 것</span></div>
       </div>
     </div>
-    <div class="privacy-note" data-i18n-html="pref.privacy">🔒 <strong>취향은 개인정보입니다.</strong> 취향 원장과 규칙 원문은 당신의 <strong>비공개 저장소</strong>에만 둡니다. 이 페이지는 그 방식을 일반화해 설명할 뿐, 개인 정보는 담지 않습니다.</div>
+    <div class="privacy-note" data-i18n-html="pref.privacy">🔒 <strong>취향은 개인정보입니다.</strong> 취향 원장과 규칙 원문은 당신의 <strong>비공개 저장소</strong>에만 둡니다. 이 페이지에 나오는 모델 배치나 금액 기준 같은 운영 값은 한 사람의 실제 예시일 뿐이니, 당신의 값은 당신의 비공개 저장소에 적으세요. 이름·연락처·서버 주소 같은 개인 정보는 이 페이지에 없습니다.</div>
   </div>
 </section>
 
@@ -441,11 +441,11 @@ footer a{color:var(--ink-soft)}
       </div>
       <div class="step">
         <h3 data-i18n="start.s2t">신호등 켜기</h3>
-        <p data-i18n="start.s2">개인 계정의 비공개 저장소라면 월 4달러짜리 GitHub Pro, 조직 소유라면 Team 이상의 요금제가 필요하고, 공개 저장소는 무료로도 됩니다. 저장소마다 서버 규칙을 겁니다 — 변경 제안(PR) 필수 · 사람 승인 0건 · 리뷰 대화 정리 필수 · GitHub Actions가 낸 필수 검사 통과 · squash 병합 · 직선 이력 · 강제 덮어쓰기와 본선 삭제 금지 · 예외 계정 없음 · 자동 병합. 혼자 운영하면 자기 PR을 스스로 승인할 수 없으니 사람 승인 대신 검사로 막고, 검사가 아직 없는 저장소도 PR 필수부터 겁니다. squash는 변경 묶음을 한 줄의 기록으로 합치는 방식입니다. 설정은 에이전트가, 결제는 사람이.</p>
+        <p data-i18n="start.s2">개인 계정의 비공개 저장소라면 월 4달러짜리 GitHub Pro, 조직 소유라면 Team 이상의 요금제가 필요하고, 공개 저장소는 무료로도 됩니다. 저장소마다 서버 규칙을 겁니다 — 변경 제안(PR) 필수 · 사람 승인 0건 · 리뷰 대화 정리 필수 · GitHub Actions가 낸 필수 검사 통과 · squash 병합 · 직선 이력 · 강제 덮어쓰기와 본선 삭제 금지 · 예외 계정 없음 · 자동 병합 허용. 혼자 운영하면 자기 PR을 스스로 승인할 수 없으니 사람 승인 대신 검사로 막고, 검사가 아직 없는 저장소도 PR 필수부터 겁니다. 자동 병합은 저장소에서 허용해 두고 PR마다 에이전트가 켭니다. squash는 변경 묶음을 한 줄의 기록으로 합치는 방식입니다. 설정은 에이전트가, 결제는 사람이.</p>
       </div>
       <div class="step">
         <h3 data-i18n="start.s3t">팀 꾸리기</h3>
-        <p data-i18n="start.s3">Claude Code에서 Fable을 지휘석으로 쓰고, ChatGPT 데스크톱 앱에 들어 있는 Codex를 실무석으로 연결합니다. Codex 쪽은 이미 내는 ChatGPT 구독 안에서 돌아가므로 별도 API 키가 필요 없습니다. 다만 지휘석 Fable은 현재 구독과 별도인 선불 크레딧으로 쓰고, 배치 처리도 구독과 별도로 과금됩니다. 연결 스크립트는 모델을 고정하고, 생각의 깊이를 매번 지정하게 하고, 호출마다 영수증을 남깁니다. 10분 안에 끝나는 짧은 일은 바로 부르고, 긴 일은 백그라운드로 띄운 뒤 회수합니다.</p>
+        <p data-i18n="start.s3">Claude Code에서 Fable을 지휘석으로 쓰고, ChatGPT 데스크톱 앱에 들어 있는 Codex를 실무석으로 연결합니다. Codex 쪽은 이미 내는 ChatGPT 구독 안에서 돌아가므로 별도 API 키가 필요 없습니다. 다만 지휘석 Fable은 현재 구독과 별도인 선불 크레딧으로 쓰고, 배치 처리도 구독과 별도로 과금됩니다. 연결 스크립트는 모델을 고정하고, 생각의 깊이를 매번 지정하게 하고, 호출마다 영수증을 남깁니다. 이 스크립트는 여기서 배포하지 않습니다 — 아래 프롬프트가 당신의 에이전트에게 같은 조건의 작은 스크립트를 직접 만들게 합니다. 10분 안에 끝나는 짧은 일은 바로 부르고, 긴 일은 백그라운드로 띄운 뒤 회수합니다.</p>
         <span class="human-chip" data-i18n="start.s3chip">사람이 하는 순간: 결제 · 로그인 · 권한 동의</span>
       </div>
     </div>
@@ -454,7 +454,7 @@ footer a{color:var(--ink-soft)}
       <div class="boot-sub" data-i18n="start.bootsub">에이전트가 이 페이지를 읽고, 당신의 언어로 인터뷰한 뒤, 무엇이든 바꾸기 전에 계획부터 보여줍니다. 결제·로그인·권한 동의 순간에는 클릭 단위로 안내합니다. (프롬프트만 영문일 뿐, 대화는 당신의 언어로 진행됩니다.)</div>
       <pre id="team-prompt">You are my AI agent. Help me run my AI work as a team, using the operating discipline at https://ai.jdg.dev/multiagent/ — read that page first.
 1. Interview me in my own language (one batched round, offer defaults): my repositories, the AI subscriptions I have, my working preferences.
-2. Before changing anything, show me a plan for: one private rules repository that every agent reads at session start; GitHub rulesets on my repositories (pull requests required, zero required approvals, review conversations resolved, required checks published by GitHub Actions, squash only, linear history, no force-push, no default-branch deletion, no bypass, auto-merge; private repositories need a paid plan: GitHub Pro for a personal account, Team or above for an organization); and a team shape where you act as the command seat, hand code implementation to Codex with an explicit effort per job, and never let the maker check its own work.
+2. Before changing anything, show me a plan for: one private rules repository that every agent reads at session start; GitHub rulesets on my repositories (pull requests required, zero required approvals, review conversations resolved, required checks published by GitHub Actions, squash only, linear history, no force-push, no default-branch deletion, no bypass, auto-merge allowed, which you switch on for every pull request you open; private repositories need a paid plan: GitHub Pro for a personal account, Team or above for an organization); and a team shape where you act as the command seat and hand code implementation to Codex through a small wrapper script you write for me — it must pin the model, refuse any call without an explicit effort value, and append one receipt line per call — choosing the effort per job, and never letting the maker check its own work.
 3. After I approve, apply it step by step and verify each step yourself.
 Never handle my passwords, payments or account sign-ins — when we reach those moments, walk me through the clicks.</pre>
       <button class="btn btn-primary" data-copy-target="team-prompt" data-i18n="start.bootcopy">프롬프트 복사</button>
@@ -675,7 +675,7 @@ them, walk me through the clicks step by step.</pre>
     "flow.s4t": "Another seat checks it",
     "flow.s4": "A seat that never touched it, ideally from another company — and it writes down its scope: what it checked and what it did not.",
     "flow.s5t": "GitHub verifies and merges",
-    "flow.s5": "When every required check is green and review conversations are resolved, it merges automatically. Nobody has to press a button.",
+    "flow.s5": "The agent switches on auto-merge for each pull request; the moment every required check is green and review conversations are resolved, GitHub merges it. Nobody has to press a button.",
     "flow.s6t": "The command seat reports, with receipts",
     "flow.s6": "Where things stand against the goal · whether the human needs to act · the next step's condition and timing · decisions pending. Details stay in the records, linked.",
     "alloc.h": "Allocation rules",
@@ -689,7 +689,7 @@ them, walk me through the clicks step by step.</pre>
     "how.lede": "They were first built as a home-made bot; today most of them run on GitHub's own server-side rules plus the written rulebook. The tools changed; the devices did not.",
     "how.c1t": "Traffic light — nothing merges without a green",
     "how.c1tag": "GitHub rulesets · required checks · auto-merge",
-    "how.c1": "There is no direct path onto the main line. Every change arrives as a pull request and merges only when every required check is green and review conversations are resolved. No force-pushes, no deleting the main line, no bypass accounts — every AI treated the same. Once the conditions are met, GitHub merges on its own. Because GitHub's servers make the call, the rules keep standing even if a watchdog bot goes down.",
+    "how.c1": "There is no direct path onto the main line. Every change arrives as a pull request and merges only when every required check is green and review conversations are resolved. No force-pushes, no deleting the main line, no bypass accounts — every AI treated the same. With auto-merge switched on for each pull request by the agent, GitHub merges the moment the conditions are met. Because GitHub's servers make the call, the rules keep standing even if a watchdog bot goes down.",
     "how.c1a": "At a company: no shipping without QA",
     "how.c2t": "Approvals — only the big ones reach you",
     "how.c2tag": "two questions · a severe list · standing delegation",
@@ -697,7 +697,7 @@ them, walk me through the clicks step by step.</pre>
     "how.c2a": "At a company: delegation rules — the CEO signs only the big ones",
     "how.c3t": "Name tags — every change carries a signature",
     "how.c3tag": "six identity trailers",
-    "how.c3": "Which tool, which model, which working session, which machine, which task — plus the co-author: a six-line signature rides on every change an agent makes. Make the signature check a required check, and unsigned agent changes simply don't merge — the only exception is the original commit of a verified dependency-update bot. \"What happened overnight\" becomes a morning read.",
+    "how.c3": "Which tool, which model, which working session, which machine, which task — five identity lines plus a co-author line: six lines ride on every change an agent makes. Make the signature check a required check, and unsigned agent changes simply don't merge — the only exception is the original commit of a verified dependency-update bot, and the engine below checks the first five lines by default. \"What happened overnight\" becomes a morning read.",
     "how.c3a": "At a company: unsigned paperwork isn't accepted",
     "how.c4t": "Receipts — proof, not claims",
     "how.c4tag": "done verdicts · review records · live-version match",
@@ -769,16 +769,16 @@ them, walk me through the clicks step by step.</pre>
     "pref.ex2": "When a chart and a table both work, use the chart",
     "pref.ex3": "Deliverables go in the designated folder only — never the desktop",
     "pref.ex4": "Uncertain conclusions must be labeled \"not certain\"",
-    "pref.privacy": "🔒 <strong>Preferences are personal data.</strong> The taste ledger and the rulebook itself live only in <strong>your private repository</strong>. This page describes the method in general terms and contains no personal information.",
+    "pref.privacy": "🔒 <strong>Preferences are personal data.</strong> The taste ledger and the rulebook itself live only in <strong>your private repository</strong>. Operating values shown on this page — model assignments, spending thresholds — are one person's real example; write your own in your own private repository. This page contains no personal information such as names, contact details or server addresses.",
     "start.kicker": "Get started",
     "start.h2": "Humans don't do the setup. Your agent does.",
     "start.lede": "Today's setup has three parts. Hand each one to your agent; step in only for the moments only you can do — payment, sign-in, permission consent.",
     "start.s1t": "Write the rules down in one place",
     "start.s1": "Put the rulebook, the taste ledger and the work sheets in one private repository, and have every agent read the summary at the start of each session (CLAUDE.md for Claude Code, AGENTS.md for Codex). Each rule lives in exactly one place; everything else points to it.",
     "start.s2t": "Turn on the traffic light",
-    "start.s2": "Private repositories need a paid plan — GitHub Pro ($4 a month) for a personal account, Team or above for an organization; public repositories get this for free. Put server-side rules on every repository: pull requests required · zero human approvals · review conversations resolved · required checks green (published by GitHub Actions) · squash merges · linear history · no force-push and no deleting the main line · no bypass accounts · auto-merge. Working alone, you can't approve your own pull request, so checks stand in for approvals — and repositories without checks yet still start with 'pull requests required'. A squash merge records a bundle of changes as one entry. The agent configures; the human pays.",
+    "start.s2": "Private repositories need a paid plan — GitHub Pro ($4 a month) for a personal account, Team or above for an organization; public repositories get this for free. Put server-side rules on every repository: pull requests required · zero human approvals · review conversations resolved · required checks green (published by GitHub Actions) · squash merges · linear history · no force-push and no deleting the main line · no bypass accounts · auto-merge allowed. Working alone, you can't approve your own pull request, so checks stand in for approvals — and repositories without checks yet still start with 'pull requests required'. Auto-merge is allowed at the repository level and switched on by the agent for each pull request. A squash merge records a bundle of changes as one entry. The agent configures; the human pays.",
     "start.s3t": "Staff the team",
-    "start.s3": "Use Fable as the command seat in Claude Code, and connect the Codex that ships inside the ChatGPT desktop app as the labor seat. The Codex side runs on the ChatGPT subscription you already pay for — no separate API key. The Fable command seat, however, currently runs on prepaid credits separate from any subscription, and batch processing is billed separately too. The connector script pins the model, requires a thinking depth on every call, and leaves a receipt for each call. Short jobs (under 10 minutes) are called directly; long ones run in the background and are collected when done.",
+    "start.s3": "Use Fable as the command seat in Claude Code, and connect the Codex that ships inside the ChatGPT desktop app as the labor seat. The Codex side runs on the ChatGPT subscription you already pay for — no separate API key. The Fable command seat, however, currently runs on prepaid credits separate from any subscription, and batch processing is billed separately too. The connector script pins the model, requires a thinking depth on every call, and leaves a receipt for each call. It is not distributed here — the prompt below has your agent write a small one with the same guarantees. Short jobs (under 10 minutes) are called directly; long ones run in the background and are collected when done.",
     "start.s3chip": "the human moments: payment · sign-in · permission consent",
     "start.bootlabel": "Copy this one paragraph to your agent (e.g. Claude Code)",
     "start.bootsub": "Your agent reads this page, interviews you in your own language, and shows you the plan before changing anything. At the payment, sign-in and consent moments it walks you through the clicks. (Only the prompt is in English — the conversation itself happens in your language.)",
