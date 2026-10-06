@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>multiagent-protocol — AI 팀을 운영하는 법</title>
-<meta name="description" content="여러 AI 에이전트가 한 프로젝트에서 사고 없이 일하게 만드는 1인 운영자용 안전장치. 비개발자를 위해 설계됐고, 설치는 당신의 AI 에이전트가 대신합니다.">
+<meta name="description" content="가장 똑똑한 AI가 관리자로서 계획·배분·검수를 맡고, Codex가 실무를 하고, 서로 다른 회사의 모델이 서로를 검수하는 1인 운영자의 AI 팀 운영 규율 — 2026년 10월 현행판.">
 <meta property="og:title" content="multiagent-protocol — AI 팀을 운영하는 법">
 <meta property="og:description" content="AI에게 시키는 사람은 많습니다. AI 팀을 운영하는 사람은 드뭅니다.">
 <meta property="og:type" content="website">
@@ -63,6 +63,7 @@ section.alt{background:var(--paper);border-top:1px solid var(--line);border-bott
 .sec-kicker{color:var(--accent);font-weight:700;font-size:14px;letter-spacing:.02em;text-transform:uppercase;margin-bottom:10px}
 h2{font-size:30px;letter-spacing:-.02em;line-height:1.4;margin:0 0 14px;font-weight:750}
 .sec-lede{font-size:17.5px;color:var(--ink-soft);max-width:680px;margin:0 0 40px}
+.sub-h{font-size:20px;letter-spacing:-.01em;line-height:1.45;margin:52px 0 18px}
 
 /* pain cards */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
@@ -70,6 +71,7 @@ h2{font-size:30px;letter-spacing:-.02em;line-height:1.4;margin:0 0 14px;font-wei
 .pain .q{font-weight:700;font-size:16.5px;margin-bottom:6px;color:var(--danger)}
 .pain p{margin:0;font-size:15px;color:var(--ink-soft);line-height:1.75}
 .turn{margin-top:36px;background:var(--paper);border-left:4px solid var(--accent);border-radius:0 12px 12px 0;padding:20px 26px;font-size:17px}
+section.alt .turn{background:var(--bg)}
 
 /* principles */
 .prin{display:grid;grid-template-columns:1fr 1fr;gap:20px}
@@ -88,15 +90,18 @@ section.alt .card{background:var(--bg)}
 .pref-list li strong{display:block;font-size:15.5px}
 .pref-list li span{color:var(--sub);font-size:14px}
 .ledger{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px;font-size:14px;line-height:1.9;box-shadow:0 6px 24px rgba(0,0,0,.05)}
+section.alt .ledger{background:var(--bg)}
 .ledger .lh{font-weight:700;font-size:13px;color:var(--sub);letter-spacing:.03em;margin-bottom:10px}
 .ledger .row{padding:8px 10px;border-radius:8px}
 .ledger .row:nth-child(even){background:var(--bg)}
+section.alt .ledger .row:nth-child(even){background:var(--paper)}
 .ledger .d{color:var(--accent);font-weight:600;margin-right:8px;font-size:12.5px}
 .privacy-note{margin-top:26px;background:var(--good-bg);border:1px solid #d7ecdf;border-radius:12px;padding:16px 20px;font-size:14.5px;color:#14532d}
 
 /* steps */
 .steps{counter-reset:s;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
 .step{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:26px}
+section.alt .step{background:var(--bg)}
 .step::before{counter-increment:s;content:counter(s);display:inline-flex;width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;align-items:center;justify-content:center;font-weight:700;margin-bottom:14px}
 .step h3{margin:0 0 8px;font-size:17.5px}
 .step p{margin:0;font-size:14.8px;color:var(--ink-soft);line-height:1.75}
@@ -106,15 +111,25 @@ section.alt .card{background:var(--bg)}
 .boot .boot-sub{font-size:13.8px;color:var(--sub);margin-bottom:14px}
 .boot pre{margin:0 0 14px;white-space:pre-wrap;word-break:break-word;background:#f3f6f2;border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:12.3px;line-height:1.7;font-family:'SF Mono','JetBrains Mono',Consolas,monospace;color:#2f3b33}
 .boot .btn{padding:10px 20px;font-size:14.5px}
+.fine{margin-top:18px;font-size:13px;color:var(--sub)}
+details.more>summary{cursor:pointer;list-style:none;display:inline-block;border:1.5px solid var(--line);background:var(--paper);border-radius:12px;padding:12px 22px;font-size:15px;font-weight:600;color:var(--ink)}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:"▸ ";color:var(--accent)}
+details.more[open]>summary::before{content:"▾ "}
+details.more>summary:hover{border-color:var(--accent);color:var(--accent)}
+details.more[open]>summary{margin-bottom:28px}
 
 /* honest status */
 .honest{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 .h-col{border-radius:14px;padding:24px;border:1px solid var(--line);background:var(--paper)}
+section.alt .h-col{background:var(--bg)}
 .h-col h3{margin:0 0 12px;font-size:16.5px}
 .h-col ul{margin:0;padding-left:20px;font-size:15px;color:var(--ink-soft)}
 .h-col li{margin:7px 0}
 .h-col.does h3{color:var(--good)}
 .h-col.doesnt h3{color:var(--sub)}
+.h-col.neutral h3{color:var(--accent-deep)}
+.h-col.span2{grid-column:1/-1}
 .honest-line{margin-top:24px;font-size:15.5px;color:var(--ink-soft)}
 
 /* footer */
@@ -123,11 +138,19 @@ footer .cols{display:flex;gap:40px;flex-wrap:wrap;justify-content:space-between}
 footer a{color:var(--ink-soft)}
 
 @media (max-width:760px){
-  body{font-size:16px}
+  /* taste: mobile long-form body 14.5px */
+  body{font-size:14.5px}
   .hero{padding:56px 0 44px}
   .hero h1{font-size:30px}
-  .hero .sub{font-size:16.5px}
+  .hero .sub{font-size:15.5px}
   h2{font-size:24px}
+  .sub-h{font-size:18px;margin-top:40px}
+  .sec-lede{font-size:15px;margin-bottom:30px}
+  .turn{font-size:15px;padding:18px 20px}
+  .card{padding:22px}
+  .card p,.pain p,.step p,.h-col ul,.pref-list li{font-size:14.5px}
+  .pref-list li strong{font-size:15px}
+  .pref-list li span{font-size:13.5px}
   .grid2,.prin,.steps,.honest,.pref-flex{grid-template-columns:1fr}
   section{padding:52px 0}
   .topnav a.hide-m,.topnav a[href="#why"]{display:none}
@@ -143,6 +166,7 @@ footer a{color:var(--ink-soft)}
     <div class="brand">multiagent<span class="dot">·</span>protocol</div>
     <nav class="topnav">
       <a href="#why" data-i18n="nav.why">왜 필요한가</a>
+      <a href="#team" data-i18n="nav.team" class="hide-m">팀 구성</a>
       <a href="#how" data-i18n="nav.how" class="hide-m">작동 원리</a>
       <a href="#start" data-i18n="nav.start">시작하기</a>
       <a href="https://github.com/donggun-jung/multiagent-protocol" rel="noopener">GitHub</a>
@@ -153,14 +177,14 @@ footer a{color:var(--ink-soft)}
 
 <header class="hero">
   <div class="wrap narrow">
-    <span class="kicker" data-i18n="hero.kicker">비개발자를 위한 AI 팀 운영 안전장치 · 오픈소스</span>
+    <span class="kicker" data-i18n="hero.kicker">비개발자를 위한 AI 팀 운영 규율 · 2026년 10월 현행판</span>
     <h1 data-i18n-html="hero.h1">AI에게 시키는 사람은 많습니다.<br><em>AI 팀을 운영하는</em> 사람은 드뭅니다.</h1>
-    <p class="sub" data-i18n="hero.sub">여러 AI 에이전트에게 하나의 프로젝트를 맡기는 순간, 충돌·조용한 사고·책임 불명이 시작됩니다. multiagent-protocol은 그 모든 변경 앞에 신호등을 세우고, 중요한 결정만 당신의 결재함으로 보내는 1인 운영자용 규율입니다 — 장난감 프로젝트를 넘어서고 싶은 비개발자를 위해 만들어졌습니다.</p>
+    <p class="sub" data-i18n="hero.sub">여러 AI 에이전트에게 하나의 프로젝트를 맡기는 순간, 충돌·조용한 사고·책임 불명이 시작됩니다. 이 페이지는 한 사람이 실제로 AI 팀을 굴리는 방식을 그대로 공개합니다 — 가장 똑똑한 모델이 관리자로서 계획·배분·검수를 맡고, Codex가 실무자로 코드를 만들고, 서로 다른 회사의 모델이 서로의 결과를 검수하며, 사람에게는 중요한 결정만 옵니다.</p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="#start" data-i18n="hero.cta1">시작하기 — 설치는 내 에이전트가</a>
-      <a class="btn btn-ghost" href="#how" data-i18n="hero.cta2">원리 먼저 이해하기</a>
+      <a class="btn btn-primary" href="#team" data-i18n="hero.cta1">AI 팀 구성 보기</a>
+      <a class="btn btn-ghost" href="#start" data-i18n="hero.cta2">바로 시작하기</a>
     </div>
-    <p class="fineprint" data-i18n="hero.fine">Apache-2.0 · 서버 없음 · 내 GitHub 계정 안에서만 작동 · 어떤 데이터도 밖으로 나가지 않음</p>
+    <p class="fineprint" data-i18n="hero.fine">2026년 10월 실제 운영 기준 · 모델은 바뀌어도 자리와 역할은 그대로 · GitHub 무료 요금제용 오픈소스 엔진(Apache-2.0) 포함</p>
   </div>
 </header>
 
@@ -175,53 +199,214 @@ footer a{color:var(--ink-soft)}
       <div class="pain"><div class="q" data-i18n="why.p3t">"밤새 바뀌었는데 누가 왜 했는지 모른다"</div><p data-i18n="why.p3">아침에 열어 보니 변경이 잔뜩. 어느 도구가, 어떤 세션에서, 무슨 근거로 했는지 아무 기록이 없습니다.</p></div>
       <div class="pain"><div class="q" data-i18n="why.p4t">"완료됐다더니, 열어보니 미완성"</div><p data-i18n="why.p4">"다 됐습니다"라는 말과 실제 완료 사이의 간격 — AI와 일할 때 가장 비싼 간격입니다.</p></div>
     </div>
-    <div class="turn" data-i18n-html="why.turn"><strong>사람 팀도 규칙 없이 일하면 똑같이 됩니다.</strong> 회사가 결재·기록·권한으로 사고를 막듯, AI 팀에도 같은 장치가 필요합니다. multiagent-protocol은 그 장치를 코드로 만든 것입니다 — 당신이 개발자가 아니어도 운영할 수 있도록.</div>
+    <div class="turn" data-i18n-html="why.turn"><strong>사람 팀도 규칙 없이 일하면 똑같이 됩니다.</strong> 회사가 직무 분담·결재·기록·검수로 사고를 막듯, AI 팀에도 같은 장치가 필요합니다. 여기 적힌 규율은 그 장치를 AI 팀에 옮긴 것입니다 — 일부는 GitHub가 서버에서 강제하고, 나머지는 모든 에이전트가 매 세션 읽는 규칙으로 지킵니다. 개발자가 아니어도 운영할 수 있도록.</div>
   </div>
 </section>
 
-<section class="alt" id="how">
+<section class="alt" id="team">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="team.kicker">팀 구성 — 누가 무엇을 하나</div>
+    <h2 data-i18n="team.h2">비싼 머리는 판단에, 부지런한 손은 실무에, 검수는 남의 눈으로.</h2>
+    <p class="sec-lede" data-i18n="team.lede">한 모델에게 전부 시키지 않습니다. 회사처럼 자리를 나눕니다. 자리는 역할이고, 모델은 그 자리의 현재 주인입니다 — 새 세대가 나오면 주인만 바꿉니다.</p>
+    <div class="prin">
+      <div class="card">
+        <div class="emoji">👤</div>
+        <h3 data-i18n="team.c1t">오너 — 방향과 큰 결정만</h3>
+        <div class="tag" data-i18n="team.c1tag">사람 · 결정권자</div>
+        <p data-i18n="team.c1">무엇을 왜 만들지 정하고, 결과나 권한이 달라지는 결정만 내립니다. 결정은 열린 질문이 아니라 장단점이 붙은 2–4개 선택지로 받습니다. 가벼운 건 대화 안에서, 무거운 건 5분이면 읽히는 보고서형 질문지로 — 결정 카드는 많아야 세 장. 함께 설계하되, 코드는 직접 짜지 않습니다.</p>
+        <div class="analogy" data-i18n="team.c1a">회사로 치면: 대표</div>
+      </div>
+      <div class="card">
+        <div class="emoji">🧭</div>
+        <h3 data-i18n="team.c2t">지휘석 — 관리자 (Claude Fable 5.1)</h3>
+        <div class="tag" data-i18n="team.c2tag">계획 · 배분 · 검수 설계 · 완료 판정</div>
+        <p data-i18n="team.c2">일을 쪼개고, 누구에게 맡길지 정하고, 위임 지시서를 쓰고, 검수 방법을 설계하고, '완료'를 판정합니다. 게으르고 똑똑한 관리자처럼 — 이 자리의 산출물은 코드가 아니라 지시서·결정·판정입니다. 큰 일은 워크플로우를 짜서 여러 하위 에이전트에게 나눠 돌리고 결과를 모읍니다.</p>
+        <div class="analogy" data-i18n="team.c2a">회사로 치면: 팀장 겸 PM</div>
+      </div>
+      <div class="card">
+        <div class="emoji">🛠️</div>
+        <h3 data-i18n="team.c3t">실무석 — 작업자 (Codex · GPT-6 Astra)</h3>
+        <div class="tag" data-i18n="team.c3tag">코드 구현 · 변환 · 교차 검토</div>
+        <p data-i18n="team.c3">코드를 만들고 고치는 일을 맡고, 다른 회사의 모델로서 계획 자문과 교차 검수도 합니다. 일마다 생각의 깊이, 곧 effort를 따로 정합니다 — 대형 병렬 빌드는 ultra, 판단·검수는 max, 평소 구현은 xhigh, 검사기가 결과를 확인해 주는 기계적 작업은 high. 구독 사용량은 한정된 자원이라 아무 일이나 던지지 않습니다.</p>
+        <div class="analogy" data-i18n="team.c3a">회사로 치면: 외부 파트너사의 시니어 개발자</div>
+      </div>
+      <div class="card">
+        <div class="emoji">🐎</div>
+        <h3 data-i18n="team.c4t">일꾼 — 대량 작업 (Claude Opus 5.5)</h3>
+        <div class="tag" data-i18n="team.c4tag">대량 읽기 · 요약 · 전수 점검</div>
+        <p data-i18n="team.c4">코드가 아닌 대량 작업 — 문서 수백 건 읽기, 요약, 전수 점검, 검증 패스 — 을 맡습니다. 급하지 않은 일은 절반 가격인 배치 처리로 돌리는 것이 원칙이고, 그렇지 않으면 여러 일꾼을 동시에 띄워 나눠 처리합니다.</p>
+        <div class="analogy" data-i18n="team.c4a">회사로 치면: 리서치·QA 팀</div>
+      </div>
+      <div class="card">
+        <div class="emoji">🔍</div>
+        <h3 data-i18n="team.c5t">검수석 — 정해진 모델 없음</h3>
+        <div class="tag" data-i18n="team.c5tag">만든 쪽 ≠ 검수하는 쪽</div>
+        <p data-i18n="team.c5">검수는 그 결과를 만들지 않은 새 좌석이 합니다. 가능하면 다른 회사의 모델로 — Claude가 만든 것은 Codex가, Codex가 만든 것은 Claude가 봅니다. 둘이 동의하면 확정, 엇갈리면 제3의 판정자나 사람에게 갑니다. 같은 회사 모델끼리의 합의는 '다양성'으로 치지 않습니다.</p>
+        <div class="analogy" data-i18n="team.c5a">회사로 치면: 외부 감사</div>
+      </div>
+      <div class="card">
+        <div class="emoji">🤝</div>
+        <h3 data-i18n="team.c6t">계획 자문 — 관리자가 둘</h3>
+        <div class="tag" data-i18n="team.c6tag">무거운 계획은 혼자 확정하지 않는 것이 원칙</div>
+        <p data-i18n="team.c6">규칙 변경·구조 설계·데이터 이전·보안 경계·되돌릴 수 없는 조치처럼 무거운 일은, 지휘석이 실행 전에 다른 회사 모델에게 계획을 자문받습니다. 자문역은 초안을 보기 전에 자기가 보는 위험과 대안부터 말하고, 깊게 한 번 봅니다. 채택·기각한 의견은 이유와 함께 기록하고, 중대한 이견이 풀리지 않으면 그 단계만 사람의 결정을 기다리며 나머지 일은 계속합니다. 자문역을 쓸 수 없을 땐 그 사실을 기록하고 진행하며, 자문한 좌석은 같은 작업의 검수자가 될 수 없습니다.</p>
+        <div class="analogy" data-i18n="team.c6a">회사로 치면: 큰 결정 전 이사회 사전 보고</div>
+      </div>
+    </div>
+
+    <h3 class="sub-h" data-i18n="flow.h">한 건이 흘러가는 길</h3>
+    <div class="steps">
+      <div class="step">
+        <h3 data-i18n="flow.s1t">오너가 목표를 말한다</h3>
+        <p data-i18n="flow.s1">무엇을, 왜. 구현 방법까지 말할 필요는 없습니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="flow.s2t">지휘석이 경로부터 선언한다</h3>
+        <p data-i18n="flow.s2">직접 할지, 누구에게 얼마나 깊이 맡길지를 먼저 한 줄로 적습니다(예: 'Codex · xhigh — 여러 파일 구현'). 무거운 계획이면 여기서 계획 자문을 받습니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="flow.s3t">실무석이 브랜치에서 만든다</h3>
+        <p data-i18n="flow.s3">지시서에는 바꿔도 되는 범위와 새 구성요소를 만들어도 되는지가 들어갑니다. 결과는 변경 제안(PR)으로만 올라오고, 정식 버전인 본선(main)에 직접 올리는 길은 서버가 막습니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="flow.s4t">다른 좌석이 검수한다</h3>
+        <p data-i18n="flow.s4">만든 적 없는 좌석이, 가능하면 다른 회사 모델로. 무엇을 봤고 무엇을 안 봤는지 — 검수 범위도 함께 적습니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="flow.s5t">GitHub가 조건을 확인하고 합친다</h3>
+        <p data-i18n="flow.s5">에이전트가 PR마다 자동 병합을 켜 두면, 필수 검사가 모두 초록이고 리뷰 대화가 정리되는 순간 GitHub가 합칩니다. 사람이 버튼을 누를 일이 없습니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="flow.s6t">지휘석이 영수증과 함께 보고한다</h3>
+        <p data-i18n="flow.s6">목표 대비 지금 어디인지 · 사람이 할 일이 있는지 · 다음 단계의 조건과 예상 시점 · 기다리는 결정. 세부 기록은 링크로.</p>
+      </div>
+    </div>
+
+    <div class="h-col neutral" style="margin-top:28px">
+      <h3 data-i18n="alloc.h">배분 원칙</h3>
+      <ul>
+        <li data-i18n-html="alloc.a1"><strong>고정 표가 없습니다.</strong> '이 일은 이 모델' 대신, 난이도·독립성·가용성을 보고 매번 배분합니다.</li>
+        <li data-i18n-html="alloc.a2"><strong>하한선이 있습니다.</strong> 더 작은 모델은 사람이 그 작업에 지명할 때만 씁니다.</li>
+        <li data-i18n-html="alloc.a3"><strong>몰래 바꾸지 않습니다.</strong> 요청한 모델이 실패하면 그 작업을 다른 모델로 자동 대체하지 않고, 보고한 뒤 결정을 기다립니다. 지휘석 자체가 멈추면 정해진 대체 절차로 지휘 업무만 이어 갑니다.</li>
+        <li data-i18n-html="alloc.a4"><strong>같은 오류가 두 번이면 전략을 바꿉니다.</strong> 막힌 자원에 같은 호출을 반복하지 않습니다.</li>
+        <li data-i18n-html="alloc.a5"><strong>폭이 필요할 때만 여럿을 띄웁니다.</strong> 다중 에이전트는 대화보다 약 15배의 토큰을 쓰고, 검수 단계까지 곱해지면 비용이 금방 불어납니다. 대규모 자동 팬아웃은 사람이 켤 때만.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="how">
   <div class="wrap">
     <div class="sec-kicker" data-i18n="how.kicker">작동 원리 — 네 가지 장치</div>
     <h2 data-i18n="how.h2">기술이 아니라 규율입니다. 회사에서 이미 본 것들입니다.</h2>
-    <p class="sec-lede" data-i18n="how.lede">내부는 정교하지만, 당신이 이해해야 할 것은 이 네 가지가 전부입니다.</p>
+    <p class="sec-lede" data-i18n="how.lede">처음엔 직접 만든 봇으로 구현했고, 지금은 대부분을 GitHub의 서버 규칙과 규칙 문서로 구현합니다. 도구는 바뀌어도 장치는 그대로입니다.</p>
     <div class="prin">
       <div class="card">
         <div class="emoji">🚦</div>
         <h3 data-i18n="how.c1t">신호등 — 초록불 없이는 합쳐지지 않는다</h3>
-        <div class="tag" data-i18n="how.c1tag">머지 게이트</div>
-        <p data-i18n="how.c1">모든 변경은 "완성됐고, 검사를 통과했고, 최신 상태"일 때만 초록불을 받습니다. 초록불이 없으면 어떤 에이전트도 본선(main)에 아무것도 합칠 수 없습니다 — 예외 없이, 모든 AI에게 똑같이.</p>
+        <div class="tag" data-i18n="how.c1tag">GitHub 서버 규칙(ruleset) · 필수 검사 · 자동 병합</div>
+        <p data-i18n="how.c1">본선(main)에 직접 올리는 길은 막혀 있습니다. 모든 변경은 PR로 들어오고, 필수 검사가 모두 초록이고 리뷰 대화가 정리돼야 합쳐집니다. 강제 덮어쓰기와 본선 삭제는 금지, 예외 계정은 없음 — 모든 AI에게 똑같이. 에이전트가 PR마다 자동 병합을 켜 두면, 조건이 갖춰지는 순간 GitHub가 합칩니다. 판정을 GitHub 서버가 하므로, 감시 봇이 멈춰도 규칙은 그대로 서 있습니다.</p>
         <div class="analogy" data-i18n="how.c1a">회사로 치면: 품질검수 없이 출고 불가</div>
       </div>
       <div class="card">
         <div class="emoji">📥</div>
-        <h3 data-i18n="how.c2t">결재함 — 중요한 결정만 당신에게 온다</h3>
-        <div class="tag" data-i18n="how.c2tag">Decision Inbox · 4분면 분류</div>
-        <p data-i18n="how.c2">모든 변경은 두 가지 질문으로 분류됩니다: 되돌릴 수 있는가? 중요한 부분을 건드리는가? 평범한 것은 알아서 진행되고 기록만 남습니다. 되돌릴 수 없으면서 중요한 것 — 그것만 멈춰서 당신을 기다립니다. 승인은 👍 하나면 됩니다.</p>
+        <h3 data-i18n="how.c2t">결재 — 큰 건만 사람에게</h3>
+        <div class="tag" data-i18n="how.c2tag">두 질문 · 심각 목록 · 상시 위임</div>
+        <p data-i18n="how.c2">모든 일은 두 질문으로 가립니다: 되돌릴 수 있는가? 중요한 부분을 건드리는가? 되돌릴 수 없으면서 중요한 일, 그리고 미리 적어 둔 '심각 목록' — 되돌릴 수 없는 데이터 삭제, 약 100달러 이상의 지출과 새 금전 약정, 새 공개 서비스, 보안 경계 완화, 제3자 데이터·외부 소통·법무, 결과물 내용의 삭제·변경 — 만 실행 전에 사람의 승인을 받습니다. 서비스 배포는 앱마다 정해 둔 승인 정책을 따릅니다. '상시 위임'으로 등록된 앱의 통상 배포만 알아서 하고, 사용자 데이터가 걸린 앱처럼 '매번 승인'으로 지정됐거나 정책이 없는 앱은 먼저 묻습니다. 나머지는 상시 위임이되, 되돌릴 지점·기록·사후 검증이 의무입니다. 물어볼 필요 없는 걸 묻는 것도 규칙 위반이고, 한 번 명시적으로 승인한 일은 절차 끝까지 다시 묻지 않습니다.</p>
         <div class="analogy" data-i18n="how.c2a">회사로 치면: 전결 규정 — 대표 결재는 큰 건만</div>
       </div>
       <div class="card">
         <div class="emoji">🏷️</div>
         <h3 data-i18n="how.c3t">이름표 — 모든 변경에 서명이 남는다</h3>
-        <div class="tag" data-i18n="how.c3tag">신원 트레일러</div>
-        <p data-i18n="how.c3">어떤 AI 도구가, 어떤 모델로, 어떤 작업 세션에서, 무엇을 근거로 바꿨는지가 변경마다 서명으로 붙습니다. 서명 없는 변경은 신호등을 통과하지 못합니다. "밤새 무슨 일이 있었나"가 아침에 다 읽힙니다.</p>
+        <div class="tag" data-i18n="how.c3tag">신원 서명 6종</div>
+        <p data-i18n="how.c3">어떤 도구가, 어떤 모델로, 어떤 작업 세션에서, 어느 기기에서, 어떤 작업 건으로 바꿨는지 — 다섯 줄 신원 서명에 공동 작성자 한 줄을 더해, 여섯 줄이 에이전트의 모든 변경에 붙습니다. 서명 검사를 필수 검사로 걸어 두면 서명 없는 에이전트 변경은 합쳐지지 않습니다 — 신원이 확인된 의존성 업데이트 봇의 원본 커밋만 예외이고, 아래 엔진의 기본 검사는 앞의 다섯 줄을 봅니다. "밤새 무슨 일이 있었나"가 아침에 다 읽힙니다.</p>
         <div class="analogy" data-i18n="how.c3a">회사로 치면: 기안자 없는 문서는 접수 불가</div>
       </div>
       <div class="card">
         <div class="emoji">🧾</div>
         <h3 data-i18n="how.c4t">영수증 — "했다"가 아니라 증빙이 남는다</h3>
-        <div class="tag" data-i18n="how.c4tag">감사 기록 · 사후 재검증</div>
-        <p data-i18n="how.c4">합쳐진 뒤에도 검사가 한 번 더 돌고, 이상하면 사건 기록이 열립니다. 규칙을 우회하는 비상 조치조차 흔적 없이는 불가능합니다 — 24시간 안에 사유서를 요구합니다. 완료는 주장이 아니라 기록입니다.</p>
+        <div class="tag" data-i18n="how.c4tag">완료 판정 · 검수 기록 · 실제 버전 대조</div>
+        <p data-i18n="how.c4">'완료'는 느낌이 아니라 판정입니다. 남은 검토가 0이거나 사람이 볼 목록으로 정리돼 있고, 실패한 항목까지 포함해 선언한 범위를 전부 대조했고, 무엇을 검증했고 무엇을 검증하지 않았는지 — 빠진 것과 승인을 기다리는 것까지 — 드러나 있어야 합니다. 데이터와 배포는 여기에 독립 검수를 통과한 영수증, 곧 검증 결과 파일과 수치가 더해져야 '완료'입니다. 배포는 실제로 떠 있는 버전과 기록을 대조하고, 어떤 모델이 일했는지 확인되지 않으면 추측하지 않고 '미확인'이라고 적습니다.</p>
         <div class="analogy" data-i18n="how.c4a">회사로 치면: 지출은 영수증, 예외는 경위서</div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="prefs">
+<section class="alt" id="rules">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="rules.kicker">품질 헌법 — 열 가지 원칙</div>
+    <h2 data-i18n="rules.h2">모든 에이전트가 따르는 열 가지 규칙</h2>
+    <p class="sec-lede" data-i18n="rules.lede">하나하나가 실제로 비용을 치른 사고에서 나왔습니다. 번호는 바꾸지 않습니다 — 규칙이 표류하지 않도록.</p>
+    <div class="prin">
+      <ul class="pref-list">
+        <li><strong data-i18n="rules.q1t">1 · 거짓 완료 금지</strong><span data-i18n="rules.q1">'다 됐다'는 선언한 범위 전체를 대조하고, 미검증·제외·승인 대기를 밝히고, 증빙을 붙일 때만 말한다.</span></li>
+        <li><strong data-i18n="rules.q2t">2 · 보존</strong><span data-i18n="rules.q2">기능·데이터를 몰래 빼지 않는다. 구조를 바꾸면 전후 목록을 대조하고, 사용자 데이터 손실은 0.</span></li>
+        <li><strong data-i18n="rules.q3t">3 · 원천 우선, 전수 검증</strong><span data-i18n="rules.q3">무엇이 정답의 원천인지 먼저 선언하고 전부 대조한다. 표본은 방법을 검증할 뿐, 완전성의 증거가 아니다.</span></li>
+        <li><strong data-i18n="rules.q4t">4 · 표면 분리</strong><span data-i18n="rules.q4">사용자에게 보이는 화면에 개발 과정·인프라·모델의 흔적을 남기지 않는다.</span></li>
+        <li><strong data-i18n="rules.q5t">5 · 문구의 목소리</strong><span data-i18n="rules.q5">자신 있고 명료하게. 단, 금융·법처럼 신뢰가 걸린 영역에서는 과장하지 않는다.</span></li>
+      </ul>
+      <ul class="pref-list">
+        <li><strong data-i18n="rules.q6t">6 · 모드 전환</strong><span data-i18n="rules.q6">코드는 수술처럼 필요한 곳만, 문서는 꼼꼼하게, 데이터는 전수로.</span></li>
+        <li><strong data-i18n="rules.q7t">7 · 전달과 기록</strong><span data-i18n="rules.q7">결과물은 정해진 위치와 형식으로. 관련 운영 문서의 갱신까지가 작업이다.</span></li>
+        <li><strong data-i18n="rules.q8t">8 · 승인 경계 — 양면</strong><span data-i18n="rules.q8">심각한 것만 먼저 묻고 나머지는 맡긴다. 과잉 질문도 낭비다.</span></li>
+        <li><strong data-i18n="rules.q9t">9 · 독립 검증</strong><span data-i18n="rules.q9">만든 쪽과 검수하는 쪽을 나누고, 가능하면 다른 회사 모델로. 합의가 곧 확정이고, 엇갈리면 몰래 한쪽을 고르지 않는다.</span></li>
+        <li><strong data-i18n="rules.q10t">10 · 낭비 금지</strong><span data-i18n="rules.q10">검증된 환경 사실은 실패나 변화의 징후가 없으면 다시 재지 않는다. 유료 재실행 전에는 같은 작업이 이미 돌았는지부터 본다.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="habits">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="habit.kicker">일하는 습관</div>
+    <h2 data-i18n="habit.h2">정갈하게, 보이게, 아껴서.</h2>
+    <p class="sec-lede" data-i18n="habit.lede">AI 팀이 커질수록 생기는 병 — 과설계, 같은 실수의 반복, 조용한 실패, 새는 비용 — 을 막는 습관입니다.</p>
+    <div class="prin">
+      <div class="card">
+        <div class="emoji">📏</div>
+        <h3 data-i18n="habit.c1t">비례성 — 요청한 만큼만</h3>
+        <div class="tag" data-i18n="habit.c1tag">범위를 먼저 적는다</div>
+        <p data-i18n="habit.c1">위임 지시서마다 '바꿔도 되는 범위'와 '새 구성요소를 만들어도 되는지'를 적습니다. 범위를 넘어야 하면 만들기 전에 이유를 기록하고, 결과가 과하면 최소안으로 다시 만듭니다. '하는 김에' 떠오른 일은 메모로 남길 뿐, 몰래 하지 않습니다.</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🔁</div>
+        <h3 data-i18n="habit.c2t">반복 실패 — 세 번째엔 멈춰서 구조를 본다</h3>
+        <div class="tag" data-i18n="habit.c2tag">같은 관문, 같은 실패</div>
+        <p data-i18n="habit.c2">같은 관문에서 고치고 다시 검증하기를 세 번 실패하면, 다음 수정 전에 근본 원인·대안·선택 이유를 기록합니다. 네 번째도 실패하면 다른 회사 모델에게 자문을 구합니다.</p>
+      </div>
+      <div class="card">
+        <div class="emoji">👀</div>
+        <h3 data-i18n="habit.c3t">가시성 — 침묵은 성공이 아니다</h3>
+        <div class="tag" data-i18n="habit.c3tag">상태 파일 · 먼저 알리기</div>
+        <p data-i18n="habit.c3">30분 넘게 걸릴 일은 시작할 때 상태 파일을 만들고 진행을 적습니다. 끝나든 실패하든 먼저 알립니다. 사람이 "아직이야?"라고 물어야 했다면, 그 자체가 규칙 위반입니다.</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🗣️</div>
+        <h3 data-i18n="habit.c4t">보고 — 사람의 말로, 짧게</h3>
+        <div class="tag" data-i18n="habit.c4tag">네 가지만</div>
+        <p data-i18n="habit.c4">보고는 네 가지입니다: 목표 대비 지금 어디인지, 사람이 할 일이 있는지, 다음 단계의 조건과 예상 시점, 기다리고 있는 결정. 사람이 할 일은 대개 없습니다. PR 번호나 검수 라운드 같은 세부는 기록에 두고 링크만 겁니다.</p>
+      </div>
+      <div class="card">
+        <div class="emoji">💸</div>
+        <h3 data-i18n="habit.c5t">비용 — 새는 곳을 막는다</h3>
+        <div class="tag" data-i18n="habit.c5tag">사전 확인 · 배치 · 초안 PR</div>
+        <p data-i18n="habit.c5">예상 10달러 이상의 유료 대량 작업은 실행 전에 확인받습니다. 급하지 않은 대량 작업은 절반 가격의 배치가 원칙이고, Codex 작업은 일마다 생각의 깊이를 따로 정합니다. 자동 검사(CI) 같은 유료 검사는 중간 수정 때는 로컬에서 돌리고 병합 후보가 됐을 때 한 번 올리며, PR은 초안으로 시작합니다.</p>
+      </div>
+      <div class="card">
+        <div class="emoji">⚙️</div>
+        <h3 data-i18n="habit.c6t">자동 모드 — 승인한 일은 끝까지</h3>
+        <div class="tag" data-i18n="habit.c6tag">되묻지 않기 · 우회하지 않기</div>
+        <p data-i18n="habit.c6">사람이 명시적으로 승인한 작업은, 승인한 범위 안에서 에이전트가 되묻지 않고 정해진 절차 끝까지 실행합니다. 심각 목록은 여전히 먼저 승인받습니다. 안전장치가 작업을 막으면 우회하지 않고 기록합니다 — 승인한 일을 잘못 막은 경우만 규칙을 손보고, 승인 없는 중대한 일을 막은 건 규칙이 제대로 작동한 것으로 봅니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="prefs">
   <div class="wrap">
     <div class="sec-kicker" data-i18n="pref.kicker">당신의 방식대로</div>
     <h2 data-i18n="pref.h2">에이전트가 당신의 취향을 배웁니다 — 그리고 그 취향은 당신 것으로만 남습니다</h2>
-    <p class="sec-lede" data-i18n="pref.lede">같은 도구라도 쓰는 사람의 방식은 다 다릅니다. 설치할 때 당신의 업무 취향을 입력하면, 모든 에이전트가 매 세션 그것을 읽고 따릅니다.</p>
+    <p class="sec-lede" data-i18n="pref.lede">같은 도구라도 쓰는 사람의 방식은 다 다릅니다. 업무 취향과 규칙을 한 곳에 적어 두면, 모든 에이전트가 그것을 읽고 따릅니다 — 규칙 요약본은 매 세션, 취향 원장은 관련 결정을 내리기 전에.</p>
     <div class="pref-flex">
       <ul class="pref-list">
         <li><strong data-i18n="pref.l1t">말하는 언어</strong><span data-i18n="pref.l1">보고서·대화 모두 당신의 언어로</span></li>
@@ -229,7 +414,8 @@ footer a{color:var(--ink-soft)}
         <li><strong data-i18n="pref.l3t">결정을 받는 방식</strong><span data-i18n="pref.l3">열린 질문 대신, 장단점이 붙은 2–4개 선택지 메뉴로</span></li>
         <li><strong data-i18n="pref.l4t">맡기는 정도</strong><span data-i18n="pref.l4">신중하게 하나하나 확인 ↔ 규칙 안에서는 알아서 진행</span></li>
         <li><strong data-i18n="pref.l5t">조용한 시간</strong><span data-i18n="pref.l5">밤에는 알림 대신 아침 보고로</span></li>
-        <li><strong data-i18n="pref.l6t">취향 원장</strong><span data-i18n="pref.l6">에이전트에게 반복해서 시키던 말, 한 줄씩 적어두면 끝 — 모든 에이전트가 따릅니다</span></li>
+        <li><strong data-i18n="pref.l6t">취향 원장</strong><span data-i18n="pref.l6">에이전트에게 반복해서 시키던 말, 말한 그날 한 줄씩 적어두면 끝 — 이후 모든 에이전트가 따릅니다</span></li>
+        <li><strong data-i18n="pref.l7t">작업 시트</strong><span data-i18n="pref.l7">데이터·제품·문서·루틴·조사·규칙 — 일의 종류마다 관문과 완료 기준이 다른 시트 6종</span></li>
       </ul>
       <div class="ledger">
         <div class="lh" data-i18n="pref.exh">취향 원장 — 예시</div>
@@ -239,33 +425,109 @@ footer a{color:var(--ink-soft)}
         <div class="row"><span class="d">04-07</span><span data-i18n="pref.ex4">확신 없는 결론엔 반드시 "확실하지 않음"을 붙일 것</span></div>
       </div>
     </div>
-    <div class="privacy-note" data-i18n-html="pref.privacy">🔒 <strong>취향은 개인정보입니다.</strong> 이 설정은 당신의 <strong>비공개 저장소</strong>에만 저장됩니다. 공개 코드에는 어떤 개인 정보도 들어가지 않으며, 자동 검사가 모든 공개 파일을 상시 감시합니다 — 만든 사람의 취향조차 단 한 줄도 들어 있지 않습니다.</div>
+    <div class="privacy-note" data-i18n-html="pref.privacy">🔒 <strong>취향은 개인정보입니다.</strong> 취향 원장과 규칙 원문은 당신의 <strong>비공개 저장소</strong>에만 둡니다. 이 페이지에 나오는 모델 배치나 금액 기준 같은 운영 값은 한 사람의 실제 예시일 뿐이니, 당신의 값은 당신의 비공개 저장소에 적으세요. 이름·연락처·서버 주소 같은 개인 정보는 이 페이지에 없습니다.</div>
   </div>
 </section>
 
-<section class="alt" id="start">
+<section id="start">
   <div class="wrap">
     <div class="sec-kicker" data-i18n="start.kicker">시작하기</div>
-    <h2 data-i18n="start.h2">설치는 사람이 하지 않습니다. 당신의 에이전트가 합니다.</h2>
-    <p class="sec-lede" data-i18n="start.lede">이 프로토콜의 설치 표준은 "당신의 AI 에이전트에게 통째로 맡기기"입니다. 사람이 직접 하는 일은 딱 두 번입니다.</p>
+    <h2 data-i18n="start.h2">세팅은 사람이 하지 않습니다. 당신의 에이전트가 합니다.</h2>
+    <p class="sec-lede" data-i18n="start.lede">지금의 구성은 세 덩어리입니다. 단계마다 에이전트에게 맡기고, 사람은 결제·로그인·권한 동의처럼 본인만 할 수 있는 순간에만 나섭니다.</p>
     <div class="steps">
       <div class="step">
-        <h3 data-i18n="start.s1t">위저드에서 질문에 답하기</h3>
-        <p data-i18n="start.s1">내 GitHub 계정, 지킬 저장소, 그리고 내 취향. 전부 브라우저 안에서만 처리되고 어디로도 전송되지 않습니다. 설정 파일 6개와 에이전트용 위임 프롬프트가 생성됩니다.</p>
+        <h3 data-i18n="start.s1t">규칙을 한 곳에 적기</h3>
+        <p data-i18n="start.s1">규칙·취향 원장·작업 시트를 비공개 저장소 하나에 모으고, 에이전트가 세션을 시작할 때마다 그 요약본을 읽게 합니다 — Claude Code는 CLAUDE.md, Codex는 AGENTS.md. 같은 규칙은 한 곳에만 두고, 나머지는 그곳을 가리킵니다.</p>
       </div>
       <div class="step">
-        <h3 data-i18n="start.s2t">프롬프트를 내 에이전트에게 붙여넣기</h3>
-        <p data-i18n="start.s2">Claude Code, Codex — 뭐든 좋습니다. 에이전트가 공식 런북(0–9단계)을 따라 저장소 생성부터 최종 검증까지 실행하고, 단계마다 스스로 검증합니다.</p>
+        <h3 data-i18n="start.s2t">신호등 켜기</h3>
+        <p data-i18n="start.s2">개인 계정의 비공개 저장소라면 월 4달러짜리 GitHub Pro, 조직 소유라면 Team 이상의 요금제가 필요하고, 공개 저장소는 무료로도 됩니다. 저장소마다 서버 규칙을 겁니다 — 변경 제안(PR) 필수 · 사람 승인 0건 · 리뷰 대화 정리 필수 · GitHub Actions가 낸 필수 검사 통과 · squash 병합 · 직선 이력 · 강제 덮어쓰기와 본선 삭제 금지 · 예외 계정 없음 · 자동 병합 허용. 혼자 운영하면 자기 PR을 스스로 승인할 수 없으니 사람 승인 대신 검사로 막고, 검사가 아직 없는 저장소도 PR 필수부터 겁니다. 자동 병합은 저장소에서 허용해 두고 PR마다 에이전트가 켭니다. squash는 변경 묶음을 한 줄의 기록으로 합치는 방식입니다. 설정은 에이전트가, 결제는 사람이.</p>
       </div>
       <div class="step">
-        <h3 data-i18n="start.s3t">두 번만 직접 하기</h3>
-        <p data-i18n="start.s3">① GitHub App 등록 화면에서 클릭 몇 번 ② "이제 진짜로 켜자"는 최종 확인. 그 사이의 모든 것 — 설정, 배선, 검사, 시운전 — 은 에이전트의 일입니다.</p>
-        <span class="human-chip" data-i18n="start.s3chip">사람이 하는 유일한 두 순간</span>
+        <h3 data-i18n="start.s3t">팀 꾸리기</h3>
+        <p data-i18n="start.s3">Claude Code에서 Fable을 지휘석으로 쓰고, ChatGPT 데스크톱 앱에 들어 있는 Codex를 실무석으로 연결합니다. Codex 쪽은 이미 내는 ChatGPT 구독 안에서 돌아가므로 별도 API 키가 필요 없습니다. 다만 지휘석 Fable은 현재 구독과 별도인 선불 크레딧으로 쓰고, 배치 처리도 구독과 별도로 과금됩니다. 연결 스크립트는 모델을 고정하고, 생각의 깊이를 매번 지정하게 하고, 호출마다 영수증을 남깁니다. 이 스크립트는 여기서 배포하지 않습니다 — 아래 프롬프트가 당신의 에이전트에게 같은 조건의 작은 스크립트를 직접 만들게 합니다. 10분 안에 끝나는 짧은 일은 바로 부르고, 긴 일은 백그라운드로 띄운 뒤 회수합니다.</p>
+        <span class="human-chip" data-i18n="start.s3chip">사람이 하는 순간: 결제 · 로그인 · 권한 동의</span>
       </div>
     </div>
     <div class="boot">
-      <div class="boot-label" data-i18n="start.bootlabel">위저드조차 필요 없습니다 — 이 한 문단을 복사해 내 에이전트에게 붙여넣으세요</div>
-      <div class="boot-sub" data-i18n="start.bootsub">에이전트가 당신의 언어로 인터뷰해서 설정을 만들고, 사람이 할 두 순간은 클릭 단위로 안내합니다. (프롬프트는 영문 — 에이전트가 가장 안정적으로 따르는 언어일 뿐, 대화는 당신의 언어로 진행됩니다.)</div>
+      <div class="boot-label" data-i18n="start.bootlabel">이 한 문단을 복사해 내 에이전트(예: Claude Code)에게 붙여넣으세요</div>
+      <div class="boot-sub" data-i18n="start.bootsub">에이전트가 이 페이지를 읽고, 당신의 언어로 인터뷰한 뒤, 무엇이든 바꾸기 전에 계획부터 보여줍니다. 결제·로그인·권한 동의 순간에는 클릭 단위로 안내합니다. (프롬프트만 영문일 뿐, 대화는 당신의 언어로 진행됩니다.)</div>
+      <pre id="team-prompt">You are my AI agent. Help me run my AI work as a team, using the operating discipline at https://ai.jdg.dev/multiagent/ — read that page first.
+1. Interview me in my own language (one batched round, offer defaults): my repositories, the AI subscriptions I have, my working preferences.
+2. Before changing anything, show me a plan for: one private rules repository that every agent reads at session start; GitHub rulesets on my repositories (pull requests required, zero required approvals, review conversations resolved, required checks published by GitHub Actions, squash only, linear history, no force-push, no default-branch deletion, no bypass, auto-merge allowed, which you switch on for every pull request you open; private repositories need a paid plan: GitHub Pro for a personal account, Team or above for an organization); and a team shape where you act as the command seat and hand code implementation to Codex through a small wrapper script you write for me — it must pin the model, refuse any call without an explicit effort value, and append one receipt line per call — choosing the effort per job, and never letting the maker check its own work.
+3. After I approve, apply it step by step and verify each step yourself.
+Never handle my passwords, payments or account sign-ins — when we reach those moments, walk me through the clicks.</pre>
+      <button class="btn btn-primary" data-copy-target="team-prompt" data-i18n="start.bootcopy">프롬프트 복사</button>
+    </div>
+    <div class="turn" data-i18n-html="start.engine">💡 <strong>GitHub 무료 요금제로 비공개 저장소를 운영한다면?</strong> 비공개 저장소의 서버 규칙은 유료 요금제에서만 쓸 수 있습니다. 같은 네 장치를 봇으로 구현한 오픈소스 엔진이 그 자리를 메웁니다 — <a href="#engine">아래 부록</a>에서 설치 방법을 볼 수 있습니다.</div>
+  </div>
+</section>
+
+<section class="alt" id="honest">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="honest.kicker">정직한 상태 표시</div>
+    <h2 data-i18n="honest.h2">되는 것과 안 되는 것</h2>
+    <p class="sec-lede" data-i18n="honest.lede">신뢰를 다루는 방식이 스스로 과장하면 그걸로 끝입니다. 어떤 규칙이 기계로 강제되고, 어떤 규칙이 약속으로 지켜지는지 구분해 적습니다.</p>
+    <div class="honest">
+      <div class="h-col does">
+        <h3 data-i18n="honest.enfh">✓ 기계가 강제합니다</h3>
+        <ul>
+          <li data-i18n="honest.e1">본선 보호 — PR 필수·필수 검사·리뷰 대화 정리·squash·직선 이력·강제 덮어쓰기와 본선 삭제 금지 (GitHub 서버 규칙)</li>
+          <li data-i18n="honest.e2">서명 검사 — 필수 검사로 걸어 둔 저장소에서는 서명 여섯 줄이 빠진 에이전트 변경은 병합 불가</li>
+          <li data-i18n="honest.e3">Codex 호출 — 정해진 연결 스크립트를 거치면 모델 고정, 생각의 깊이를 지정하지 않으면 실행 거부, 호출마다 영수증. 스크립트를 우회한 호출은 기계로 막지 못하고 감사로 찾아냅니다</li>
+          <li data-i18n="honest.e4">유료 배치 중복 방지 — 같은 요청을 다시 제출하려 하면 실행기가 막음 (Anthropic 배치)</li>
+          <li data-i18n="honest.e5">모델 등록부 — 모델 이름은 등록부 한 곳에만. 퇴역한 모델 이름이 규칙 문서에 다시 들어오면 검사가 막음</li>
+        </ul>
+      </div>
+      <div class="h-col neutral">
+        <h3 data-i18n="honest.disch">◐ 규율로 지킵니다 (기계 강제 아님)</h3>
+        <ul>
+          <li data-i18n="honest.d1">만든 쪽 ≠ 검수 쪽, 계획 자문, 비례성 — 규칙과 스킬이 안내할 뿐, 위반을 기계가 막지는 않습니다</li>
+          <li data-i18n="honest.d2">실제로 어떤 모델이 일했는지 — 대부분 '요청한 모델'까지만 기록됩니다. 실행 신원이 보이지 않으면 '미확인'으로 적고, 추측으로 채우지 않습니다</li>
+          <li data-i18n="honest.d3">무엇이 '심각'인지의 판단 — 목록은 글로 정해져 있지만, 적용은 지휘석의 판단입니다</li>
+          <li data-i18n="honest.d4">규칙이 실제로 작동하는지 — 약 90일마다 사람이 직접 시작하는 감사로 확인합니다. 문서에 있다고 작동한다고 믿지 않습니다</li>
+        </ul>
+      </div>
+      <div class="h-col doesnt span2">
+        <h3 data-i18n="honest.noth">− 아직 안 됩니다 (숨기지 않습니다)</h3>
+        <ul>
+          <li data-i18n="honest.n1">규칙 변경의 즉시 전파 — 이미 열린 세션에는 바로 닿지 않을 수 있습니다. 각 기기에 최신 규칙을 내려받아 적용·대조한 뒤, 새 세션부터 반영됩니다</li>
+          <li data-i18n="honest.n2">문서끼리의 일관성 검사 — 검사는 돌고 있지만 아직 관찰 단계라, 어긋나도 병합을 막지는 않습니다</li>
+          <li data-i18n="honest.n4">현 세대 Opus의 배치 처리 — 호환성 확인이 끝날 때까지 새 제출을 멈춰 두었습니다. 그동안은 여러 일꾼을 동시에 띄워 처리합니다</li>
+          <li data-i18n="honest.n3">검사 정의 자체의 물리적 보증 — 아래 '경계' 참고</li>
+        </ul>
+      </div>
+    </div>
+    <div class="turn" data-i18n-html="honest.bound">⚖️ <strong>경계도 분명히 합니다:</strong> 신호등은 <strong>정책</strong>이지, 코드가 안전하다는 <strong>증명</strong>이 아닙니다. 서명이 있고 검사가 초록인 변경은 합쳐집니다 — 그 검사가 충분한지, 그 코드가 옳은지는 신호등이 판단하지 않습니다. 같은 저장소 안에서 검사 정의 자체를 바꾸는 변경까지 서버 규칙만으로 물리적으로 막지는 못하므로, 민감한 경로는 만든 쪽과 분리된 검수자를 절차로 둡니다. 좋은 검사를 붙이는 일은 여전히 당신과 당신의 에이전트의 몫입니다.</div>
+    <p class="honest-line" data-i18n="honest.line">안 되는 것을 된다고 쓰지 않는 것 — 그것도 이 규율의 일부입니다.</p>
+  </div>
+</section>
+
+<section id="engine">
+  <div class="wrap">
+    <div class="sec-kicker" data-i18n="engine.kicker">GitHub 무료 요금제 + 비공개 저장소라면</div>
+    <h2 data-i18n="engine.h2">같은 네 장치를 봇으로 — 오픈소스 엔진 multiagent-protocol</h2>
+    <p class="sec-lede" data-i18n="engine.lede">비공개 저장소인데 Pro 결제가 어렵거나, 에이전트 신원 대조와 결재함까지 봇에게 맡기고 싶다면 이 엔진이 있습니다. GitHub 서버 규칙으로 옮기기 전까지 실제로 쓰던 방식이고, 지금도 설치·작동합니다. 봇이 라벨·검사·최신성·서명을 확인한 뒤에만 병합하고, 중요한 결정은 결재함 이슈로 도착해 👍 하나로 승인하며, 병합 뒤 재검증과 비상 조치의 24시간 사유서 감사까지 맡습니다. 설치 표준은 "당신의 AI 에이전트에게 통째로 맡기기" — 사람이 직접 하는 일은 딱 두 번입니다.</p>
+    <details class="more" id="engine-more">
+    <summary data-i18n="engine.more">설치 방법 · 엔진 상태 · 비슷한 도구와의 관계 펼치기</summary>
+    <div class="steps">
+      <div class="step">
+        <h3 data-i18n="engine.s1t">질문에 답하기 — 위저드로, 또는 대화로</h3>
+        <p data-i18n="engine.s1">내 GitHub 계정, 지킬 저장소, 그리고 내 취향. 브라우저 위저드를 쓰면 전부 브라우저 안에서만 처리되고, 설정 파일 6개와 에이전트용 위임 프롬프트가 만들어집니다. 위저드를 건너뛰고 아래 프롬프트를 쓰면, 에이전트가 대화로 인터뷰해서 같은 설정 파일 6개를 만듭니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="engine.s2t">프롬프트를 내 에이전트에게 붙여넣기</h3>
+        <p data-i18n="engine.s2">Claude Code, Codex — 뭐든 좋습니다. 에이전트가 공식 런북(0–9단계)을 따라 저장소 생성부터 최종 검증까지 실행하고, 단계마다 스스로 검증합니다.</p>
+      </div>
+      <div class="step">
+        <h3 data-i18n="engine.s3t">두 번만 직접 하기</h3>
+        <p data-i18n="engine.s3">① GitHub App 등록 화면에서 클릭 몇 번 ② "이제 진짜로 켜자"는 최종 확인. 그 사이의 모든 것 — 설정, 배선, 검사, 시운전 — 은 에이전트의 일입니다.</p>
+        <span class="human-chip" data-i18n="engine.s3chip">사람이 하는 유일한 두 순간</span>
+      </div>
+    </div>
+    <div class="boot">
+      <div class="boot-label" data-i18n="engine.bootlabel">위저드조차 필요 없습니다 — 이 한 문단을 복사해 내 에이전트에게 붙여넣으세요</div>
+      <div class="boot-sub" data-i18n="engine.bootsub">에이전트가 당신의 언어로 인터뷰해서 설정을 만들고, 사람이 할 두 순간은 클릭 단위로 안내합니다. (프롬프트만 영문일 뿐, 대화는 당신의 언어로 진행됩니다.)</div>
       <pre id="bootstrap-prompt">You are my AI coding agent. Set up multiagent-protocol for me.
 Fetch and follow: https://raw.githubusercontent.com/donggun-jung/multiagent-protocol/main/docs/agent-setup/AGENT_SETUP.md
 I have not prepared any config. Start with the runbook's Interview Mode:
@@ -273,44 +535,41 @@ interview me in my own language (one batched round, offer defaults), build
 the six config files from my answers, confirm the summary back to me, then
 execute steps 0-9. Involve me only at the [HUMAN] steps, and when we reach
 them, walk me through the clicks step by step.</pre>
-      <button class="btn btn-primary" id="copy-bootstrap" data-i18n="start.bootcopy">프롬프트 복사</button>
+      <button class="btn btn-primary" id="copy-bootstrap" data-copy-target="bootstrap-prompt" data-i18n="engine.bootcopy">프롬프트 복사</button>
     </div>
     <div class="cta-row" style="margin-top:26px">
-      <a class="btn btn-ghost" href="https://donggun-jung.github.io/multiagent-protocol/wizard/" rel="noopener" data-i18n="start.cta1">위저드로 시작하기 (폼 입력을 선호한다면)</a>
-      <a class="btn btn-ghost" href="https://github.com/donggun-jung/multiagent-protocol/blob/main/docs/agent-setup/AGENT_SETUP.md" rel="noopener" data-i18n="start.cta2">에이전트가 따르는 런북 보기</a>
+      <a class="btn btn-ghost" href="https://donggun-jung.github.io/multiagent-protocol/wizard/" rel="noopener" data-i18n="engine.cta1">위저드로 시작하기 (폼 입력을 선호한다면)</a>
+      <a class="btn btn-ghost" href="https://github.com/donggun-jung/multiagent-protocol/blob/main/docs/agent-setup/AGENT_SETUP.md" rel="noopener" data-i18n="engine.cta2">에이전트가 따르는 런북 보기</a>
     </div>
-  </div>
-</section>
+    <p class="fine" style="text-align:center" data-i18n="engine.fine">Apache-2.0 · 서버 없음 · 내 GitHub 계정 안에서만 작동 · 어떤 데이터도 밖으로 나가지 않음</p>
 
-<section id="honest">
-  <div class="wrap">
-    <div class="sec-kicker" data-i18n="honest.kicker">정직한 상태 표시</div>
-    <h2 data-i18n="honest.h2">되는 것과 안 되는 것</h2>
-    <p class="sec-lede" data-i18n="honest.lede">신뢰를 다루는 도구가 스스로 과장하면 그걸로 끝입니다. 이 목록은 실제 출하 상태와 함께 갱신됩니다.</p>
+    <h3 class="sub-h" data-i18n="engine.stath">엔진의 상태 (v1.5)</h3>
     <div class="honest">
       <div class="h-col does">
-        <h3 data-i18n="honest.doesh">✓ 지금 됩니다</h3>
+        <h3 data-i18n="engine.doesh">✓ 지금 됩니다</h3>
         <ul>
-          <li data-i18n="honest.d1">신호등(머지 게이트) — 라벨·검사·최신성·서명 확인 후에만 병합</li>
-          <li data-i18n="honest.d2">결재함 — 중요 결정만 이슈로 도착, 👍 또는 /approve로 응답</li>
-          <li data-i18n="honest.d3">이름표 — 서명(5종) 없는 변경 차단; 등록 도구·모델 대조는 기본 '권고'이며 설정 한 줄로 차단 승격 가능</li>
-          <li data-i18n="honest.d4">영수증 — 병합 후 재검증, 비상조치 24시간 사유서 감사</li>
-          <li data-i18n="honest.d5">에이전트 대행 설치 + 취향 레이어 + 위저드</li>
-          <li data-i18n="honest.d6">사고 병합 자동 되돌리기 — 봇이 되돌림 PR을 만들어 제안(옵트인, 그 PR도 신호등을 통과해야 합침)</li>
-          <li data-i18n="honest.d7">개념 문서까지 전부 한국어 미러 제공(9종 — 충돌 시 영문이 정본)</li>
-          <li data-i18n="honest.d8">설치 점검 리포트(verify-setup) — 배포된 게이트를 언제든 재검증하고, 조용히 죽은 크론도 보이게 만듭니다</li>
+          <li data-i18n="engine.d1">신호등(머지 게이트) — 라벨·검사·최신성·서명 확인 후에만 병합</li>
+          <li data-i18n="engine.d2">결재함 — 중요 결정만 이슈로 도착, 👍 또는 /approve로 응답</li>
+          <li data-i18n="engine.d3">이름표 — 서명(5종) 없는 변경 차단; 등록 도구·모델 대조는 기본 '권고'이며 설정 한 줄로 차단 승격 가능</li>
+          <li data-i18n="engine.d4">영수증 — 병합 후 재검증, 비상조치 24시간 사유서 감사</li>
+          <li data-i18n="engine.d5">에이전트 대행 설치 + 취향 레이어 + 위저드</li>
+          <li data-i18n="engine.d6">사고 병합 자동 되돌리기 — 봇이 되돌림 PR을 만들어 제안(옵트인, 그 PR도 신호등을 통과해야 합침)</li>
+          <li data-i18n="engine.d7">개념 문서 9종 전부 한국어 미러 제공(충돌 시 영문이 정본)</li>
+          <li data-i18n="engine.d8">설치 점검 리포트(verify-setup) — 배포된 게이트를 언제든 재검증하고, 조용히 죽은 크론도 보이게 만듭니다</li>
+          <li data-i18n="engine.d9">결재함 리마인더 — 정한 시간이 지나면 한 번 알리고, 외출 시간 동안은 시계를 멈췄다가 복귀하면 요약을 한 번 보냅니다(v1.4, 옵트인)</li>
+          <li data-i18n="engine.d10">완료 영수증 검사 — 등록부·본선 최신 커밋·버전 선언을 정확한 커밋 단위로 묶어 대조합니다(v1.5; 완료를 '승인'하지는 않습니다)</li>
         </ul>
       </div>
       <div class="h-col doesnt">
-        <h3 data-i18n="honest.doesnth">− 아직 안 됩니다 (숨기지 않습니다)</h3>
+        <h3 data-i18n="engine.doesnth">− 아직 안 됩니다 (숨기지 않습니다)</h3>
         <ul>
-          <li data-i18n="honest.n2">GitHub 외의 GitLab/Bitbucket 지원</li>
-          <li data-i18n="honest.n4">pip 한 줄 설치(PyPI) — 지금은 미러 방식으로 설치</li>
+          <li data-i18n="engine.n2">GitHub 외의 GitLab/Bitbucket 지원</li>
+          <li data-i18n="engine.n4">pip 한 줄 설치(PyPI) — 지금은 미러 방식으로 설치</li>
         </ul>
       </div>
     </div>
-    <div class="tip" style="margin-top:26px" data-i18n-html="honest.bound">⚖️ <strong>경계도 분명히 합니다:</strong> 이 게이트는 <strong>정책</strong>이지, 코드가 안전하다는 <strong>증명</strong>이 아닙니다. 서명이 갖춰지고 검사가 초록이고 허가된 라벨이 붙은 변경은 병합됩니다 — 그 검사가 충분한지, 그 코드가 옳은지는 게이트가 판단하지 않습니다. 좋은 검사를 붙이는 일은 여전히 당신과 당신의 에이전트의 몫입니다.</div>
-    <h3 style="margin-top:34px;font-size:17px" data-i18n="fit.h">비슷해 보이는 도구들과의 관계</h3>
+
+    <h3 class="sub-h" data-i18n="fit.h">비슷해 보이는 도구들과의 관계</h3>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
     <table style="width:100%;min-width:560px;border-collapse:collapse;margin-top:12px;font-size:13.8px" aria-label="tool relationships">
       <tr>
@@ -321,21 +580,22 @@ them, walk me through the clicks step by step.</pre>
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r1a">AI 오케스트레이터 (AI Maestro 등)</td>
         <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r1b">여러 에이전트 세션을 띄우고 서로 대화하게 함</td>
-        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r1c"><strong>보완</strong> — 그쪽은 에이전트를 "일하게" 하고, 우리는 그 일이 "합쳐질 자격"을 지킵니다. 같이 쓰면 좋습니다</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n-html="fit.r1c"><strong>보완</strong> — 그쪽은 에이전트를 "일하게" 하고, 우리는 그 일이 "합쳐질 자격"을 지킵니다. 같이 쓰면 좋습니다</td>
       </tr>
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r2a">CI (GitHub Actions의 테스트 등)</td>
         <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r2b">코드 검사를 실행</td>
-        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r2c"><strong>보완</strong> — 우리는 그 결과를 병합 조건으로 소비합니다. 검사는 당신 것, 신호등은 우리 것</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n-html="fit.r2c"><strong>보완</strong> — 우리는 그 결과를 병합 조건으로 소비합니다. 검사는 당신 것, 신호등은 우리 것</td>
       </tr>
       <tr>
-        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3a">GitHub Pro 브랜치 보호</td>
-        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3b">유료 내장 병합 보호</td>
-        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3c"><strong>부분 대체</strong> — 결제가 가능하고 에이전트 신원·결재함이 필요 없다면 그쪽이 더 단순합니다. 솔직한 사실입니다</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3a">GitHub Pro 서버 규칙 (ruleset)</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n="fit.r3b">내장 병합 보호 — 비공개 저장소는 유료</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--line)" data-i18n-html="fit.r3c"><strong>지금의 기본값</strong> — 결제가 가능하다면 이쪽이 더 단순하고 단단해서, 이 규율도 여기로 옮겼습니다. 에이전트 신원은 서명 필수 검사로, 결재는 승인 경계 규칙으로 보탭니다</td>
       </tr>
     </table>
     </div>
-    <p class="honest-line" data-i18n-html="honest.line">전체 상태표는 <a href="https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md" rel="noopener">STATUS.md</a>에 있습니다. 안 되는 것을 된다고 쓰지 않는 것 — 그것도 이 프로토콜이 강제하는 규율의 일부입니다.</p>
+    <p class="honest-line" data-i18n-html="engine.line">엔진의 전체 상태표는 <a href="https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md" rel="noopener">STATUS.md</a>에 있습니다.</p>
+    </details>
   </div>
 </section>
 
@@ -344,6 +604,7 @@ them, walk me through the clicks step by step.</pre>
     <div>
       <div class="brand" style="margin-bottom:8px">multiagent<span class="dot">·</span>protocol</div>
       <div data-i18n="foot.line">한 사람, 여러 에이전트, 하나의 규율.</div>
+      <div style="margin-top:6px;font-size:13px" data-i18n="foot.updated">마지막 갱신 2026-10-06 · 현재 실제 운영 기준</div>
     </div>
     <div style="display:flex;gap:28px;flex-wrap:wrap">
       <a href="https://github.com/donggun-jung/multiagent-protocol" rel="noopener">GitHub</a>
@@ -358,13 +619,13 @@ them, walk me through the clicks step by step.</pre>
 (function () {
   "use strict";
   var EN = {
-    "nav.why": "Why", "nav.how": "How it works", "nav.start": "Get started",
-    "hero.kicker": "Guardrails for running an AI team · open source · for non-developers",
+    "nav.why": "Why", "nav.team": "The team", "nav.how": "How it works", "nav.start": "Get started",
+    "hero.kicker": "Discipline for running an AI team · for non-developers · October 2026 edition",
     "hero.h1": "Plenty of people give AI instructions.<br>Few people <em>run an AI team</em>.",
-    "hero.sub": "The moment you point several AI agents at one project, the accidents begin: collisions, silent damage, changes nobody can explain. multiagent-protocol puts a traffic light in front of every change and routes only the decisions that matter to your inbox — built for non-developers who want to get past toy projects.",
-    "hero.cta1": "Get started — your agent installs it",
-    "hero.cta2": "Understand the principles first",
-    "hero.fine": "Apache-2.0 · no servers · runs entirely inside your GitHub account · nothing leaves it",
+    "hero.sub": "The moment you point several AI agents at one project, the accidents begin: collisions, silent damage, changes nobody can explain. This page lays out exactly how one person actually runs an AI team: the smartest model acts as the manager — planning, assigning and verifying; Codex does the hands-on building; models from different companies check each other's work; and only the decisions that matter reach the human.",
+    "hero.cta1": "See the team",
+    "hero.cta2": "Get started",
+    "hero.fine": "How it actually runs as of October 2026 · models change, the seats (roles) stay · includes an open-source engine (Apache-2.0) for GitHub Free users",
     "why.kicker": "Why you need this",
     "why.h2": "It's not that AI is bad. It's that there are no rules.",
     "why.lede": "If you've built something with one AI agent, these are the scenes waiting for you the day you start using two.",
@@ -376,29 +637,119 @@ them, walk me through the clicks step by step.</pre>
     "why.p3": "You open the project in the morning to a pile of changes with no record of which tool, which session, or what reasoning produced them.",
     "why.p4t": "\"It said 'done' — it wasn't\"",
     "why.p4": "The gap between \"all done!\" and actually done is the most expensive gap in working with AI.",
-    "why.turn": "<strong>Human teams fail the same way without rules.</strong> Companies prevent these accidents with approvals, records, and permissions. An AI team needs the same machinery — multiagent-protocol is that machinery, written as code, operable without being a developer.",
+    "why.turn": "<strong>Human teams fail the same way without rules.</strong> Companies prevent these accidents with division of roles, approvals, records, and review. An AI team needs the same machinery. The discipline on this page carries it over: part of it GitHub enforces on its servers, the rest lives in a rulebook every agent reads at the start of every session — operable without being a developer.",
+    "team.kicker": "The team — who does what",
+    "team.h2": "The expensive mind judges, the tireless hands build, someone else checks.",
+    "team.lede": "No single model does everything. Like a company, the work is split into seats. A seat is a role; the model is just its current occupant — when a new generation ships, only the occupant changes.",
+    "team.c1t": "The owner — direction and the big calls",
+    "team.c1tag": "the human · decision-maker",
+    "team.c1": "Decides what to build and why, and makes only the decisions that change outcomes or authority. Decisions arrive as 2-4 options with pros and cons, not open questions — light ones inside the conversation, heavy ones as a report-style questionnaire you can read in five minutes (at most three decision cards). Co-designs; never writes the code.",
+    "team.c1a": "At a company: the CEO",
+    "team.c2t": "The command seat — the manager (Claude Fable 5.1)",
+    "team.c2tag": "plans · assigns · designs the checks · declares done",
+    "team.c2": "Breaks the work down, decides who does each piece, writes the delegation briefs, designs how the result will be checked, and rules on whether it is done. A lazy, smart manager: this seat's output is briefs, decisions and verdicts — not code. For big jobs it designs the workflow, splits it across several sub-agents and assembles the results.",
+    "team.c2a": "At a company: team lead and PM in one",
+    "team.c3t": "The labor seat — the builder (Codex · GPT-6 Astra)",
+    "team.c3tag": "implementation · transformation · cross-vendor review",
+    "team.c3": "Builds and changes code, and — as a model from another company — also gives plan consults and cross-checks. Every job gets its own thinking depth (effort): ultra for large parallel builds, max for judgment and review, xhigh for everyday implementation, high for mechanical work a checker can verify. Subscription usage is a finite resource, so not every job gets thrown its way.",
+    "team.c3a": "At a company: a senior engineer from a partner firm",
+    "team.c4t": "The workhorse — volume work (Claude Opus 5.5)",
+    "team.c4tag": "bulk reading · summaries · full sweeps",
+    "team.c4": "Takes the non-code volume work: reading hundreds of documents, summarizing, full sweeps, verification passes. As a rule, work that can wait goes to half-price batch processing; otherwise several workhorse agents split it in parallel.",
+    "team.c4a": "At a company: the research and QA team",
+    "team.c5t": "The checker — no fixed model",
+    "team.c5tag": "the maker never checks its own work",
+    "team.c5": "Review is done by a fresh seat that did not produce the work — preferably a model from another company: Codex checks what Claude made, Claude checks what Codex made. Agreement makes it final; disagreement goes to a third adjudicator or the human. Agreement between models from the same company does not count as diversity.",
+    "team.c5a": "At a company: an external audit",
+    "team.c6t": "Plan consult — two managers",
+    "team.c6tag": "heavy plans aren't finalized alone, as a rule",
+    "team.c6": "For heavy work — rule changes, architecture, data migrations, security boundaries, irreversible actions — the command seat has a model from the other company review the plan before anything runs. The consultant names the risks and alternatives it sees before reading the draft, then takes one deep look. Adopted and rejected points are recorded with reasons; if a substantive disagreement stays unresolved, only that step waits for the human while the rest of the work continues. If no consultant is available, that is recorded and the work proceeds — and a consultant can never become the checker for the same work.",
+    "team.c6a": "At a company: briefing the board before a big move",
+    "flow.h": "How one piece of work flows",
+    "flow.s1t": "The owner states the goal",
+    "flow.s1": "What and why. No need to say how.",
+    "flow.s2t": "The command seat declares the route first",
+    "flow.s2": "One line up front: do it itself, or hand it to whom at what depth (e.g. 'Codex · xhigh — multi-file implementation'). Heavy plans get their consult here.",
+    "flow.s3t": "The builder works on a branch",
+    "flow.s3": "The brief states what may change and whether new components are allowed. Results arrive only as a pull request — a proposed change — and the server blocks direct pushes to the official version, the main line.",
+    "flow.s4t": "Another seat checks it",
+    "flow.s4": "A seat that never touched it, ideally from another company — and it writes down its scope: what it checked and what it did not.",
+    "flow.s5t": "GitHub verifies and merges",
+    "flow.s5": "The agent switches on auto-merge for each pull request; the moment every required check is green and review conversations are resolved, GitHub merges it. Nobody has to press a button.",
+    "flow.s6t": "The command seat reports, with receipts",
+    "flow.s6": "Where things stand against the goal · whether the human needs to act · the next step's condition and timing · decisions pending. Details stay in the records, linked.",
+    "alloc.h": "Allocation rules",
+    "alloc.a1": "<strong>No fixed table.</strong> Instead of 'this job goes to that model', every assignment weighs difficulty, independence and availability.",
+    "alloc.a2": "<strong>There is a floor.</strong> Smaller models are used only when the human names them for that task.",
+    "alloc.a3": "<strong>No silent swaps.</strong> If the requested model fails, the work is not quietly re-run on another model — the failure is reported and the human decides. If the command seat itself goes down, a predefined fallback keeps only its management duties running.",
+    "alloc.a4": "<strong>Same error twice means change strategy.</strong> No hammering a blocked resource with the same call.",
+    "alloc.a5": "<strong>Fan out only when breadth pays.</strong> Multi-agent runs burn roughly 15× the tokens of a chat, and multiplied by verification steps the bill grows fast. Large automatic fan-outs run only when the human turns them on.",
     "how.kicker": "How it works — four devices",
     "how.h2": "Not technology — discipline. You've seen all of it at work before.",
-    "how.lede": "The internals are intricate, but these four ideas are everything you need to understand.",
+    "how.lede": "They were first built as a home-made bot; today most of them run on GitHub's own server-side rules plus the written rulebook. The tools changed; the devices did not.",
     "how.c1t": "Traffic light — nothing merges without a green",
-    "how.c1tag": "the merge gate",
-    "how.c1": "A change gets a green light only when it is complete, has passed its checks, and is up to date. Without the green, no agent can merge anything into the main line — no exceptions, every AI treated the same.",
+    "how.c1tag": "GitHub rulesets · required checks · auto-merge",
+    "how.c1": "There is no direct path onto the main line. Every change arrives as a pull request and merges only when every required check is green and review conversations are resolved. No force-pushes, no deleting the main line, no bypass accounts — every AI treated the same. With auto-merge switched on for each pull request by the agent, GitHub merges the moment the conditions are met. Because GitHub's servers make the call, the rules keep standing even if a watchdog bot goes down.",
     "how.c1a": "At a company: no shipping without QA",
-    "how.c2t": "Approval inbox — only the big decisions reach you",
-    "how.c2tag": "Decision Inbox · four-quadrant triage",
-    "how.c2": "Every change is sorted by two questions: can it be undone? does it touch something critical? Ordinary work proceeds on its own, leaving records. Irreversible-and-critical work stops and waits for you. Approval is one 👍.",
+    "how.c2t": "Approvals — only the big ones reach you",
+    "how.c2tag": "two questions · a severe list · standing delegation",
+    "how.c2": "Every action is sorted by two questions: can it be undone? does it touch something critical? Only irreversible-and-critical work — plus a short written 'severe list': irreversible data deletion, spend of around $100 or more or new financial commitments, new public-facing services, loosening a security boundary, third-party data, outside communications or legal matters, and removing or altering content in a deliverable — waits for the human's approval before it runs. Service deploys follow a per-app approval policy: only routine releases of apps registered for standing delegation run on their own, while apps marked 'approve every time' (such as those holding user data) or with no policy at all are asked first. Everything else is standing delegation, with a rollback point, a record and a post-check every time. Asking about things that need no asking is also a rule violation, and work that was explicitly approved once is never re-asked mid-procedure.",
     "how.c2a": "At a company: delegation rules — the CEO signs only the big ones",
     "how.c3t": "Name tags — every change carries a signature",
-    "how.c3tag": "identity trailers",
-    "how.c3": "Which AI tool, which model, which working session, tied to which task — every change carries this signature, and unsigned changes don't pass the light. \"What happened overnight\" becomes a morning read.",
+    "how.c3tag": "six identity trailers",
+    "how.c3": "Which tool, which model, which working session, which machine, which task — five identity lines plus a co-author line: six lines ride on every change an agent makes. Make the signature check a required check, and unsigned agent changes simply don't merge — the only exception is the original commit of a verified dependency-update bot, and the engine below checks the first five lines by default. \"What happened overnight\" becomes a morning read.",
     "how.c3a": "At a company: unsigned paperwork isn't accepted",
     "how.c4t": "Receipts — proof, not claims",
-    "how.c4tag": "audit trail · post-merge re-check",
-    "how.c4": "Checks run again after merging, and anomalies open an incident. Even the emergency override leaves a trace — and demands a written reason within 24 hours. Done is a record, not an assertion.",
+    "how.c4tag": "done verdicts · review records · live-version match",
+    "how.c4": "\"Done\" is a verdict, not a feeling. Nothing may be left to review (or what's left is listed for a human), the whole declared scope — failed items included — has been checked, and the record states what was verified and what was not, including anything removed or still awaiting approval. Data and deploys additionally need a receipt from an independent check that passed: the verification output and its numbers. Deploys are matched against the version actually running, and if it can't be confirmed which model did the work, the record says \"unverified\" instead of guessing.",
     "how.c4a": "At a company: expenses need receipts, exceptions need memos",
+    "rules.kicker": "The quality constitution — ten articles",
+    "rules.h2": "Ten rules every agent follows",
+    "rules.lede": "Each one was paid for by a real incident. The numbering never changes — so the rules can't drift.",
+    "rules.q1t": "1 · No false completion",
+    "rules.q1": "\"Done\" is said only after the whole declared scope is checked, with anything unverified, excluded or awaiting approval disclosed and the evidence attached.",
+    "rules.q2t": "2 · Preservation",
+    "rules.q2": "Never silently drop features or data. Structural changes get a before/after inventory; user data loss is zero.",
+    "rules.q3t": "3 · Source of truth, checked exhaustively",
+    "rules.q3": "Declare the authoritative source first and check everything against it. Samples validate the method — never completeness.",
+    "rules.q4t": "4 · Surface separation",
+    "rules.q4": "No traces of the build process, infrastructure or models on anything a user sees.",
+    "rules.q5t": "5 · Copy voice",
+    "rules.q5": "Confident and clear — but never overclaiming where trust is at stake, like finance or law.",
+    "rules.q6t": "6 · Mode switch",
+    "rules.q6": "Code: surgical, only what's needed. Documents: thorough. Data: exhaustive.",
+    "rules.q7t": "7 · Delivery and records",
+    "rules.q7": "Deliverables go to the agreed place in the agreed format. Updating the related runbook is part of the job.",
+    "rules.q8t": "8 · The approval boundary — both sides",
+    "rules.q8": "Ask first only about the severe things; delegate the rest. Over-asking is waste too.",
+    "rules.q9t": "9 · Independent verification",
+    "rules.q9": "Maker and checker are different seats, ideally from different companies. Agreement is what makes it final; on disagreement, nobody quietly picks a side.",
+    "rules.q10t": "10 · No waste",
+    "rules.q10": "Verified environment facts aren't re-tested unless something failed or changed. Before any paid re-run, check whether the same job already ran.",
+    "habit.kicker": "Working habits",
+    "habit.h2": "Lean, visible, frugal.",
+    "habit.lede": "The habits that keep an AI team from its usual illnesses as it grows: over-engineering, repeating the same mistake, silent failure, and leaking money.",
+    "habit.c1t": "Proportionality — exactly what was asked",
+    "habit.c1tag": "scope comes first",
+    "habit.c1": "Every brief states what may change and whether new components are allowed. Going beyond it means recording why before building; an over-built result is redone in its minimal form. \"While I'm here\" ideas are written down for the human, never quietly done.",
+    "habit.c2t": "Repeated failure — stop and look at the structure",
+    "habit.c2tag": "same gate, same failure",
+    "habit.c2": "Three failed fix-and-recheck rounds at the same gate trigger a written structural verdict — root cause, alternatives, and why one was chosen — before the next fix. A fourth failure brings in a consult from the other company's model.",
+    "habit.c3t": "Visibility — silence is not success",
+    "habit.c3tag": "a status file · report first",
+    "habit.c3": "Anything expected to take more than 30 minutes opens a status file and logs its progress. Finished or failed, it reports first. If the human had to ask \"is it done yet?\", the rule was already broken.",
+    "habit.c4t": "Reporting — in human terms, briefly",
+    "habit.c4tag": "four things only",
+    "habit.c4": "Every report covers four things: where things stand against the goal, whether the human needs to act, the condition and expected timing of the next step, and any decisions pending. Usually the human has nothing to do. Details such as PR numbers and review rounds stay in the records, linked.",
+    "habit.c5t": "Cost — plug the leaks",
+    "habit.c5tag": "confirm first · batch · draft PRs",
+    "habit.c5": "Paid bulk work projected at $10 or more is confirmed before it runs. Bulk work that can wait goes to half-price batch processing as a rule, and every Codex job gets its own thinking depth. Paid automated checks (CI) run locally during fix rounds and go up once the change is a merge candidate; pull requests start as drafts.",
+    "habit.c6t": "Auto mode — approved work runs to the end",
+    "habit.c6tag": "no re-asking · no workarounds",
+    "habit.c6": "Once the human explicitly approves a task, the agent carries the whole procedure through, within the approved scope, without asking again. The severe list still needs approval first. When a safety layer blocks the work, the agent never works around it and logs the block — only a mistaken block on approved work is sent for rule refinement; blocking an unapproved severe step means the rule worked.",
     "pref.kicker": "Your way",
     "pref.h2": "Your agents learn your preferences — and your preferences stay yours",
-    "pref.lede": "The same tool is used differently by every person. State your working preferences once at install, and every agent reads and follows them at the start of every session.",
+    "pref.lede": "The same tool is used differently by every person. Write your working preferences and rules down in one place, and every agent reads and follows them — the rulebook summary every session, the taste ledger before any decision it touches.",
     "pref.l1t": "The language they speak",
     "pref.l1": "Reports and conversation in your language",
     "pref.l2t": "Reporting style",
@@ -410,44 +761,82 @@ them, walk me through the clicks step by step.</pre>
     "pref.l5t": "Quiet hours",
     "pref.l5": "No pings at night — a morning report instead",
     "pref.l6t": "The taste ledger",
-    "pref.l6": "The instructions you keep repeating, one line each — every agent follows them",
+    "pref.l6": "The instructions you keep repeating, one line each, written down the day you say them — every agent follows them from then on",
+    "pref.l7t": "Work sheets",
+    "pref.l7": "Data, product, documents, routines, research, rules — six sheets, each with its own gates and definition of done",
     "pref.exh": "Taste ledger — example",
     "pref.ex1": "Weekly summaries on Friday afternoon, never Monday morning",
     "pref.ex2": "When a chart and a table both work, use the chart",
     "pref.ex3": "Deliverables go in the designated folder only — never the desktop",
     "pref.ex4": "Uncertain conclusions must be labeled \"not certain\"",
-    "pref.privacy": "🔒 <strong>Preferences are personal data.</strong> They live only in <strong>your private repository</strong>. The public code contains no personal information — an automated scan watches every public file, and not even the author's own preferences appear anywhere in it.",
+    "pref.privacy": "🔒 <strong>Preferences are personal data.</strong> The taste ledger and the rulebook itself live only in <strong>your private repository</strong>. Operating values shown on this page — model assignments, spending thresholds — are one person's real example; write your own in your own private repository. This page contains no personal information such as names, contact details or server addresses.",
     "start.kicker": "Get started",
-    "start.h2": "Humans don't do the install. Your agent does.",
-    "start.lede": "The standard installation path is delegation: hand the whole thing to your own AI agent. You act exactly twice.",
-    "start.s1t": "Answer the questions — in the wizard, or just in chat",
-    "start.s1": "Your GitHub account, the repos to protect, your preferences. Use the browser wizard (nothing is sent anywhere) — or skip it: with the bootstrap prompt below, your agent interviews you conversationally and builds the same 6 config files from your answers.",
-    "start.s2t": "Paste the prompt to your agent",
-    "start.s2": "Claude Code, Codex — any capable agent. It follows the official runbook (steps 0-9) from repo creation to final verification, checking its own work at every step.",
-    "start.s3t": "Act twice, yourself",
-    "start.s3": "① A few clicks on the GitHub App registration page ② the final \"turn it on for real\" confirmation. Everything in between — config, wiring, checks, the trial run — is your agent's job.",
-    "start.s3chip": "the only two human moments",
-    "start.cta1": "Start with the wizard (if you prefer forms)",
-    "start.cta2": "Read the runbook your agent follows",
-    "start.bootlabel": "You don't even need the wizard — copy this one paragraph to your agent",
-    "start.bootsub": "Your agent interviews you in your own language, builds your config from the answers, and walks you click-by-click through the two human moments.",
+    "start.h2": "Humans don't do the setup. Your agent does.",
+    "start.lede": "Today's setup has three parts. Hand each one to your agent; step in only for the moments only you can do — payment, sign-in, permission consent.",
+    "start.s1t": "Write the rules down in one place",
+    "start.s1": "Put the rulebook, the taste ledger and the work sheets in one private repository, and have every agent read the summary at the start of each session (CLAUDE.md for Claude Code, AGENTS.md for Codex). Each rule lives in exactly one place; everything else points to it.",
+    "start.s2t": "Turn on the traffic light",
+    "start.s2": "Private repositories need a paid plan — GitHub Pro ($4 a month) for a personal account, Team or above for an organization; public repositories get this for free. Put server-side rules on every repository: pull requests required · zero human approvals · review conversations resolved · required checks green (published by GitHub Actions) · squash merges · linear history · no force-push and no deleting the main line · no bypass accounts · auto-merge allowed. Working alone, you can't approve your own pull request, so checks stand in for approvals — and repositories without checks yet still start with 'pull requests required'. Auto-merge is allowed at the repository level and switched on by the agent for each pull request. A squash merge records a bundle of changes as one entry. The agent configures; the human pays.",
+    "start.s3t": "Staff the team",
+    "start.s3": "Use Fable as the command seat in Claude Code, and connect the Codex that ships inside the ChatGPT desktop app as the labor seat. The Codex side runs on the ChatGPT subscription you already pay for — no separate API key. The Fable command seat, however, currently runs on prepaid credits separate from any subscription, and batch processing is billed separately too. The connector script pins the model, requires a thinking depth on every call, and leaves a receipt for each call. It is not distributed here — the prompt below has your agent write a small one with the same guarantees. Short jobs (under 10 minutes) are called directly; long ones run in the background and are collected when done.",
+    "start.s3chip": "the human moments: payment · sign-in · permission consent",
+    "start.bootlabel": "Copy this one paragraph to your agent (e.g. Claude Code)",
+    "start.bootsub": "Your agent reads this page, interviews you in your own language, and shows you the plan before changing anything. At the payment, sign-in and consent moments it walks you through the clicks. (Only the prompt is in English — the conversation itself happens in your language.)",
     "start.bootcopy": "Copy the prompt",
+    "start.engine": "💡 <strong>Private repositories on GitHub Free?</strong> Server-side rules for private repositories need a paid plan. An open-source engine implements the same four devices as a bot and fills that gap — see <a href=\"#engine\">the appendix below</a> for how to install it.",
     "honest.kicker": "Honest status",
     "honest.h2": "What works, and what doesn't yet",
-    "honest.lede": "A tool that manages trust is finished the moment it oversells itself. This list is updated with what actually ships.",
-    "honest.doesh": "✓ Works today",
-    "honest.d1": "The traffic light (merge gate) — merges only after label, checks, freshness, and signatures",
-    "honest.d2": "The approval inbox — only critical decisions arrive, answered with 👍 or /approve",
-    "honest.d3": "Name tags — unsigned changes blocked (all five trailers); registry tool/model matching ships advisory, promotable to a hard block with one config line",
-    "honest.d4": "Receipts — post-merge re-validation, 24-hour written-reason audit on overrides",
-    "honest.d5": "Delegated agent install + the preference layer + the wizard",
-    "honest.d6": "Automatic revert of a bad merge — the bot proposes a revert PR (opt-in; that PR must pass the traffic light too)",
-    "honest.d7": "Korean mirror of every doc, concepts included (9 of 9 — English authoritative on conflict)",
-    "honest.d8": "Setup verification report (verify-setup) — re-check your deployed gate anytime; a silently-dead cron becomes visible",
-    "honest.doesnth": "− Not yet (and not hidden)",
-    "honest.n2": "GitLab / Bitbucket support (GitHub only)",
-    "honest.n4": "One-line pip install (PyPI) — install via mirror for now",
-    "honest.bound": "⚖️ <strong>We are equally clear about the boundary:</strong> this gate is <strong>policy</strong>, not <strong>proof</strong> that code is safe. A change with valid signatures, green checks, and an authorized label WILL merge — the gate does not judge whether those checks are sufficient or the code is correct. Attaching good checks remains your job, and your agents'.",
+    "honest.lede": "A way of working that manages trust is finished the moment it oversells itself. So this separates what machines enforce from what is kept by discipline.",
+    "honest.enfh": "✓ Enforced by machines",
+    "honest.e1": "Main-line protection — required pull requests, required checks, resolved review conversations, squash, linear history, no force-push or main-line deletion (GitHub server rules)",
+    "honest.e2": "Signature check — where it is a required check, an agent change missing any of the six trailers cannot merge",
+    "honest.e3": "Codex calls through the approved connector script — model pinned, refused without an explicit thinking depth, a receipt for every call. Calls that bypass the script aren't mechanically blocked; an audit finds them",
+    "honest.e4": "Paid batch de-duplication — the runner blocks resubmitting an identical request (Anthropic batches)",
+    "honest.e5": "Model registry — model names live in one registry; a retired model's name creeping back into the rulebook fails the check",
+    "honest.disch": "◐ Kept by discipline (not machine-enforced)",
+    "honest.d1": "Maker ≠ checker, plan consults, proportionality — the rulebook and skills guide behavior; no machine blocks a violation",
+    "honest.d2": "Which model actually did the work — mostly only the requested model is on record; when the executed identity isn't visible, it is written down as 'unverified', never guessed",
+    "honest.d3": "Deciding what counts as severe — the list is written down, but applying it is the command seat's judgment",
+    "honest.d4": "Whether the rules actually work — checked by an audit the human starts by hand about every 90 days. Being written down is not proof of working",
+    "honest.noth": "− Not yet (and not hidden)",
+    "honest.n1": "Instant rule propagation — a change may not reach a session that is already open; each machine pulls the latest rules, applies and verifies them, and new sessions pick them up from there",
+    "honest.n2": "Cross-document consistency checks — the check runs, but it is still in observation and does not block a merge when documents disagree",
+    "honest.n4": "Batch processing on the current Opus generation — new submissions are paused until compatibility is confirmed; parallel workhorse agents cover it meanwhile",
+    "honest.n3": "A physical guarantee on the check definitions themselves — see the boundary below",
+    "honest.bound": "⚖️ <strong>We are equally clear about the boundary:</strong> the traffic light is <strong>policy</strong>, not <strong>proof</strong> that code is safe. A signed change with green checks WILL merge — whether those checks are sufficient, or the code is correct, is not the light's call. Server rules alone cannot physically stop a change that rewrites the check definitions inside the same repository, so sensitive paths keep a checker separate from the maker as a matter of procedure. Attaching good checks remains your job, and your agents'.",
+    "honest.line": "Refusing to claim what doesn't work is part of the same discipline.",
+    "engine.kicker": "Private repositories on GitHub Free?",
+    "engine.h2": "The same four devices as a bot — the open-source engine",
+    "engine.lede": "If your repositories are private and paying for Pro is hard — or you want a bot to also match agent identities and run an approval inbox — there is this engine. It is how this discipline ran before moving to GitHub's server rules, and it still installs and works. The bot merges only after checking label, checks, freshness and signatures; critical decisions arrive as approval-inbox issues answered with a single 👍; and it handles post-merge re-checks and a 24-hour written-reason audit on emergency overrides. The standard install is delegation — hand the whole thing to your own AI agent. You act exactly twice.",
+    "engine.more": "Show install steps · engine status · similar tools",
+    "engine.s1t": "Answer the questions — in the wizard, or just in chat",
+    "engine.s1": "Your GitHub account, the repos to protect, your preferences. The browser wizard processes everything locally (nothing is sent anywhere) and produces the 6 config files plus a delegation prompt for your agent — or skip it: with the bootstrap prompt below, your agent interviews you conversationally and builds the same 6 config files from your answers.",
+    "engine.s2t": "Paste the prompt to your agent",
+    "engine.s2": "Claude Code, Codex — any capable agent. It follows the official runbook (steps 0-9) from repo creation to final verification, checking its own work at every step.",
+    "engine.s3t": "Act twice, yourself",
+    "engine.s3": "① A few clicks on the GitHub App registration page ② the final \"turn it on for real\" confirmation. Everything in between — config, wiring, checks, the trial run — is your agent's job.",
+    "engine.s3chip": "the only two human moments",
+    "engine.bootlabel": "You don't even need the wizard — copy this one paragraph to your agent",
+    "engine.bootsub": "Your agent interviews you in your own language, builds your config from the answers, and walks you click-by-click through the two human moments. (Only the prompt is in English — the conversation itself happens in your language.)",
+    "engine.bootcopy": "Copy the prompt",
+    "engine.cta1": "Start with the wizard (if you prefer forms)",
+    "engine.cta2": "Read the runbook your agent follows",
+    "engine.fine": "Apache-2.0 · no servers · runs entirely inside your GitHub account · nothing leaves it",
+    "engine.stath": "Engine status (v1.5)",
+    "engine.doesh": "✓ Works today",
+    "engine.d1": "The traffic light (merge gate) — merges only after label, checks, freshness, and signatures",
+    "engine.d2": "The approval inbox — only critical decisions arrive, answered with 👍 or /approve",
+    "engine.d3": "Name tags — unsigned changes blocked (all five trailers); registry tool/model matching ships advisory, promotable to a hard block with one config line",
+    "engine.d4": "Receipts — post-merge re-validation, 24-hour written-reason audit on overrides",
+    "engine.d5": "Delegated agent install + the preference layer + the wizard",
+    "engine.d6": "Automatic revert of a bad merge — the bot proposes a revert PR (opt-in; that PR must pass the traffic light too)",
+    "engine.d7": "Korean mirror of all nine concept docs (English authoritative on conflict)",
+    "engine.d8": "Setup verification report (verify-setup) — re-check your deployed gate anytime; a silently-dead cron becomes visible",
+    "engine.d9": "Approval-inbox reminders — one nudge after a set time, the clock paused while you're away, one digest when you're back (v1.4, opt-in)",
+    "engine.d10": "Completion receipt check — binds the registry, the main-line tip and the version declaration to exact commits and compares them (v1.5; it never 'approves' completion)",
+    "engine.doesnth": "− Not yet (and not hidden)",
+    "engine.n2": "GitLab / Bitbucket support (GitHub only)",
+    "engine.n4": "One-line pip install (PyPI) — install via mirror for now",
     "fit.h": "How this relates to tools that look similar",
     "fit.c1": "Tool", "fit.c2": "What it does", "fit.c3": "Relation to this protocol",
     "fit.r1a": "AI orchestrators (AI Maestro, …)",
@@ -456,17 +845,17 @@ them, walk me through the clicks step by step.</pre>
     "fit.r2a": "CI (your tests on GitHub Actions, …)",
     "fit.r2b": "Runs your code checks",
     "fit.r2c": "<strong>Complementary</strong> — we consume its results as a merge condition. The checks are yours; the traffic light is ours.",
-    "fit.r3a": "GitHub Pro branch protection",
-    "fit.r3b": "Paid built-in merge protection",
-    "fit.r3c": "<strong>Partial substitute</strong> — if you can pay and don't need agent identity or the approval inbox, it is simpler. That's the honest truth.",
-    "honest.line": "The full status matrix lives in <a href=\"https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md\" rel=\"noopener\">STATUS.md</a>. Refusing to claim what doesn't work is part of the same discipline this protocol enforces.",
+    "fit.r3a": "GitHub Pro rulesets",
+    "fit.r3b": "Built-in merge protection — paid for private repositories",
+    "fit.r3c": "<strong>Today's default</strong> — if you can pay, it is simpler and sturdier, which is why this discipline moved onto it. Agent identity is added with a required signature check, approvals with the approval-boundary rules.",
+    "engine.line": "The engine's full status matrix lives in <a href=\"https://github.com/donggun-jung/multiagent-protocol/blob/main/STATUS.md\" rel=\"noopener\">STATUS.md</a>.",
     "foot.line": "One human, many agents, one discipline.",
+    "foot.updated": "Last updated 2026-10-06 · reflects current practice",
     "foot.docs": "Docs", "foot.wizard": "Setup wizard"
   };
-  var KO = {}; // Korean lives in the markup itself.
 
   var current = "ko";
-  var koCache = {};
+  var koCache = {}; // Korean lives in the markup itself; snapshotted on load.
 
   function snapshotKorean() {
     var nodes = document.querySelectorAll("[data-i18n],[data-i18n-html]");
@@ -501,22 +890,27 @@ them, walk me through the clicks step by step.</pre>
     apply(current === "ko" ? "en" : "ko");
   });
 
-  document.getElementById("copy-bootstrap").addEventListener("click", function () {
-    var text = document.getElementById("bootstrap-prompt").textContent;
-    var btn = document.getElementById("copy-bootstrap");
-    function flash(msg) {
-      btn.textContent = msg;
-      setTimeout(function () { apply(current); }, 1600);
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(
-        function () { flash(current === "en" ? "✓ copied — paste it to your agent" : "✓ 복사됨 — 에이전트에게 붙여넣으세요"); },
-        function () { flash(current === "en" ? "copy blocked — select the text manually" : "복사가 막혔습니다 — 직접 드래그해 주세요"); }
-      );
-    } else {
-      flash(current === "en" ? "copy blocked — select the text manually" : "복사가 막혔습니다 — 직접 드래그해 주세요");
-    }
-  });
+  // Copy buttons: each names its prompt via data-copy-target.
+  function wireCopy(btn) {
+    btn.addEventListener("click", function () {
+      var src = document.getElementById(btn.getAttribute("data-copy-target"));
+      var text = src ? src.textContent : "";
+      function flash(msg) {
+        btn.textContent = msg;
+        setTimeout(function () { apply(current); }, 1600);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash(current === "en" ? "✓ copied — paste it to your agent" : "✓ 복사됨 — 에이전트에게 붙여넣으세요"); },
+          function () { flash(current === "en" ? "copy blocked — select the text manually" : "복사가 막혔습니다 — 직접 드래그해 주세요"); }
+        );
+      } else {
+        flash(current === "en" ? "copy blocked — select the text manually" : "복사가 막혔습니다 — 직접 드래그해 주세요");
+      }
+    });
+  }
+  var copyBtns = document.querySelectorAll("[data-copy-target]");
+  for (var b = 0; b < copyBtns.length; b++) wireCopy(copyBtns[b]);
 
   // Language resolution: ?lang=en|ko (or #en/#ko) > saved choice > browser language.
   var qlang = null;
